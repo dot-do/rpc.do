@@ -1,0 +1,81 @@
+{
+  "name": "rpc.do",
+  "version": "0.1.2",
+  "description": "Lightweight transport-agnostic RPC proxy",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    },
+    "./transports": {
+      "types": "./dist/transports.d.ts",
+      "import": "./dist/transports.js"
+    },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js"
+    },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "import": "./dist/worker.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm build && pnpm test"
+  },
+  "keywords": [
+    "rpc",
+    "proxy",
+    "capnweb",
+    "transport",
+    "websocket",
+    "http",
+    "cloudflare",
+    "workers"
+  ],
+  "author": {
+    "name": "Platform.do",
+    "email": "npm@platform.do",
+    "url": "https://platform.do"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dot-do/core.git",
+    "directory": "rpc.do"
+  },
+  "bugs": {
+    "url": "https://github.com/dot-do/core/issues"
+  },
+  "homepage": "https://rpc.do",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "oauth.do": "^0.1.0"
+  },
+  "optionalDependencies": {
+    "capnweb": "^0.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241205.0",
+    "@types/node": "^24.10.1",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.2",
+    "vitest": "^2.1.8"
+  }
+}
