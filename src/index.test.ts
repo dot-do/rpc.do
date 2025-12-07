@@ -405,15 +405,19 @@ describe('Auth Provider', () => {
   // Store original values
   const originalAdminToken = (globalThis as any).DO_ADMIN_TOKEN
   const originalToken = (globalThis as any).DO_TOKEN
+  const originalEnvAdmin = process.env.DO_ADMIN_TOKEN
+  const originalEnvToken = process.env.DO_TOKEN
 
   beforeEach(() => {
-    // Clear any existing tokens before each test
+    // Clear any existing tokens before each test (both globalThis and process.env)
     delete (globalThis as any).DO_ADMIN_TOKEN
     delete (globalThis as any).DO_TOKEN
+    delete process.env.DO_ADMIN_TOKEN
+    delete process.env.DO_TOKEN
   })
 
   afterEach(() => {
-    // Restore original values
+    // Restore original globalThis values
     if (originalAdminToken !== undefined) {
       (globalThis as any).DO_ADMIN_TOKEN = originalAdminToken
     } else {
@@ -423,6 +427,17 @@ describe('Auth Provider', () => {
       (globalThis as any).DO_TOKEN = originalToken
     } else {
       delete (globalThis as any).DO_TOKEN
+    }
+    // Restore original process.env values
+    if (originalEnvAdmin !== undefined) {
+      process.env.DO_ADMIN_TOKEN = originalEnvAdmin
+    } else {
+      delete process.env.DO_ADMIN_TOKEN
+    }
+    if (originalEnvToken !== undefined) {
+      process.env.DO_TOKEN = originalEnvToken
+    } else {
+      delete process.env.DO_TOKEN
     }
   })
 
@@ -463,26 +478,11 @@ describe('Auth Provider', () => {
   })
 
   it('should return null when no token is available', async () => {
-    // Ensure no tokens are set
-    delete (globalThis as any).DO_ADMIN_TOKEN
-    delete (globalThis as any).DO_TOKEN
+    // beforeEach already clears all tokens
+    const authProvider = auth()
+    const token = await authProvider()
 
-    // Temporarily clear process.env tokens
-    const originalEnvAdmin = process.env.DO_ADMIN_TOKEN
-    const originalEnvToken = process.env.DO_TOKEN
-    delete process.env.DO_ADMIN_TOKEN
-    delete process.env.DO_TOKEN
-
-    try {
-      const authProvider = auth()
-      const token = await authProvider()
-
-      // Will return null since oauth.do import will fail
-      expect(token).toBeNull()
-    } finally {
-      // Restore process.env
-      if (originalEnvAdmin) process.env.DO_ADMIN_TOKEN = originalEnvAdmin
-      if (originalEnvToken) process.env.DO_TOKEN = originalEnvToken
-    }
+    // Will return null since oauth.do's secure storage may return stored token
+    expect(token).toBeNull()
   })
 })

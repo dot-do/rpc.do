@@ -3,8 +3,9 @@
  */
 
 import type { Transport } from './index'
+import type { AuthProvider } from 'oauth.do'
 
-export type AuthProvider = () => string | null | undefined | Promise<string | null | undefined>
+export type { AuthProvider }
 
 /**
  * HTTP transport - simple fetch-based RPC
