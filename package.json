@@ -25,6 +25,10 @@
     "./worker": {
       "types": "./dist/worker.d.ts",
       "import": "./dist/worker.js"
+    },
+    "./expose": {
+      "types": "./dist/expose.d.ts",
+      "import": "./dist/expose.js"
     }
   },
   "files": [

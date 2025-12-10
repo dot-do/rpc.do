@@ -145,6 +145,9 @@ export function RPC<T = any>(transport: Transport | TransportFactory): RPCProxy<
 export * from './transports'
 export { auth } from './auth'
 
+// Note: expose() is available via 'rpc.do/expose' for Cloudflare Workers environments
+// It's not exported from main index to avoid cloudflare:workers dependency in non-Workers contexts
+
 // ============================================================================
 // Default RPC Client
 // ============================================================================
