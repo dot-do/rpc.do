@@ -3,9 +3,12 @@
  */
 
 import type { Transport } from './index'
-import type { AuthProvider } from 'oauth.do'
 
-export type { AuthProvider }
+/**
+ * Auth provider function type for HTTP clients
+ * Returns a token string or null/undefined
+ */
+export type AuthProvider = () => string | null | undefined | Promise<string | null | undefined>
 
 /**
  * HTTP transport - simple fetch-based RPC

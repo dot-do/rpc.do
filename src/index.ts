@@ -141,31 +141,38 @@ export function RPC<T = any>(transport: Transport | TransportFactory): RPCProxy<
   return createMethodProxy([]) as RPCProxy<T>
 }
 
-// Re-export transports and auth
+// Re-export transports (browser-safe)
 export * from './transports'
-export { auth } from './auth'
+
+// Note: auth() is available via 'rpc.do/auth' for server-side usage
+// It's not exported from main index to avoid oauth.do dependency in browser contexts
 
 // Note: expose() is available via 'rpc.do/expose' for Cloudflare Workers environments
 // It's not exported from main index to avoid cloudflare:workers dependency in non-Workers contexts
 
 // ============================================================================
-// Default RPC Client
+// Default RPC Client (without auth - browser-safe)
 // ============================================================================
 
 import { http } from './transports'
-import { auth } from './auth'
 
 /**
- * Pre-configured RPC client for rpc.do with default auth
+ * Pre-configured RPC client for rpc.do without auth
+ *
+ * For authenticated requests, either:
+ * 1. Pass a token directly: RPC(http('https://rpc.do', 'your-token'))
+ * 2. Use auth() from 'rpc.do/auth': RPC(http('https://rpc.do', auth()))
  *
  * @example
- * import { $ } from 'rpc.do'
- * // or
- * import $ from 'rpc.do'
+ * import { $, RPC, http } from 'rpc.do'
  *
+ * // Anonymous request
  * await $.ai.generate({ prompt: 'hello' })
- * await $.db.get({ id: '123' })
+ *
+ * // With token
+ * const authenticated = RPC(http('https://rpc.do', 'your-token'))
+ * await authenticated.db.get({ id: '123' })
  */
-export const $ = RPC(http('https://rpc.do', auth()))
+export const $ = RPC(http('https://rpc.do'))
 
 export default $
