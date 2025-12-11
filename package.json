@@ -71,7 +71,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "oauth.do": "^0.1.10"
+    "oauth.do": "^0.1.11"
   },
   "optionalDependencies": {
     "capnweb": "^0.1.0"
