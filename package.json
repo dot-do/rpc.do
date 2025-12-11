@@ -1,6 +1,6 @@
 {
   "name": "rpc.do",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Lightweight transport-agnostic RPC proxy",
   "type": "module",
   "main": "./dist/index.js",
@@ -39,7 +39,8 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
-    "prepublishOnly": "pnpm build && pnpm test"
+    "check:publish": "node -e \"const pkg = require('./package.json'); const deps = JSON.stringify(pkg.dependencies || {}); if (deps.includes('workspace:')) { console.error('ERROR: workspace: protocol found in dependencies. Replace with actual versions before publishing.'); process.exit(1); }\"",
+    "prepublishOnly": "pnpm check:publish && pnpm build && pnpm test"
   },
   "keywords": [
     "rpc",
@@ -70,7 +71,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "oauth.do": "workspace:*"
+    "oauth.do": "^0.1.10"
   },
   "optionalDependencies": {
     "capnweb": "^0.1.0"
