@@ -225,7 +225,61 @@ export function compositeAuth(providers: AuthProvider[]): AuthProvider {
   }
 }
 
-// Re-export oauth.do types and functions for convenience
-// These are dynamically imported to keep oauth.do optional
-export { getToken, auth } from 'oauth.do'
-export type { AuthProvider as OAuthAuthProvider } from 'oauth.do'
+/**
+ * Get a token from global variables or oauth.do
+ * Checks DO_ADMIN_TOKEN and DO_TOKEN globals first, then falls back to oauth.do
+ *
+ * @returns The token or null if not available
+ *
+ * @example
+ * import { getToken } from 'rpc.do/auth'
+ *
+ * const token = await getToken()
+ */
+export async function getToken(): Promise<string | null> {
+  // Check global tokens first (works in browser and Node.js)
+  const globalToken = (globalThis as any).DO_ADMIN_TOKEN ?? (globalThis as any).DO_TOKEN
+  if (globalToken) {
+    return globalToken
+  }
+
+  // Check environment variables (Node.js only)
+  if (typeof process !== 'undefined' && process.env) {
+    const envToken = process.env.DO_ADMIN_TOKEN ?? process.env.DO_TOKEN
+    if (envToken) {
+      return envToken
+    }
+  }
+
+  // Fall back to oauth.do (dynamically imported)
+  try {
+    const oauth = await import('oauth.do')
+    return await oauth.getToken()
+  } catch {
+    // oauth.do not available
+    return null
+  }
+}
+
+/**
+ * Create an auth provider that checks global tokens and oauth.do
+ * This is the recommended way to create an auth provider for RPC clients
+ *
+ * @returns AuthProvider function
+ *
+ * @example
+ * import { auth } from 'rpc.do/auth'
+ * import { RPC, http } from 'rpc.do'
+ *
+ * const rpc = RPC(http('https://rpc.do', auth()))
+ */
+export function auth(): AuthProvider {
+  return getToken
+}
+
+// Note: OAuthAuthProvider type is NOT re-exported here because oauth.do is an
+// optional peer dependency. Static type re-exports would fail at import time
+// if oauth.do is not installed.
+//
+// If you need the oauth.do AuthProvider type, import directly from oauth.do:
+//   import type { AuthProvider } from 'oauth.do'

@@ -3,6 +3,7 @@
  */
 
 import type { Transport } from './index'
+import { RPCError } from './errors'
 
 /**
  * Auth provider function type for HTTP clients
@@ -30,7 +31,7 @@ export function http(url: string, auth?: string | AuthProvider): Transport {
 
       if (!res.ok) {
         const error = await res.text()
-        throw new Error(`RPC error ${res.status}: ${error}`)
+        throw new RPCError(error || `HTTP ${res.status}`, String(res.status))
       }
 
       return res.json()
@@ -50,12 +51,12 @@ export function binding(b: any): Transport {
       // Navigate to the method
       for (let i = 0; i < parts.length - 1; i++) {
         target = target[parts[i]]
-        if (!target) throw new Error(`Unknown namespace: ${parts.slice(0, i + 1).join('.')}`)
+        if (!target) throw new RPCError(`Unknown namespace: ${parts.slice(0, i + 1).join('.')}`, 'UNKNOWN_NAMESPACE')
       }
 
       const methodName = parts[parts.length - 1]
       if (typeof target[methodName] !== 'function') {
-        throw new Error(`Unknown method: ${method}`)
+        throw new RPCError(`Unknown method: ${method}`, 'UNKNOWN_METHOD')
       }
 
       return target[methodName](...args)
@@ -81,7 +82,10 @@ export function ws(url: string, auth?: string | AuthProvider): Transport {
     connectPromise = (async () => {
       const token = await getAuth()
       const wsUrl = new URL(url.replace(/^http/, 'ws'))
-      if (token) wsUrl.searchParams.set('token', token)
+      if (token) {
+        console.warn('[rpc.do] Warning: Basic WebSocket transport sends auth token in URL. Consider using wsAdvanced() for better security with first-message authentication.')
+        wsUrl.searchParams.set('token', token)
+      }
 
       return new Promise<WebSocket>((resolve, reject) => {
         const sock = new WebSocket(wsUrl.toString())
@@ -103,16 +107,33 @@ export function ws(url: string, auth?: string | AuthProvider): Transport {
             const handler = pending.get(id)
             if (handler) {
               pending.delete(id)
-              if (error) handler.reject(new Error(error))
+              if (error) handler.reject(new RPCError(error, 'RPC_ERROR'))
               else handler.resolve(result)
             }
-          } catch {}
+          } catch (parseError) {
+            // Log the parse error for debugging
+            console.error('[rpc.do] WebSocket message parse error:', parseError)
+            console.error('[rpc.do] Raw message data:', event.data)
+
+            // If we can't parse the message, we can't determine which request it belongs to,
+            // but we should still surface this error. Emit to any pending handlers wouldn't
+            // be correct since we don't know which one. Instead, we throw an RPCError that
+            // can be caught by error monitoring.
+            const rpcError = new RPCError(
+              `Failed to parse WebSocket message: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+              'PARSE_ERROR',
+              { rawData: typeof event.data === 'string' ? event.data.substring(0, 200) : '[non-string data]' }
+            )
+
+            // Dispatch a custom error event on the socket for external error handlers
+            sock.dispatchEvent(new CustomEvent('rpc-error', { detail: rpcError }))
+          }
         })
 
         sock.addEventListener('close', () => {
           socket = null
           for (const [, handler] of pending) {
-            handler.reject(new Error('WebSocket closed'))
+            handler.reject(new RPCError('WebSocket closed', 'CONNECTION_CLOSED'))
           }
           pending.clear()
         })

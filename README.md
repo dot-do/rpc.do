@@ -2,6 +2,34 @@
 
 Lightweight transport-agnostic RPC proxy.
 
+## Why rpc.do?
+
+**Ergonomic Proxy-based API** - Call remote procedures with natural JavaScript syntax. No code generation, no schema compilation, just `$.ai.generate({ prompt: 'hello' })`.
+
+**Transport Agnostic** - Same client code works across HTTP, WebSocket, Cloudflare Service Bindings, and capnweb. Switch transports without changing your application logic.
+
+**Cloudflare Workers First-Class Support** - Built for the edge. Service bindings transport enables zero-latency RPC between Workers. Deploy the included Worker export for instant RPC endpoints.
+
+**Lightweight Alternative to tRPC/gRPC** - No build step required. No protobuf compilation. No router boilerplate. Just a ~3KB proxy that works everywhere.
+
+## How it works
+
+rpc.do uses JavaScript Proxies to create an infinitely nested namespace that accumulates method paths:
+
+```typescript
+const rpc = RPC(transport)
+
+// When you write:
+rpc.ai.models.gpt4.generate({ prompt: 'hello' })
+
+// The proxy accumulates: ['ai', 'models', 'gpt4', 'generate']
+// Then calls: transport('ai.models.gpt4.generate', [{ prompt: 'hello' }])
+```
+
+**Method Path Accumulation** - Each property access returns a new proxy that extends the path. Function invocation triggers the actual RPC call with the accumulated path as the method name.
+
+**Transport Abstraction** - Transports are simple functions: `(method: string, args: any[]) => Promise<any>`. This makes it trivial to implement custom transports or compose existing ones.
+
 ## Install
 
 ```bash

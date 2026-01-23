@@ -202,7 +202,7 @@ describe('HTTP Transport', () => {
 
     const transport = http('https://rpc.example.com')
 
-    await expect(transport.call('test', [])).rejects.toThrow('RPC error 500')
+    await expect(transport.call('test', [])).rejects.toThrow('Internal Server Error')
   })
 })
 
