@@ -1,6 +1,6 @@
 {
   "name": "rpc.do",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Lightweight transport-agnostic RPC proxy",
   "type": "module",
   "sideEffects": false,
