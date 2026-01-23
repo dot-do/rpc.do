@@ -1,6 +1,6 @@
 {
   "name": "rpc.do",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "description": "Lightweight transport-agnostic RPC proxy",
   "type": "module",
   "sideEffects": false,
@@ -84,7 +84,7 @@
     "capnweb": "^0.1.0"
   },
   "peerDependencies": {
-    "oauth.do": "^0.1.11"
+    "oauth.do": "^0.2.0"
   },
   "peerDependenciesMeta": {
     "oauth.do": {
