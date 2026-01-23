@@ -69,11 +69,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dot-do/core.git",
-    "directory": "rpc.do"
+    "url": "git+https://github.com/dot-do/rpc.do.git"
   },
   "bugs": {
-    "url": "https://github.com/dot-do/core/issues"
+    "url": "https://github.com/dot-do/rpc.do/issues"
   },
   "homepage": "https://rpc.do",
   "engines": {
