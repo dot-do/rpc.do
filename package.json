@@ -29,6 +29,14 @@
     "./expose": {
       "types": "./dist/expose.d.ts",
       "import": "./dist/expose.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js"
+    },
+    "./transports/ws-advanced": {
+      "types": "./dist/transports/ws-advanced.d.ts",
+      "import": "./dist/transports/ws-advanced.js"
     }
   },
   "files": [
@@ -70,11 +78,17 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "dependencies": {
-    "oauth.do": "^0.1.11"
-  },
+  "dependencies": {},
   "optionalDependencies": {
     "capnweb": "^0.1.0"
+  },
+  "peerDependencies": {
+    "oauth.do": "^0.1.11"
+  },
+  "peerDependenciesMeta": {
+    "oauth.do": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
