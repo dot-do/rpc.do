@@ -1,19 +1,18 @@
 {
   "name": "rpc.do",
-  "version": "0.2.0",
-  "description": "Lightweight transport-agnostic RPC proxy",
+  "version": "0.2.1",
+  "description": "Lightweight transport-agnostic RPC client proxy",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "rpc.do": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./server": {
-      "types": "./dist/server.d.ts",
-      "import": "./dist/server.js"
     },
     "./transports": {
       "types": "./dist/transports.d.ts",
@@ -23,21 +22,9 @@
       "types": "./dist/auth.d.ts",
       "import": "./dist/auth.js"
     },
-    "./worker": {
-      "types": "./dist/worker.d.ts",
-      "import": "./dist/worker.js"
-    },
-    "./expose": {
-      "types": "./dist/expose.d.ts",
-      "import": "./dist/expose.js"
-    },
     "./errors": {
       "types": "./dist/errors.d.ts",
       "import": "./dist/errors.js"
-    },
-    "./transports/ws-advanced": {
-      "types": "./dist/transports/ws-advanced.d.ts",
-      "import": "./dist/transports/ws-advanced.js"
     }
   },
   "files": [
@@ -45,7 +32,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "rm -rf dist && tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
     "check:publish": "node -e \"const pkg = require('./package.json'); const deps = JSON.stringify(pkg.dependencies || {}); if (deps.includes('workspace:')) { console.error('ERROR: workspace: protocol found in dependencies. Replace with actual versions before publishing.'); process.exit(1); }\"",
@@ -80,7 +67,7 @@
   },
   "dependencies": {},
   "optionalDependencies": {
-    "capnweb": "^0.1.0"
+    "capnweb": "^0.4.0"
   },
   "peerDependencies": {
     "oauth.do": "^0.2.0"

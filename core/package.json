@@ -1,0 +1,54 @@
+{
+  "name": "@dotdo/rpc",
+  "version": "0.1.0",
+  "description": "Durable Object RPC server with capnweb, hibernation, and $ context",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "rpc",
+    "durable-objects",
+    "cloudflare",
+    "workers",
+    "capnweb",
+    "hibernation"
+  ],
+  "author": {
+    "name": "Platform.do",
+    "email": "npm@platform.do",
+    "url": "https://platform.do"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dot-do/rpc.do.git",
+    "directory": "core"
+  },
+  "dependencies": {
+    "capnweb": "^0.4.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241205.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.2",
+    "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "@cloudflare/workers-types": "^4.0.0"
+  }
+}

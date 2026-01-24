@@ -1,18 +1,24 @@
 import { defineConfig } from 'tsup'
 
-export default defineConfig({
-  entry: [
-    'src/index.ts',
-    'src/server.ts',
-    'src/transports.ts',
-    'src/auth.ts',
-    'src/worker.ts',
-    'src/expose.ts',
-    'src/errors.ts',
-    'src/transports/ws-advanced.ts'
-  ],
-  format: ['esm'],
-  dts: true,
-  clean: true,
-  external: ['capnweb', 'oauth.do', 'cloudflare:workers']
-})
+export default defineConfig([
+  // Client library (browser-safe)
+  {
+    entry: [
+      'src/index.ts',
+      'src/transports.ts',
+      'src/auth.ts',
+      'src/errors.ts',
+    ],
+    format: ['esm'],
+    dts: true,
+    external: ['capnweb', 'oauth.do', 'cloudflare:workers'],
+  },
+  // CLI (Node.js only)
+  {
+    entry: ['src/cli.ts'],
+    format: ['esm'],
+    dts: false,
+    banner: { js: '#!/usr/bin/env node' },
+    external: ['capnweb', 'oauth.do', 'cloudflare:workers'],
+  },
+])
