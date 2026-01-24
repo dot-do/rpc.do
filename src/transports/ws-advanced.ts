@@ -278,7 +278,12 @@ export class WebSocketAdvancedTransport implements Transport {
   }
 
   /**
-   * Connect to the WebSocket server
+   * Connect to the WebSocket server.
+   *
+   * This method orchestrates the connection process:
+   * 1. Creates a new WebSocket connection
+   * 2. Sets up event listeners for connection lifecycle
+   * 3. Handles authentication if a token is provided
    */
   async connect(): Promise<void> {
     if (this._state === 'connected' || this._state === 'connecting') {
@@ -297,80 +302,9 @@ export class WebSocketAdvancedTransport implements Transport {
       try {
         // Create WebSocket - token is NOT in URL (first-message auth)
         this.ws = new WebSocket(this.url)
-        let hasRejected = false
 
-        this.ws.addEventListener('open', async () => {
-          // Send first-message auth if token is provided
-          const token = await this.getToken()
-          if (token) {
-            // Check for insecure connection before sending token
-            const insecureError = this.checkInsecureAuth()
-            if (insecureError) {
-              hasRejected = true
-              clearTimeout(timeout)
-              this.log('Blocked insecure auth attempt:', insecureError.message)
-              this.ws?.close(4002, 'Insecure auth blocked')
-              reject(insecureError)
-              return
-            }
-
-            this.sendAuthMessage(token)
-            // Wait for auth_result before resolving
-          } else {
-            // No auth required - complete connection
-            clearTimeout(timeout)
-            this.completeConnection()
-            resolve()
-          }
-        })
-
-        this.ws.addEventListener('close', (event) => {
-          clearTimeout(timeout)
-          this.stopHeartbeat()
-
-          if (hasRejected) return
-
-          if (this._state === 'connecting') {
-            reject(new ConnectionError(
-              event.reason || 'Connection failed',
-              'CONNECTION_FAILED',
-              true
-            ))
-          } else {
-            this.handleDisconnect(event.reason || 'Connection closed', event.code)
-          }
-        })
-
-        this.ws.addEventListener('error', (event) => {
-          this.log('WebSocket error:', event)
-          // Error handling is done in close event
-        })
-
-        this.ws.addEventListener('message', (event) => {
-          // Handle auth_result during connection
-          if (this._state === 'connecting') {
-            try {
-              const message = this.parseMessage(event.data)
-
-              if (message.type === 'auth_result') {
-                clearTimeout(timeout)
-                if ((message as any).success) {
-                  this.completeConnection()
-                  resolve()
-                } else {
-                  const errorMessage = message.error?.message || 'Authentication failed'
-                  this.ws?.close(4001, errorMessage)
-                  reject(ConnectionError.authFailed(errorMessage))
-                }
-                return
-              }
-            } catch (error) {
-              this.log('Failed to parse auth message:', error)
-            }
-          }
-
-          this.handleMessage(event.data)
-        })
+        // Set up event listeners with connection callbacks
+        this.setupEventListeners(this.ws, timeout, resolve, reject)
       } catch (error) {
         clearTimeout(timeout)
         reject(new ConnectionError(
@@ -453,6 +387,154 @@ export class WebSocketAdvancedTransport implements Transport {
         reject(error)
       }
     })
+  }
+
+  // ============================================================================
+  // Connection Setup Methods
+  // ============================================================================
+
+  /**
+   * Set up WebSocket event listeners for connection handling.
+   *
+   * This method configures all necessary event listeners on the WebSocket:
+   * - open: Triggers authentication flow
+   * - close: Handles disconnection and potential reconnection
+   * - error: Logs errors (actual handling in close event)
+   * - message: Routes messages to auth or general message handling
+   */
+  private setupEventListeners(
+    ws: WebSocket,
+    timeout: ReturnType<typeof setTimeout>,
+    resolve: () => void,
+    reject: (error: Error) => void
+  ): void {
+    let hasRejected = false
+
+    ws.addEventListener('open', async () => {
+      try {
+        const setRejected = () => { hasRejected = true }
+        await this.handleOpenEvent(timeout, resolve, reject, setRejected)
+      } catch (error) {
+        if (!hasRejected) {
+          hasRejected = true
+          clearTimeout(timeout)
+          reject(error instanceof Error ? error : new Error(String(error)))
+        }
+      }
+    })
+
+    ws.addEventListener('close', (event) => {
+      clearTimeout(timeout)
+      this.stopHeartbeat()
+
+      if (hasRejected) return
+
+      if (this._state === 'connecting') {
+        reject(new ConnectionError(
+          event.reason || 'Connection failed',
+          'CONNECTION_FAILED',
+          true
+        ))
+      } else {
+        this.handleDisconnect(event.reason || 'Connection closed', event.code)
+      }
+    })
+
+    ws.addEventListener('error', (event) => {
+      this.log('WebSocket error:', event)
+      // Error handling is done in close event
+    })
+
+    ws.addEventListener('message', (event) => {
+      const authHandled = this.handleAuthMessage(event.data, timeout, resolve, reject, hasRejected)
+      if (authHandled) {
+        if (authHandled === 'rejected') {
+          hasRejected = true
+        }
+        return
+      }
+      this.handleMessage(event.data)
+    })
+  }
+
+  /**
+   * Handle the WebSocket open event and initiate authentication if needed.
+   *
+   * If a token is configured:
+   * 1. Validates the connection is secure (wss://) unless allowInsecureAuth is set
+   * 2. Sends the auth message
+   * 3. Waits for auth_result (handled in message listener)
+   *
+   * If no token is configured, completes the connection immediately.
+   */
+  private async handleOpenEvent(
+    timeout: ReturnType<typeof setTimeout>,
+    resolve: () => void,
+    reject: (error: Error) => void,
+    setRejected: () => void
+  ): Promise<void> {
+    const token = await this.getToken()
+    if (token) {
+      const insecureError = this.checkInsecureAuth()
+      if (insecureError) {
+        this.log('Blocked insecure auth attempt:', insecureError.message)
+        // Set rejected flag BEFORE closing to prevent close handler from rejecting with wrong error
+        setRejected()
+        clearTimeout(timeout)
+        reject(insecureError)
+        this.ws?.close(4002, 'Insecure auth blocked')
+        return
+      }
+
+      this.sendAuthMessage(token)
+      // Wait for auth_result before resolving (handled in message listener)
+    } else {
+      // No auth required - complete connection
+      clearTimeout(timeout)
+      this.completeConnection()
+      resolve()
+    }
+  }
+
+  /**
+   * Handle authentication result messages during connection phase.
+   *
+   * This method processes auth_result messages received during the connecting state.
+   * Returns 'resolved' if auth succeeded, 'rejected' if auth failed, or false if
+   * the message was not an auth message and should be handled normally.
+   */
+  private handleAuthMessage(
+    data: unknown,
+    timeout: ReturnType<typeof setTimeout>,
+    resolve: () => void,
+    reject: (error: Error) => void,
+    hasRejected: boolean
+  ): 'resolved' | 'rejected' | false {
+    if (this._state !== 'connecting' || hasRejected) {
+      return false
+    }
+
+    try {
+      const message = this.parseMessage(data)
+
+      if (message.type === 'auth_result') {
+        clearTimeout(timeout)
+        if ((message as any).success) {
+          this.completeConnection()
+          resolve()
+          return 'resolved'
+        } else {
+          const errorMessage = message.error?.message || 'Authentication failed'
+          this.ws?.close(4001, errorMessage)
+          reject(ConnectionError.authFailed(errorMessage))
+          return 'rejected'
+        }
+      }
+    } catch (error) {
+      this.log('Failed to parse auth message:', error)
+    }
+
+    return false
   }
 
   // ============================================================================

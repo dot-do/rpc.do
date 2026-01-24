@@ -5,6 +5,7 @@
  */
 
 import { createRpcHandler, bearerAuth } from './server'
+import { RPCError } from './errors'
 
 export interface Env {
   // Token or secret for bearer auth (optional)
@@ -43,7 +44,7 @@ export function createWorker(options?: {
           const binding = env[bindingName]
 
           if (!binding) {
-            throw new Error(`Unknown service: ${bindingName}`)
+            throw new RPCError(`Unknown service: ${bindingName}`, 'UNKNOWN_SERVICE')
           }
 
           // Navigate to method on binding
@@ -51,12 +52,12 @@ export function createWorker(options?: {
           for (let i = 1; i < parts.length; i++) {
             target = target[parts[i]]
             if (!target) {
-              throw new Error(`Unknown method: ${method}`)
+              throw new RPCError(`Unknown method: ${method}`, 'UNKNOWN_METHOD')
             }
           }
 
           if (typeof target !== 'function') {
-            throw new Error(`${method} is not a function`)
+            throw new RPCError(`${method} is not a function`, 'NOT_A_FUNCTION')
           }
 
           return target(...args)

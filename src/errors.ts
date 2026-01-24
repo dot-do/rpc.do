@@ -15,6 +15,7 @@ export type ConnectionErrorCode =
   | 'RECONNECT_FAILED'
   | 'HEARTBEAT_TIMEOUT'
   | 'INSECURE_CONNECTION'
+  | 'REQUEST_TIMEOUT'
 
 /**
  * Connection error with retry information
@@ -124,6 +125,17 @@ export class ConnectionError extends Error {
         'Use wss:// for secure connections, or set allowInsecureAuth: true for local development only.',
       'INSECURE_CONNECTION',
       false
+    )
+  }
+
+  /**
+   * Create a request timeout error
+   */
+  static requestTimeout(timeoutMs: number): ConnectionError {
+    return new ConnectionError(
+      `Request timeout after ${timeoutMs}ms`,
+      'REQUEST_TIMEOUT',
+      true
     )
   }
 }

@@ -1,5 +1,7 @@
 # rpc.do
 
+![CI](https://github.com/dot-do/rpc.do/actions/workflows/ci.yml/badge.svg)
+
 Lightweight transport-agnostic RPC proxy.
 
 ## Why rpc.do?

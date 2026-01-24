@@ -42,6 +42,7 @@
  */
 
 import { WorkerEntrypoint } from 'cloudflare:workers'
+import { RPCError } from './errors'
 
 // ============================================================================
 // Types
@@ -100,7 +101,7 @@ async function navigateAndCall(
     const part = parts[i]
     target = target[part]
     if (target === undefined || target === null) {
-      throw new Error(`Invalid path: ${path} (failed at '${part}')`)
+      throw new RPCError(`Invalid path: ${path} (failed at '${part}')`, 'INVALID_PATH')
     }
   }
 
@@ -109,7 +110,7 @@ async function navigateAndCall(
   const method = target[methodName]
 
   if (typeof method !== 'function') {
-    throw new Error(`Not a function: ${path}`)
+    throw new RPCError(`Not a function: ${path}`, 'NOT_A_FUNCTION')
   }
 
   // Call the method (bound to its parent for proper 'this')
@@ -160,7 +161,7 @@ export function expose<Env extends object, SDK extends object>(
         } else if (!isMultiSDK) {
           this._sdk = (factoryOrOptions as ExposeOptions<Env, SDK>).sdk(this.env)
         } else {
-          throw new Error('Use sdks property for multi-SDK setup')
+          throw new RPCError('Use sdks property for multi-SDK setup', 'INVALID_SDK_ACCESS')
         }
       }
       return this._sdk
@@ -171,7 +172,7 @@ export function expose<Env extends object, SDK extends object>(
      */
     get sdks(): Record<string, object> {
       if (!isMultiSDK) {
-        throw new Error('Single SDK setup - use sdk property instead')
+        throw new RPCError('Single SDK setup - use sdk property instead', 'INVALID_SDK_ACCESS')
       }
 
       if (!this._sdks) {
@@ -186,7 +187,7 @@ export function expose<Env extends object, SDK extends object>(
           if (!this._sdks!.has(name)) {
             const factory = opts.sdks[name]
             if (!factory) {
-              throw new Error(`Unknown SDK: ${name}`)
+              throw new RPCError(`Unknown SDK: ${name}`, 'UNKNOWN_SDK')
             }
             this._sdks!.set(name, factory(this.env))
           }
@@ -238,7 +239,7 @@ export function expose<Env extends object, SDK extends object>(
         const sdkPath = parts.slice(1).join('.')
 
         if (!sdkPath) {
-          throw new Error(`Invalid path for multi-SDK: ${path} (expected 'sdkName.method.path')`)
+          throw new RPCError(`Invalid path for multi-SDK: ${path} (expected 'sdkName.method.path')`, 'INVALID_PATH')
         }
 
         const sdk = this.sdks[sdkName]

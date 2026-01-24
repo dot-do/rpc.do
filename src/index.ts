@@ -11,7 +11,7 @@
 // ============================================================================
 
 export type Transport = {
-  call(method: string, args: any[]): Promise<any>
+  call(method: string, args: unknown[]): Promise<unknown>
   close?(): void
 }
 
@@ -143,6 +143,10 @@ export function RPC<T = any>(transport: Transport | TransportFactory): RPCProxy<
 
 // Re-export transports (browser-safe)
 export * from './transports'
+
+// Explicit type re-exports for better discoverability
+export type { AuthProvider } from './transports'
+export { isFunction, isServerMessage } from './transports'
 
 // Note: auth() is available via 'rpc.do/auth' for server-side usage
 // It's not exported from main index to avoid oauth.do dependency in browser contexts

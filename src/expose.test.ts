@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { expose } from './expose'
+import { RPCError } from './errors'
 
 // Mock WorkerEntrypoint since we're not in a Cloudflare environment
 vi.mock('cloudflare:workers', () => ({
@@ -142,6 +143,42 @@ describe('expose()', () => {
       const instance = new (Worker as any)()
 
       await expect(instance.rpc('config.version')).rejects.toThrow(/Not a function/)
+    })
+
+    it('should throw RPCError with INVALID_PATH code for invalid path', async () => {
+      const sdk = {
+        users: {}
+      }
+
+      const Worker = expose(() => sdk)
+      const instance = new (Worker as any)()
+
+      try {
+        await instance.rpc('users.nonexistent.method')
+        expect.fail('Should have thrown')
+      } catch (error) {
+        expect(error).toBeInstanceOf(RPCError)
+        expect((error as RPCError).code).toBe('INVALID_PATH')
+      }
+    })
+
+    it('should throw RPCError with NOT_A_FUNCTION code when path is not a function', async () => {
+      const sdk = {
+        config: {
+          version: '1.0.0'
+        }
+      }
+
+      const Worker = expose(() => sdk)
+      const instance = new (Worker as any)()
+
+      try {
+        await instance.rpc('config.version')
+        expect.fail('Should have thrown')
+      } catch (error) {
+        expect(error).toBeInstanceOf(RPCError)
+        expect((error as RPCError).code).toBe('NOT_A_FUNCTION')
+      }
     })
   })
 
@@ -280,6 +317,42 @@ describe('expose()', () => {
       const instance = new (Worker as any)()
 
       await expect(instance.rpc('cf')).rejects.toThrow(/Invalid path/)
+    })
+
+    it('should throw RPCError with UNKNOWN_SDK code for unknown SDK', async () => {
+      const Worker = expose({
+        sdks: {
+          known: () => ({ test: () => 'ok' })
+        }
+      })
+
+      const instance = new (Worker as any)()
+
+      try {
+        await instance.rpc('unknown.test')
+        expect.fail('Should have thrown')
+      } catch (error) {
+        expect(error).toBeInstanceOf(RPCError)
+        expect((error as RPCError).code).toBe('UNKNOWN_SDK')
+      }
+    })
+
+    it('should throw RPCError with INVALID_PATH code for path without SDK method', async () => {
+      const Worker = expose({
+        sdks: {
+          cf: () => ({ test: () => 'ok' })
+        }
+      })
+
+      const instance = new (Worker as any)()
+
+      try {
+        await instance.rpc('cf')
+        expect.fail('Should have thrown')
+      } catch (error) {
+        expect(error).toBeInstanceOf(RPCError)
+        expect((error as RPCError).code).toBe('INVALID_PATH')
+      }
     })
   })
 

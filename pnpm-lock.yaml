@@ -9,12 +9,12 @@ importers:
   .:
     dependencies:
       oauth.do:
-        specifier: ^0.1.11
-        version: 0.1.15
+        specifier: ^0.2.0
+        version: 0.2.0
     optionalDependencies:
       capnweb:
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^0.4.0
+        version: 0.4.0
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20241205.0
@@ -542,8 +542,8 @@ packages:
     resolution: {integrity: sha512-b6Ilus+c3RrdDk+JhLKUAQfzzgLEPy6wcXqS7f/xe1EETvsDP6GORG7SFuOs6cID5YkqchW/LXZbX5bc8j7ZcQ==}
     engines: {node: '>=8'}
 
-  capnweb@0.1.0:
-    resolution: {integrity: sha512-+pygKx1JFTZTRdd1hHgaBRg5BwULEDZq8ZoHXkYP2GXNV3lrjXLj5qzlGz+SgBCJjWUmNBtlh7JPWdr0wIbY8w==}
+  capnweb@0.4.0:
+    resolution: {integrity: sha512-OgqPQcxnrAIqjrkAuwI4N9MP/mzseM5w9oLWb/oU63KveBJl1c8p41etLSVQUlYFiAYZu+h6/LJxKaDJd93xFw==}
 
   chai@5.3.3:
     resolution: {integrity: sha512-4zNhdJD/iOjSH0A05ea+Ke6MU5mmpQcbQsSOkgdaUMJ9zTlDTD/GYlwohmIE2u0gaxHYiVHEn1Fw9mZ/ktJWgw==}
@@ -739,10 +739,36 @@ packages:
   node-addon-api@4.3.0:
     resolution: {integrity: sha512-73sE9+3UaLYYFmDsFZnqCInzPyh3MqIwZO9cw58yIqAZhONrrabrYyYe3TuIqtIiOuTXVhsGau8hcrhhwSsDIQ==}
 
-  oauth.do@0.1.15:
-    resolution: {integrity: sha512-joUG0F/qWiqge2epdCc6FjmTL6+YG8qS1rjxF+jqtrBKvDlC3BypxdtbwoX0jfOCq1zjZ01vxOxKcif/tTo7Ug==}
+  oauth.do@0.2.0:
+    resolution: {integrity: sha512-Ea+5gMWfR9+yaI0VJcRJwhoIpKjAZABx0BIfwsbidiIE7NqMdIF+QHWj5w+bS1GSEoZqCoVr6QUadBUb5lWcOA==}
     engines: {node: '>=18.0.0'}
     hasBin: true
+    peerDependencies:
+      '@radix-ui/themes': '>=3.0.0'
+      '@tanstack/react-query': '>=5.0.0'
+      '@workos-inc/authkit-react': '>=0.5.0'
+      '@workos-inc/widgets': '>=1.0.0'
+      hono: '>=4.0.0'
+      jose: '>=5.0.0'
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+    peerDependenciesMeta:
+      '@radix-ui/themes':
+        optional: true
+      '@tanstack/react-query':
+        optional: true
+      '@workos-inc/authkit-react':
+        optional: true
+      '@workos-inc/widgets':
+        optional: true
+      hono:
+        optional: true
+      jose:
+        optional: true
+      react:
+        optional: true
+      react-dom:
+        optional: true
 
   object-assign@4.1.1:
     resolution: {integrity: sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg==}
@@ -1348,7 +1374,7 @@ snapshots:
 
   cac@6.7.14: {}
 
-  capnweb@0.1.0:
+  capnweb@0.4.0:
     optional: true
 
   chai@5.3.3:
@@ -1566,7 +1592,7 @@ snapshots:
   node-addon-api@4.3.0:
     optional: true
 
-  oauth.do@0.1.15:
+  oauth.do@0.2.0:
     dependencies:
       open: 10.2.0
     optionalDependencies:

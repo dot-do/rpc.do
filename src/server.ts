@@ -6,15 +6,15 @@
 
 export type RpcContext = {
   token?: string
-  user?: any
-  [key: string]: any
+  user?: Record<string, unknown>
+  [key: string]: unknown
 }
 
 export type RpcDispatcher = (
   method: string,
-  args: any[],
+  args: unknown[],
   ctx: RpcContext
-) => Promise<any>
+) => Promise<unknown>
 
 export type AuthMiddleware = (
   request: Request
@@ -55,29 +55,67 @@ export function createRpcHandler(options: RpcServerOptions) {
       return Response.json({ error: 'Method not allowed' }, { status: 405 })
     }
 
-    let body: any
+    let body: unknown
     try {
       body = await request.json()
     } catch {
       return Response.json({ error: 'Invalid JSON' }, { status: 400 })
     }
 
-    const { path, args } = body
-
-    if (!path) {
-      return Response.json({ error: 'Missing path' }, { status: 400 })
+    // Validate request body structure
+    const validationError = validateRpcRequestBody(body)
+    if (validationError) {
+      return Response.json({ error: validationError }, { status: 400 })
     }
+
+    // After validation, we know body has the required shape
+    const { path, args } = body as { path: string; args?: unknown[] }
 
     try {
       const result = await dispatch(path, args || [], ctx)
       return Response.json(result)
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'RPC error'
       return Response.json(
-        { error: error.message || 'RPC error' },
+        { error: errorMessage },
         { status: 500 }
       )
     }
   }
+}
+
+/**
+ * Validates RPC request body and returns error message if invalid
+ * Returns null if the body is valid
+ */
+function validateRpcRequestBody(body: unknown): string | null {
+  if (typeof body !== 'object' || body === null) {
+    return 'Invalid request body'
+  }
+
+  const bodyObj = body as Record<string, unknown>
+
+  if (!('path' in bodyObj)) {
+    return 'Missing path'
+  }
+
+  if (typeof bodyObj.path !== 'string') {
+    return 'Invalid path: must be a string'
+  }
+
+  return null
+}
+
+/**
+ * Type guard for WebSocket RPC message
+ */
+function isWebSocketRpcMessage(data: unknown): data is { id?: unknown; path: string; args?: unknown[] } {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'path' in data &&
+    typeof (data as Record<string, unknown>).path === 'string'
+  )
 }
 
 /**
@@ -105,11 +143,17 @@ async function handleWebSocket(
 
   server.addEventListener('message', async (event: MessageEvent) => {
     try {
-      const { id, path, args } = JSON.parse(event.data as string)
+      const data: unknown = JSON.parse(event.data as string)
+      if (!isWebSocketRpcMessage(data)) {
+        server.send(JSON.stringify({ error: 'Invalid message format' }))
+        return
+      }
+      const { id, path, args } = data
       const result = await dispatch(path, args || [], ctx)
       server.send(JSON.stringify({ id, result }))
-    } catch (error: any) {
-      server.send(JSON.stringify({ error: error.message }))
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'RPC error'
+      server.send(JSON.stringify({ error: errorMessage }))
     }
   })
 

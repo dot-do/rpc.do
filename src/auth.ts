@@ -41,6 +41,20 @@ export interface OAuthProviderOptions extends CachedAuthOptions {
   fetch?: typeof fetch
 }
 
+// ============================================================================
+// Constants
+// ============================================================================
+
+/** Default time-to-live for cached tokens (5 minutes in milliseconds) */
+const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000
+
+/** Default buffer time before expiry to refresh tokens (1 minute in milliseconds) */
+const DEFAULT_REFRESH_BUFFER_MS = 60 * 1000
+
+// ============================================================================
+// Types
+// ============================================================================
+
 // Token cache entry
 interface CacheEntry {
   token: string
@@ -66,7 +80,7 @@ export function cachedAuth(
   getTokenFn: () => string | null | Promise<string | null>,
   options: CachedAuthOptions = {}
 ): AuthProvider {
-  const { ttl = 5 * 60 * 1000, refreshBuffer = 60 * 1000 } = options
+  const { ttl = DEFAULT_CACHE_TTL_MS, refreshBuffer = DEFAULT_REFRESH_BUFFER_MS } = options
 
   let cache: CacheEntry | null = null
   let refreshPromise: Promise<string | null> | null = null

@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { RPC, http, ws, binding, composite } from './index'
 import { createRpcHandler, bearerAuth, noAuth } from './server'
 import { auth } from './auth'
+import { RPCError } from './errors'
 import type { Transport } from './index'
 
 describe('RPC Proxy', () => {
@@ -204,6 +205,23 @@ describe('HTTP Transport', () => {
 
     await expect(transport.call('test', [])).rejects.toThrow('Internal Server Error')
   })
+
+  it('should throw RPCError with correct code on HTTP error', async () => {
+    globalThis.fetch = vi.fn(async () => {
+      return new Response('Not Found', { status: 404 })
+    }) as any
+
+    const transport = http('https://rpc.example.com')
+
+    try {
+      await transport.call('test', [])
+      expect.fail('Should have thrown')
+    } catch (error) {
+      expect(error).toBeInstanceOf(RPCError)
+      expect((error as RPCError).code).toBe('404')
+      expect((error as RPCError).message).toBe('Not Found')
+    }
+  })
 })
 
 describe('Binding Transport', () => {
@@ -252,6 +270,36 @@ describe('Binding Transport', () => {
     const transport = binding(mockBinding)
 
     await expect(transport.call('db.unknown', [])).rejects.toThrow(/Unknown method/)
+  })
+
+  it('should throw RPCError with UNKNOWN_NAMESPACE code for unknown namespace', async () => {
+    const mockBinding = {}
+
+    const transport = binding(mockBinding)
+
+    try {
+      await transport.call('unknown.method', [])
+      expect.fail('Should have thrown')
+    } catch (error) {
+      expect(error).toBeInstanceOf(RPCError)
+      expect((error as RPCError).code).toBe('UNKNOWN_NAMESPACE')
+    }
+  })
+
+  it('should throw RPCError with UNKNOWN_METHOD code for unknown method', async () => {
+    const mockBinding = {
+      db: {}
+    }
+
+    const transport = binding(mockBinding)
+
+    try {
+      await transport.call('db.unknown', [])
+      expect.fail('Should have thrown')
+    } catch (error) {
+      expect(error).toBeInstanceOf(RPCError)
+      expect((error as RPCError).code).toBe('UNKNOWN_METHOD')
+    }
   })
 })
 

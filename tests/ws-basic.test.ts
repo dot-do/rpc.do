@@ -445,7 +445,7 @@ describe('ws() Transport - Message Handling', () => {
 // ============================================================================
 
 describe('ws() Transport - Error Handling', () => {
-  it('should log and emit event on JSON parse errors', async () => {
+  it('should reject pending requests on JSON parse errors', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const transport = ws('wss://test.example.com/rpc')
@@ -480,13 +480,10 @@ describe('ws() Transport - Error Handling', () => {
     expect(rpcErrorEvent!.detail).toBeInstanceOf(RPCError)
     expect(rpcErrorEvent!.detail.code).toBe('PARSE_ERROR')
 
-    // Original call should still be pending (not rejected by parse error)
-    // Complete it properly
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'ok' })
-
-    const result = await callPromise
-    expect(result).toBe('ok')
+    // Parse errors should now reject all pending requests to prevent memory leaks
+    // and hanging promises (this was a bug fix - previously requests would hang forever)
+    await expect(callPromise).rejects.toThrow(RPCError)
+    await expect(callPromise).rejects.toThrow('Failed to parse WebSocket message')
 
     errorSpy.mockRestore()
   })
@@ -515,10 +512,9 @@ describe('ws() Transport - Error Handling', () => {
     // Should truncate to 200 chars
     expect(rpcErrorEvent!.detail.data.rawData.length).toBe(200)
 
-    // Clean up
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'ok' })
-    await callPromise
+    // Parse errors should reject all pending requests
+    await expect(callPromise).rejects.toThrow(RPCError)
+    await expect(callPromise).rejects.toThrow('Failed to parse WebSocket message')
 
     errorSpy.mockRestore()
   })
