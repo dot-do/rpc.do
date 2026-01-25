@@ -7,6 +7,16 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@dotdo/rpc':
+        specifier: file:../core
+        version: file:../core(@cloudflare/workers-types@4.20260124.0)
+      capnweb:
+        specifier: ^0.4.0
+        version: 0.4.0
+      colo.do:
+        specifier: file:../../colo
+        version: file:../../colo(@cloudflare/workers-types@4.20260124.0)
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.8.0
@@ -125,6 +135,11 @@ packages:
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
+
+  '@dotdo/rpc@file:../core':
+    resolution: {directory: ../core, type: directory}
+    peerDependencies:
+      '@cloudflare/workers-types': ^4.0.0
 
   '@emnapi/runtime@1.8.1':
     resolution: {integrity: sha512-mehfKSMWjjNol8659Z8KxEMrdSJDDot5SXMq00dM8BN4o+CLNXQ0xH2V7EchNHV4RmbZLmmPdEaXZc5H2FXmDg==}
@@ -1021,6 +1036,9 @@ packages:
     resolution: {integrity: sha512-b6Ilus+c3RrdDk+JhLKUAQfzzgLEPy6wcXqS7f/xe1EETvsDP6GORG7SFuOs6cID5YkqchW/LXZbX5bc8j7ZcQ==}
     engines: {node: '>=8'}
 
+  capnweb@0.4.0:
+    resolution: {integrity: sha512-OgqPQcxnrAIqjrkAuwI4N9MP/mzseM5w9oLWb/oU63KveBJl1c8p41etLSVQUlYFiAYZu+h6/LJxKaDJd93xFw==}
+
   chai@5.3.3:
     resolution: {integrity: sha512-4zNhdJD/iOjSH0A05ea+Ke6MU5mmpQcbQsSOkgdaUMJ9zTlDTD/GYlwohmIE2u0gaxHYiVHEn1Fw9mZ/ktJWgw==}
     engines: {node: '>=18'}
@@ -1031,6 +1049,14 @@ packages:
 
   cjs-module-lexer@1.4.3:
     resolution: {integrity: sha512-9z8TZaGM1pfswYeXrUpzPrkx8UnWYdhJclsiYMm6x/w5+nN+8Tf/LnAgfLGQCm59qAOxU8WwHEq2vNwF6i4j+Q==}
+
+  colo.do@file:../../colo:
+    resolution: {directory: ../../colo, type: directory}
+    peerDependencies:
+      '@cloudflare/workers-types': '>=4.0.0'
+    peerDependenciesMeta:
+      '@cloudflare/workers-types':
+        optional: true
 
   color-convert@2.0.1:
     resolution: {integrity: sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==}
@@ -1452,6 +1478,12 @@ snapshots:
   '@cspotcode/source-map-support@0.8.1':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
+
+  '@dotdo/rpc@file:../core(@cloudflare/workers-types@4.20260124.0)':
+    dependencies:
+      '@cloudflare/workers-types': 4.20260124.0
+      capnweb: 0.4.0
+      colo.do: file:../../colo(@cloudflare/workers-types@4.20260124.0)
 
   '@emnapi/runtime@1.8.1':
     dependencies:
@@ -2005,6 +2037,8 @@ snapshots:
 
   cac@6.7.14: {}
 
+  capnweb@0.4.0: {}
+
   chai@5.3.3:
     dependencies:
       assertion-error: 2.0.1
@@ -2016,6 +2050,12 @@ snapshots:
   check-error@2.1.3: {}
 
   cjs-module-lexer@1.4.3: {}
+
+  colo.do@file:../../colo(@cloudflare/workers-types@4.20260124.0):
+    dependencies:
+      capnweb: 0.4.0
+    optionalDependencies:
+      '@cloudflare/workers-types': 4.20260124.0
 
   color-convert@2.0.1:
     dependencies:

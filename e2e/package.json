@@ -4,7 +4,13 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@dotdo/rpc": "file:../core",
+    "capnweb": "^0.4.0",
+    "colo.do": "file:../../colo"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.8.0",

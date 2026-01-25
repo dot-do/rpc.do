@@ -98,18 +98,25 @@ export interface Collection<T extends Record<string, unknown> = Record<string, u
 // SQL Schema
 // ============================================================================
 
-const COLLECTIONS_SCHEMA = `
-  CREATE TABLE IF NOT EXISTS _collections (
-    collection TEXT NOT NULL,
-    id TEXT NOT NULL,
-    data TEXT NOT NULL,
-    created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-    updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-    PRIMARY KEY (collection, id)
-  );
-  CREATE INDEX IF NOT EXISTS _collections_collection ON _collections(collection);
-  CREATE INDEX IF NOT EXISTS _collections_updated ON _collections(collection, updated_at);
-`
+/**
+ * Initialize the collections schema.
+ * Each statement must be executed separately since SqlStorage.exec()
+ * may not support multiple statements in a single call.
+ */
+function initCollectionsSchema(sql: SqlStorage): void {
+  sql.exec(`
+    CREATE TABLE IF NOT EXISTS _collections (
+      collection TEXT NOT NULL,
+      id TEXT NOT NULL,
+      data TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      PRIMARY KEY (collection, id)
+    )
+  `)
+  sql.exec(`CREATE INDEX IF NOT EXISTS _collections_collection ON _collections(collection)`)
+  sql.exec(`CREATE INDEX IF NOT EXISTS _collections_updated ON _collections(collection, updated_at)`)
+}
 
 // ============================================================================
 // Filter Compiler
@@ -136,10 +143,12 @@ function compileFilter<T>(filter: Filter<T>, params: unknown[]): string {
       // Operator or nested object
       const op = value as Record<string, unknown>
       if ('$eq' in op) {
-        params.push(op['$eq'])
+        const eqVal = op['$eq']
+        params.push(typeof eqVal === 'boolean' ? (eqVal ? 1 : 0) : eqVal)
         conditions.push(`json_extract(data, '$.${key}') = ?`)
       } else if ('$ne' in op) {
-        params.push(op['$ne'])
+        const neVal = op['$ne']
+        params.push(typeof neVal === 'boolean' ? (neVal ? 1 : 0) : neVal)
         conditions.push(`json_extract(data, '$.${key}') != ?`)
       } else if ('$gt' in op) {
         params.push(op['$gt'])
@@ -154,12 +163,12 @@ function compileFilter<T>(filter: Filter<T>, params: unknown[]): string {
         params.push(op['$lte'])
         conditions.push(`CAST(json_extract(data, '$.${key}') AS REAL) <= ?`)
       } else if ('$in' in op && Array.isArray(op['$in'])) {
-        const inValues = op['$in'] as unknown[]
+        const inValues = (op['$in'] as unknown[]).map(v => typeof v === 'boolean' ? (v ? 1 : 0) : v)
         const placeholders = inValues.map(() => '?').join(', ')
         params.push(...inValues)
         conditions.push(`json_extract(data, '$.${key}') IN (${placeholders})`)
       } else if ('$nin' in op && Array.isArray(op['$nin'])) {
-        const ninValues = op['$nin'] as unknown[]
+        const ninValues = (op['$nin'] as unknown[]).map(v => typeof v === 'boolean' ? (v ? 1 : 0) : v)
         const placeholders = ninValues.map(() => '?').join(', ')
         params.push(...ninValues)
         conditions.push(`json_extract(data, '$.${key}') NOT IN (${placeholders})`)
@@ -178,8 +187,12 @@ function compileFilter<T>(filter: Filter<T>, params: unknown[]): string {
         conditions.push(`json_extract(data, '$.${key}') = json(?)`)
       }
     } else {
-      // Simple equality
-      params.push(value)
+      // Simple equality - handle booleans specially since SQLite JSON returns 1/0
+      if (typeof value === 'boolean') {
+        params.push(value ? 1 : 0)
+      } else {
+        params.push(value)
+      }
       conditions.push(`json_extract(data, '$.${key}') = ?`)
     }
   }
@@ -191,7 +204,12 @@ function compileFilter<T>(filter: Filter<T>, params: unknown[]): string {
 // Collection Factory
 // ============================================================================
 
-let schemaInitialized = false
+/**
+ * Track which SqlStorage instances have been initialized.
+ * We use a WeakSet to avoid memory leaks - when a SqlStorage is GC'd,
+ * it's automatically removed from this set.
+ */
+const initializedStorages = new WeakSet<SqlStorage>()
 
 /**
  * Create a collection bound to a SQL storage
@@ -200,10 +218,10 @@ export function createCollection<T extends Record<string, unknown> = Record<stri
   sql: SqlStorage,
   name: string
 ): Collection<T> {
-  // Initialize schema once
-  if (!schemaInitialized) {
-    sql.exec(COLLECTIONS_SCHEMA)
-    schemaInitialized = true
+  // Initialize schema once per SqlStorage instance
+  if (!initializedStorages.has(sql)) {
+    initCollectionsSchema(sql)
+    initializedStorages.add(sql)
   }
 
   return {
