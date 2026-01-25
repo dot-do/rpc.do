@@ -8,13 +8,16 @@ importers:
 
   .:
     dependencies:
-      capnweb:
-        specifier: ^0.4.0
-        version: 0.4.0
+      '@dotdo/capnweb':
+        specifier: file:../../dotdo-capnweb
+        version: file:../../dotdo-capnweb
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20241205.0
         version: 4.20260124.0
+      '@dotdo/events':
+        specifier: file:../../events/core
+        version: file:../../events/core(@cloudflare/workers-types@4.20260124.0)
       colo.do:
         specifier: file:../../colo
         version: file:../../colo(@cloudflare/workers-types@4.20260124.0)
@@ -38,6 +41,14 @@ packages:
 
   '@cloudflare/workers-types@4.20260124.0':
     resolution: {integrity: sha512-h6TJlew6AtGuEXFc+k5ifalk+tg3fkg0lla6XbMAb2AKKfJGwlFNTwW2xyT/Ha92KY631CIJ+Ace08DPdFohdA==}
+
+  '@dotdo/capnweb@file:../../dotdo-capnweb':
+    resolution: {directory: ../../dotdo-capnweb, type: directory}
+
+  '@dotdo/events@file:../../events/core':
+    resolution: {directory: ../../events/core, type: directory}
+    peerDependencies:
+      '@cloudflare/workers-types': ^4.0.0
 
   '@esbuild/aix-ppc64@0.21.5':
     resolution: {integrity: sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ==}
@@ -864,6 +875,12 @@ packages:
 snapshots:
 
   '@cloudflare/workers-types@4.20260124.0': {}
+
+  '@dotdo/capnweb@file:../../dotdo-capnweb': {}
+
+  '@dotdo/events@file:../../events/core(@cloudflare/workers-types@4.20260124.0)':
+    dependencies:
+      '@cloudflare/workers-types': 4.20260124.0
 
   '@esbuild/aix-ppc64@0.21.5':
     optional: true

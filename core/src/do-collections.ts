@@ -28,10 +28,57 @@
 import { createCollection, type Collection, type Filter, type QueryOptions } from './collections.js'
 
 // ============================================================================
+// Semantic Matching
+// ============================================================================
+
+/**
+ * Semantic match result
+ */
+export interface SemanticMatch<T = Record<string, unknown>> {
+  thing: Thing<T>
+  similarity: number
+}
+
+/**
+ * Semantic matcher interface - implement to enable fuzzy (~>) relationships
+ *
+ * @example
+ * ```typescript
+ * const matcher: SemanticMatcher = {
+ *   async findSimilar(type, text, threshold) {
+ *     const embedding = await ai.embed(text)
+ *     return vectorStore.search(type, embedding, threshold)
+ *   }
+ * }
+ * ```
+ */
+export interface SemanticMatcher {
+  /**
+   * Find things similar to the given text/data
+   * @param type - Thing type to search
+   * @param text - Text to match against
+   * @param threshold - Minimum similarity (0-1)
+   * @returns Matches sorted by similarity (highest first)
+   */
+  findSimilar<T = Record<string, unknown>>(
+    type: string,
+    text: string,
+    threshold: number
+  ): Promise<SemanticMatch<T>[]>
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
-/** Cascade operators for relationships */
+/**
+ * Cascade operators for relationships
+ *
+ * - `->` : Direct reference (exact match required)
+ * - `~>` : Fuzzy/semantic reference (find closest via embedding, create if none close)
+ * - `<-` : Direct back-reference
+ * - `<~` : Fuzzy/semantic back-reference
+ */
 export type CascadeOperator = '->' | '~>' | '<-' | '<~'
 
 /** Base entity with DO identity */
@@ -57,12 +104,20 @@ export interface Noun {
 export interface Verb {
   name: string
   description?: string
-  /** Cascade operator: -> sync, ~> async, <- back-ref, <~ async back-ref */
+  /**
+   * Cascade operator:
+   * - `->` direct (exact match)
+   * - `~>` fuzzy (semantic match, create if none close)
+   * - `<-` direct back-ref
+   * - `<~` fuzzy back-ref
+   */
   cascade?: CascadeOperator
   /** Valid source types */
   from?: string[]
   /** Valid target types */
   to?: string[]
+  /** Similarity threshold for fuzzy matching (0-1, default 0.8) */
+  threshold?: number
   $createdAt: number
   [key: string]: unknown
 }
@@ -126,6 +181,13 @@ function generateId(prefix?: string): string {
  * - actions: Event log / audit trail
  * - relationships: Graph edges with cascade operators
  */
+export interface DOCollectionsOptions {
+  /** Semantic matcher for fuzzy (~>) relationships */
+  semanticMatcher?: SemanticMatcher
+  /** Default similarity threshold for fuzzy matching (0-1, default 0.8) */
+  defaultThreshold?: number
+}
+
 export class DOCollections {
   private sql: SqlStorage
   private _nouns: Collection<Noun>
@@ -133,14 +195,18 @@ export class DOCollections {
   private _things: Collection<Thing>
   private _actions: Collection<Action>
   private _rels: Collection<Relationship>
+  private _matcher?: SemanticMatcher
+  private _threshold: number
 
-  constructor(sql: SqlStorage) {
+  constructor(sql: SqlStorage, options?: DOCollectionsOptions) {
     this.sql = sql
     this._nouns = createCollection<Noun>(sql, '_nouns')
     this._verbs = createCollection<Verb>(sql, '_verbs')
     this._things = createCollection<Thing>(sql, '_things')
     this._actions = createCollection<Action>(sql, '_actions')
     this._rels = createCollection<Relationship>(sql, '_rels')
+    this._matcher = options?.semanticMatcher
+    this._threshold = options?.defaultThreshold ?? 0.8
   }
 
   // --------------------------------------------------------------------------
@@ -339,6 +405,53 @@ export class DOCollections {
     this._rels.put($id, rel)
     this._logAction(verb, from, to, opts?.data)
     return rel
+  }
+
+  /**
+   * Fuzzy relate - find or create a semantic match
+   *
+   * Uses ~> operator semantics:
+   * 1. Search for semantically similar things
+   * 2. If found above threshold, relate to the closest match
+   * 3. If not found, create a new thing and relate to it
+   *
+   * @param from - Source thing ID
+   * @param verb - Relationship type
+   * @param targetType - Type of thing to find/create
+   * @param text - Text to match semantically
+   * @param createData - Data to use if creating new thing
+   * @returns The target thing (found or created) and the relationship
+   */
+  async fuzzyRelate<T = Record<string, unknown>>(
+    from: string,
+    verb: string,
+    targetType: string,
+    text: string,
+    createData?: T,
+    opts?: { threshold?: number }
+  ): Promise<{ thing: Thing<T>; relationship: Relationship; created: boolean }> {
+    if (!this._matcher) {
+      throw new Error('Semantic matcher not configured. Pass semanticMatcher in DOCollections options.')
+    }
+
+    const threshold = opts?.threshold ?? this._threshold
+    const matches = await this._matcher.findSimilar<T>(targetType, text, threshold)
+
+    let thing: Thing<T>
+    let created = false
+
+    if (matches.length > 0 && matches[0].similarity >= threshold) {
+      // Found a close match
+      thing = matches[0].thing
+    } else {
+      // Create new thing
+      thing = this.things.create<T>(targetType, createData ?? ({ text } as T))
+      created = true
+    }
+
+    const relationship = this.relate(from, verb, thing.$id, { cascade: '~>' })
+
+    return { thing, relationship, created }
   }
 
   /**

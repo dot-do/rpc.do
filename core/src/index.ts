@@ -29,14 +29,11 @@ import {
   RpcSession,
   RpcTarget,
   newHttpBatchRpcResponse,
-  type RpcTransport,
-  type RpcSessionOptions,
-} from 'capnweb'
-
-import {
   HibernatableWebSocketTransport,
   TransportRegistry,
-} from './transports/hibernatable-ws.js'
+  type RpcTransport,
+  type RpcSessionOptions,
+} from '@dotdo/capnweb/server'
 
 // Colo awareness (using tiny entry point for minimal bundle)
 import {

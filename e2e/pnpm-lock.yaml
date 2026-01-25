@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@dotdo/rpc':
         specifier: file:../core
-        version: file:../core(@cloudflare/workers-types@4.20260124.0)
+        version: file:../core(@cloudflare/workers-types@4.20260124.0)(colo.do@file:../../colo(@cloudflare/workers-types@4.20260124.0))
       capnweb:
         specifier: ^0.4.0
         version: 0.4.0
@@ -136,10 +136,17 @@ packages:
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
 
+  '@dotdo/capnweb@file:../../dotdo-capnweb':
+    resolution: {directory: ../../dotdo-capnweb, type: directory}
+
   '@dotdo/rpc@file:../core':
     resolution: {directory: ../core, type: directory}
     peerDependencies:
       '@cloudflare/workers-types': ^4.0.0
+      colo.do: ^0.1.0
+    peerDependenciesMeta:
+      colo.do:
+        optional: true
 
   '@emnapi/runtime@1.8.1':
     resolution: {integrity: sha512-mehfKSMWjjNol8659Z8KxEMrdSJDDot5SXMq00dM8BN4o+CLNXQ0xH2V7EchNHV4RmbZLmmPdEaXZc5H2FXmDg==}
@@ -1479,10 +1486,13 @@ snapshots:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
 
-  '@dotdo/rpc@file:../core(@cloudflare/workers-types@4.20260124.0)':
+  '@dotdo/capnweb@file:../../dotdo-capnweb': {}
+
+  '@dotdo/rpc@file:../core(@cloudflare/workers-types@4.20260124.0)(colo.do@file:../../colo(@cloudflare/workers-types@4.20260124.0))':
     dependencies:
       '@cloudflare/workers-types': 4.20260124.0
-      capnweb: 0.4.0
+      '@dotdo/capnweb': file:../../dotdo-capnweb
+    optionalDependencies:
       colo.do: file:../../colo(@cloudflare/workers-types@4.20260124.0)
 
   '@emnapi/runtime@1.8.1':
