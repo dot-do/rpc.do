@@ -5,7 +5,25 @@
  * for generating strongly-typed RPC client interfaces.
  */
 
-import { Project, MethodDeclaration, PropertyDeclaration, ClassDeclaration, SourceFile, Type, Symbol, SyntaxKind, Scope, DiagnosticCategory, ts } from 'ts-morph'
+import {
+  Project,
+  MethodDeclaration,
+  PropertyDeclaration,
+  ClassDeclaration,
+  SourceFile,
+  Type,
+  Symbol,
+  SyntaxKind,
+  Scope,
+  DiagnosticCategory,
+  ts,
+  CallExpression,
+  ObjectLiteralExpression,
+  ArrowFunction,
+  FunctionExpression,
+  Node,
+  ReturnStatement,
+} from 'ts-morph'
 import { existsSync, statSync } from 'node:fs'
 import { basename, dirname, resolve, relative } from 'node:path'
 import { glob } from 'glob'
@@ -29,7 +47,8 @@ export interface ExtractedMethod {
 export interface ExtractedNamespace {
   name: string
   methods: ExtractedMethod[]
-  typeName?: string  // For typed namespaces like Collection<Product>
+  typeName?: string // For typed namespaces like Collection<Product>
+  nestedNamespaces?: ExtractedNamespace[] // For deeply nested structures
 }
 
 export interface ExtractedSchema {
@@ -96,7 +115,12 @@ export async function extractTypes(sourcePath: string): Promise<ExtractedSchema[
     try {
       const schema = await extractFromFile(project, filePath)
       if (schema) {
-        results.push(schema)
+        // Handle both single schema and array of schemas
+        if (Array.isArray(schema)) {
+          results.push(...schema)
+        } else {
+          results.push(schema)
+        }
       }
     } catch (err: any) {
       // Re-throw with context
@@ -141,8 +165,9 @@ async function resolveSourceFiles(sourcePath: string): Promise<string[]> {
 
 /**
  * Extract schema from a single file
+ * Tries both class-based pattern and DO() factory pattern
  */
-async function extractFromFile(project: Project, filePath: string): Promise<ExtractedSchema | null> {
+async function extractFromFile(project: Project, filePath: string): Promise<ExtractedSchema | ExtractedSchema[] | null> {
   // Read and parse the file
   let sourceFile: SourceFile
   try {
@@ -175,12 +200,46 @@ async function extractFromFile(project: Project, filePath: string): Promise<Extr
     throw new Error(`TypeScript syntax error in ${filePath}: ${message}`)
   }
 
-  // Find DO class
+  const results: ExtractedSchema[] = []
+
+  // Try class pattern first
   const doClass = findDOClass(sourceFile)
-  if (!doClass) {
+  if (doClass) {
+    const classSchema = extractFromClass(doClass, sourceFile)
+    if (classSchema) {
+      results.push(classSchema)
+    }
+  }
+
+  // Try factory pattern
+  const factoryCalls = findDOFactoryCalls(sourceFile)
+  for (const call of factoryCalls) {
+    const factorySchema = extractFactoryAPI(call, sourceFile)
+    if (factorySchema) {
+      results.push(factorySchema)
+    }
+  }
+
+  // If no patterns found, provide helpful error
+  if (results.length === 0) {
+    // Check if there's a DO() call but it has no return/empty return
+    if (factoryCalls.length > 0) {
+      throw new Error(
+        `DO() factory found in ${filePath} but no API was returned. ` +
+          `Ensure the factory callback returns an object with methods. ` +
+          `Example: DO(async ($) => { return { ping: async () => 'pong' } })`
+      )
+    }
     throw new Error(`No DurableObject class found in ${filePath}. Expected a class extending DurableObject, DurableRPC, or DigitalObject.`)
   }
 
+  return results.length === 1 ? results[0] : results
+}
+
+/**
+ * Extract schema from a class declaration
+ */
+function extractFromClass(doClass: ClassDeclaration, sourceFile: SourceFile): ExtractedSchema | null {
   // Extract methods and namespaces
   const methods: ExtractedMethod[] = []
   const namespaces: ExtractedNamespace[] = []
@@ -249,6 +308,295 @@ function findDOClass(sourceFile: SourceFile): ClassDeclaration | undefined {
   }
 
   return undefined
+}
+
+/**
+ * Find DO() factory call expressions in the source file
+ */
+function findDOFactoryCalls(sourceFile: SourceFile): CallExpression[] {
+  return sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).filter((call) => {
+    const expr = call.getExpression()
+    return expr.getText() === 'DO'
+  })
+}
+
+/**
+ * Get the variable name for a DO() factory call (for named exports)
+ * e.g., "export const myDO = DO(...)" returns "myDO"
+ * e.g., "export default DO(...)" returns "Default"
+ */
+function getFactoryName(call: CallExpression, sourceFile: SourceFile): string {
+  // Check if it's part of a variable declaration
+  const parent = call.getParent()
+  if (parent?.isKind(SyntaxKind.VariableDeclaration)) {
+    return parent.getName()
+  }
+
+  // Check if it's a default export
+  const exportDefault = call.getParent()
+  if (exportDefault?.isKind(SyntaxKind.ExportAssignment)) {
+    // Use the file name as the class name
+    const fileName = sourceFile.getBaseNameWithoutExtension()
+    return fileName.charAt(0).toUpperCase() + fileName.slice(1)
+  }
+
+  // Default fallback
+  return 'FactoryDO'
+}
+
+/**
+ * Extract API from DO() factory call's return type
+ */
+function extractFactoryAPI(call: CallExpression, sourceFile: SourceFile): ExtractedSchema | null {
+  const args = call.getArguments()
+  if (args.length === 0) return null
+
+  const callback = args[0]
+  if (!callback) return null
+
+  // Handle ArrowFunction or FunctionExpression
+  if (!callback.isKind(SyntaxKind.ArrowFunction) && !callback.isKind(SyntaxKind.FunctionExpression)) {
+    return null
+  }
+
+  const func = callback as ArrowFunction | FunctionExpression
+
+  // Try to find the returned object literal
+  const returnedObject = findReturnedObjectLiteral(func)
+
+  if (!returnedObject) {
+    // Check if it's an implicit return (arrow function with expression body)
+    const body = func.getBody()
+    if (body?.isKind(SyntaxKind.ObjectLiteralExpression)) {
+      const objLiteral = body as ObjectLiteralExpression
+      return extractFromObjectLiteral(objLiteral, call, sourceFile)
+    }
+
+    // Check for parenthesized expression: `($) => ({ ping: ... })`
+    if (body?.isKind(SyntaxKind.ParenthesizedExpression)) {
+      const innerExpr = body.getExpression()
+      if (innerExpr.isKind(SyntaxKind.ObjectLiteralExpression)) {
+        return extractFromObjectLiteral(innerExpr as ObjectLiteralExpression, call, sourceFile)
+      }
+    }
+
+    return null
+  }
+
+  return extractFromObjectLiteral(returnedObject, call, sourceFile)
+}
+
+/**
+ * Find the object literal returned from a function body
+ */
+function findReturnedObjectLiteral(func: ArrowFunction | FunctionExpression): ObjectLiteralExpression | null {
+  const body = func.getBody()
+  if (!body) return null
+
+  // Block body - look for return statements
+  if (body.isKind(SyntaxKind.Block)) {
+    const returnStatements = body.getDescendantsOfKind(SyntaxKind.ReturnStatement)
+
+    for (const ret of returnStatements) {
+      const expr = ret.getExpression()
+      if (expr?.isKind(SyntaxKind.ObjectLiteralExpression)) {
+        return expr as ObjectLiteralExpression
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Extract schema from an object literal (factory return value)
+ */
+function extractFromObjectLiteral(objLiteral: ObjectLiteralExpression, call: CallExpression, sourceFile: SourceFile): ExtractedSchema | null {
+  const methods: ExtractedMethod[] = []
+  const namespaces: ExtractedNamespace[] = []
+  const usedTypes = new Set<string>()
+
+  for (const property of objLiteral.getProperties()) {
+    // Property assignment with arrow function: ping: async () => 'pong'
+    if (property.isKind(SyntaxKind.PropertyAssignment)) {
+      const propName = property.getName()
+      const init = property.getInitializer()
+
+      if (init?.isKind(SyntaxKind.ArrowFunction)) {
+        const arrow = init as ArrowFunction
+        const method = extractMethodFromArrow(propName, arrow)
+        if (method) {
+          methods.push(method)
+          collectUsedTypes(method, usedTypes)
+        }
+      } else if (init?.isKind(SyntaxKind.FunctionExpression)) {
+        const funcExpr = init as FunctionExpression
+        const method = extractMethodFromFunction(propName, funcExpr)
+        if (method) {
+          methods.push(method)
+          collectUsedTypes(method, usedTypes)
+        }
+      } else if (init?.isKind(SyntaxKind.ObjectLiteralExpression)) {
+        // Nested namespace: users: { get: async (id) => ... }
+        const nestedObj = init as ObjectLiteralExpression
+        const namespace = extractNamespaceFromObjectLiteral(propName, nestedObj, usedTypes)
+        if (namespace) {
+          namespaces.push(namespace)
+        }
+      } else if (init) {
+        // Could be a typed value like: products: $.collection<Product>('products') as Collection<Product>
+        const namespace = extractNamespaceFromTypedValue(propName, init, usedTypes)
+        if (namespace) {
+          namespaces.push(namespace)
+        }
+      }
+    }
+
+    // Method shorthand: async ping() { return 'pong' }
+    if (property.isKind(SyntaxKind.MethodDeclaration)) {
+      const methodDecl = property as MethodDeclaration
+      const propName = methodDecl.getName()
+
+      const parameters: ExtractedParameter[] = methodDecl.getParameters().map((param) => ({
+        name: param.getName(),
+        type: getTypeText(param.getType(), param.getTypeNode()?.getText()),
+        optional: param.isOptional() || param.hasQuestionToken(),
+      }))
+
+      const returnType = getTypeText(methodDecl.getReturnType(), methodDecl.getReturnTypeNode()?.getText())
+
+      const method: ExtractedMethod = { name: propName, parameters, returnType }
+      methods.push(method)
+      collectUsedTypes(method, usedTypes)
+    }
+  }
+
+  // If no methods or namespaces found, return null (invalid factory)
+  if (methods.length === 0 && namespaces.length === 0) {
+    return null
+  }
+
+  // Extract type definitions used in the API
+  const types = extractUsedTypes(sourceFile, usedTypes)
+
+  const className = getFactoryName(call, sourceFile)
+
+  return {
+    className,
+    methods,
+    namespaces,
+    types,
+  }
+}
+
+/**
+ * Extract a method from an arrow function
+ */
+function extractMethodFromArrow(name: string, arrow: ArrowFunction): ExtractedMethod {
+  const parameters: ExtractedParameter[] = arrow.getParameters().map((param) => ({
+    name: param.getName(),
+    type: getTypeText(param.getType(), param.getTypeNode()?.getText()),
+    optional: param.isOptional() || param.hasQuestionToken(),
+  }))
+
+  const returnType = getTypeText(arrow.getReturnType(), arrow.getReturnTypeNode()?.getText())
+
+  return { name, parameters, returnType }
+}
+
+/**
+ * Extract a method from a function expression
+ */
+function extractMethodFromFunction(name: string, func: FunctionExpression): ExtractedMethod {
+  const parameters: ExtractedParameter[] = func.getParameters().map((param) => ({
+    name: param.getName(),
+    type: getTypeText(param.getType(), param.getTypeNode()?.getText()),
+    optional: param.isOptional() || param.hasQuestionToken(),
+  }))
+
+  const returnType = getTypeText(func.getReturnType(), func.getReturnTypeNode()?.getText())
+
+  return { name, parameters, returnType }
+}
+
+/**
+ * Extract namespace from a nested object literal
+ */
+function extractNamespaceFromObjectLiteral(name: string, objLiteral: ObjectLiteralExpression, usedTypes: Set<string>): ExtractedNamespace | null {
+  const methods: ExtractedMethod[] = []
+  const nestedNamespaces: ExtractedNamespace[] = []
+
+  for (const property of objLiteral.getProperties()) {
+    if (property.isKind(SyntaxKind.PropertyAssignment)) {
+      const propName = property.getName()
+      const init = property.getInitializer()
+
+      if (init?.isKind(SyntaxKind.ArrowFunction)) {
+        const arrow = init as ArrowFunction
+        const method = extractMethodFromArrow(propName, arrow)
+        methods.push(method)
+        collectUsedTypes(method, usedTypes)
+      } else if (init?.isKind(SyntaxKind.FunctionExpression)) {
+        const funcExpr = init as FunctionExpression
+        const method = extractMethodFromFunction(propName, funcExpr)
+        methods.push(method)
+        collectUsedTypes(method, usedTypes)
+      } else if (init?.isKind(SyntaxKind.ObjectLiteralExpression)) {
+        // Recursively handle deeply nested namespaces
+        const nestedNs = extractNamespaceFromObjectLiteral(propName, init as ObjectLiteralExpression, usedTypes)
+        if (nestedNs) {
+          nestedNamespaces.push(nestedNs)
+        }
+      }
+    }
+
+    // Method shorthand in namespace
+    if (property.isKind(SyntaxKind.MethodDeclaration)) {
+      const methodDecl = property as MethodDeclaration
+      const propName = methodDecl.getName()
+
+      const parameters: ExtractedParameter[] = methodDecl.getParameters().map((param) => ({
+        name: param.getName(),
+        type: getTypeText(param.getType(), param.getTypeNode()?.getText()),
+        optional: param.isOptional() || param.hasQuestionToken(),
+      }))
+
+      const returnType = getTypeText(methodDecl.getReturnType(), methodDecl.getReturnTypeNode()?.getText())
+
+      const method: ExtractedMethod = { name: propName, parameters, returnType }
+      methods.push(method)
+      collectUsedTypes(method, usedTypes)
+    }
+  }
+
+  if (methods.length === 0 && nestedNamespaces.length === 0) {
+    return null
+  }
+
+  // For now, we flatten deeply nested namespaces into the method list
+  // This could be improved to support truly nested structures
+  return { name, methods, nestedNamespaces }
+}
+
+/**
+ * Extract namespace from a typed value (e.g., $.collection<Product>('products') as Collection<Product>)
+ */
+function extractNamespaceFromTypedValue(name: string, init: Node, usedTypes: Set<string>): ExtractedNamespace | null {
+  // Get the type of the initializer
+  const type = init.getType()
+  const namespace = extractNamespaceFromType(name, type, init.getType().getText())
+
+  if (namespace) {
+    // Collect types from namespace
+    for (const m of namespace.methods) {
+      collectUsedTypes(m, usedTypes)
+    }
+    if (namespace.typeName) {
+      extractTypeNames(namespace.typeName, usedTypes)
+    }
+  }
+
+  return namespace
 }
 
 /**
@@ -624,9 +972,7 @@ export function generateDTS(schema: ExtractedSchema): string {
       lines.push(`  ${ns.name}: ${ns.typeName}`)
     } else {
       lines.push(`  ${ns.name}: {`)
-      for (const method of ns.methods) {
-        lines.push(`    ${formatMethodSignature(method)}`)
-      }
+      formatNamespaceContent(ns, lines, 2)
       lines.push(`  }`)
     }
   }
@@ -635,6 +981,27 @@ export function generateDTS(schema: ExtractedSchema): string {
   lines.push('')
 
   return lines.join('\n')
+}
+
+/**
+ * Format namespace content including methods and nested namespaces
+ */
+function formatNamespaceContent(ns: ExtractedNamespace, lines: string[], indentLevel: number): void {
+  const indent = '  '.repeat(indentLevel)
+
+  // Add methods
+  for (const method of ns.methods) {
+    lines.push(`${indent}${formatMethodSignature(method)}`)
+  }
+
+  // Add nested namespaces
+  if (ns.nestedNamespaces) {
+    for (const nestedNs of ns.nestedNamespaces) {
+      lines.push(`${indent}${nestedNs.name}: {`)
+      formatNamespaceContent(nestedNs, lines, indentLevel + 1)
+      lines.push(`${indent}}`)
+    }
+  }
 }
 
 /**
