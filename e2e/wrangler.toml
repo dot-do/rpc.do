@@ -7,13 +7,18 @@ compatibility_flags = ["nodejs_compat"]
 # Durable Objects
 [durable_objects]
 bindings = [
-  { name = "TEST_DO", class_name = "TestDO" }
+  { name = "TEST_DO", class_name = "TestDO" },
+  { name = "DO_COLL_TEST", class_name = "DOCollectionsTestDO" }
 ]
 
 # Migrations - SQLite-backed DO
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["TestDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["DOCollectionsTestDO"]
 
 # Dev settings
 [dev]

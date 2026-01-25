@@ -226,11 +226,11 @@ export function createCollection<T extends Record<string, unknown> = Record<stri
 
   return {
     get(id: string): T | null {
-      const row = sql.exec<{ data: string }>(
+      const rows = sql.exec<{ data: string }>(
         `SELECT data FROM _collections WHERE collection = ? AND id = ?`,
         name, id
-      ).one()
-      return row ? JSON.parse(row.data) : null
+      ).toArray()
+      return rows.length > 0 ? JSON.parse(rows[0].data) : null
     },
 
     put(id: string, doc: T): void {
@@ -253,11 +253,11 @@ export function createCollection<T extends Record<string, unknown> = Record<stri
     },
 
     has(id: string): boolean {
-      const row = sql.exec<{ c: number }>(
+      const rows = sql.exec<{ c: number }>(
         `SELECT 1 as c FROM _collections WHERE collection = ? AND id = ?`,
         name, id
-      ).one()
-      return !!row
+      ).toArray()
+      return rows.length > 0
     },
 
     find(filter?: Filter<T>, options?: QueryOptions): T[] {
@@ -299,11 +299,11 @@ export function createCollection<T extends Record<string, unknown> = Record<stri
         whereClause += ' AND ' + compileFilter(filter, params)
       }
 
-      const row = sql.exec<{ c: number }>(
+      const rows = sql.exec<{ c: number }>(
         `SELECT COUNT(*) as c FROM _collections WHERE ${whereClause}`,
         ...params
-      ).one()
-      return row?.c ?? 0
+      ).toArray()
+      return rows[0]?.c ?? 0
     },
 
     list(options?: QueryOptions): T[] {

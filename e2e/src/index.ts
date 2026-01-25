@@ -231,11 +231,21 @@ export class TestDO extends DurableRPC {
 }
 
 // ============================================================================
+// DOCollections Test DO
+// ============================================================================
+
+export { DOCollectionsTestDO, TestSemanticMatcher } from './do-collections-test.js'
+export type { DOCollectionsEnv } from './do-collections-test.js'
+
+// ============================================================================
 // Worker Entry Point
 // ============================================================================
 
+import type { DOCollectionsTestDO as DOCollTestDO } from './do-collections-test.js'
+
 export interface Env {
   TEST_DO: DurableObjectNamespace<TestDO>
+  DO_COLL_TEST: DurableObjectNamespace<DOCollTestDO>
 }
 
 export default {
