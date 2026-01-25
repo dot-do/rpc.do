@@ -183,24 +183,20 @@ export interface WsTransportOptions {
 /**
  * WebSocket transport - persistent connection
  *
+ * @deprecated Use `capnweb()` instead for compatibility with DurableRPC servers.
+ * The `ws()` transport uses a custom JSON-RPC protocol that is incompatible with
+ * capnweb-based servers. For reconnection support, use:
+ *
+ * ```typescript
+ * import { capnweb } from 'rpc.do/transports'
+ * const transport = capnweb('wss://api.example.com/rpc', {
+ *   auth: oauthProvider(),
+ *   reconnect: true,
+ * })
+ * ```
+ *
  * @param url - The WebSocket endpoint URL (can also be http/https, will be converted)
  * @param authOrOptions - Either an auth token/provider string, or an options object
- *
- * @example
- * // Basic usage
- * const transport = ws('wss://api.example.com/rpc')
- *
- * @example
- * // With auth token
- * const transport = ws('wss://api.example.com/rpc', 'my-token')
- *
- * @example
- * // With timeout
- * const transport = ws('wss://api.example.com/rpc', { timeout: 30000 })
- *
- * @example
- * // With auth and timeout
- * const transport = ws('wss://api.example.com/rpc', { auth: 'my-token', timeout: 30000 })
  */
 export function ws(url: string, authOrOptions?: string | AuthProvider | WsTransportOptions): Transport {
   // Normalize options - support both legacy (auth) and new (options) signatures
@@ -355,15 +351,118 @@ export function ws(url: string, authOrOptions?: string | AuthProvider | WsTransp
   }
 }
 
+// ============================================================================
+// Capnweb Transport Options
+// ============================================================================
+
 /**
- * Capnweb transport - for full capnweb RPC features
+ * Options for capnweb transport
+ */
+export interface CapnwebTransportOptions {
+  /**
+   * Use WebSocket (true) or HTTP batch (false)
+   * @default true
+   */
+  websocket?: boolean
+
+  /**
+   * Authentication token or provider (from oauth.do, static, or custom)
+   */
+  auth?: string | AuthProvider
+
+  /**
+   * Enable reconnection support (WebSocket only)
+   * When true, uses ReconnectingWebSocketTransport for resilience
+   * @default false
+   */
+  reconnect?: boolean
+
+  /**
+   * Reconnection options (only used when reconnect: true)
+   */
+  reconnectOptions?: {
+    maxReconnectAttempts?: number
+    reconnectBackoff?: number
+    maxReconnectBackoff?: number
+    heartbeatInterval?: number
+    onConnect?: () => void
+    onDisconnect?: (reason: string) => void
+    onReconnecting?: (attempt: number, maxAttempts: number) => void
+    onError?: (error: Error) => void
+  }
+
+  /**
+   * Local RPC target to expose to the server (for bidirectional RPC)
+   */
+  localMain?: unknown
+
+  /**
+   * Allow auth over insecure ws:// connections
+   * WARNING: Only for local development
+   * @default false
+   */
+  allowInsecureAuth?: boolean
+}
+
+/**
+ * Capnweb transport - the recommended transport for RPC
+ *
+ * Uses capnweb's native protocol for compatibility with DurableRPC servers.
+ * Supports both WebSocket and HTTP batch modes, with optional reconnection.
+ *
+ * @example
+ * ```typescript
+ * import { capnweb } from 'rpc.do/transports'
+ * import { oauthProvider } from 'rpc.do/auth'
+ * import { RPC } from 'rpc.do'
+ *
+ * // Simple usage
+ * const rpc = RPC(capnweb('wss://api.example.com/rpc'))
+ *
+ * // With oauth.do authentication
+ * const rpc = RPC(capnweb('wss://api.example.com/rpc', {
+ *   auth: oauthProvider(),
+ * }))
+ *
+ * // With reconnection support
+ * const rpc = RPC(capnweb('wss://api.example.com/rpc', {
+ *   auth: oauthProvider(),
+ *   reconnect: true,
+ *   reconnectOptions: {
+ *     onConnect: () => console.log('Connected!'),
+ *     onReconnecting: (attempt) => console.log('Reconnecting...', attempt),
+ *   }
+ * }))
+ *
+ * // HTTP batch mode (for serverless/edge)
+ * const rpc = RPC(capnweb('https://api.example.com/rpc', {
+ *   websocket: false,
+ *   auth: oauthProvider(),
+ * }))
+ *
+ * // Bidirectional RPC (server can call client)
+ * const clientHandler = {
+ *   notify: (msg: string) => console.log('Server says:', msg)
+ * }
+ * const rpc = RPC(capnweb('wss://api.example.com/rpc', {
+ *   auth: oauthProvider(),
+ *   reconnect: true,
+ *   localMain: clientHandler,
+ * }))
+ * ```
  */
 export function capnweb(
   url: string,
-  options?: { websocket?: boolean; auth?: string | AuthProvider }
+  options?: CapnwebTransportOptions
 ): Transport {
   const useWebSocket = options?.websocket ?? true
+  const useReconnect = options?.reconnect ?? false
   const getAuth = typeof options?.auth === 'function' ? options.auth : () => options?.auth
+
+  // For reconnecting WebSocket, use the new transport
+  if (useWebSocket && useReconnect) {
+    return createReconnectingCapnwebTransport(url, options)
+  }
 
   // Note: capnweb is a dynamically imported external library with its own type system.
   // We use 'unknown' for the session and navigate it dynamically.
@@ -416,6 +515,76 @@ export function capnweb(
 }
 
 /**
+ * Create a reconnecting capnweb transport using ReconnectingWebSocketTransport
+ */
+function createReconnectingCapnwebTransport(
+  url: string,
+  options?: CapnwebTransportOptions
+): Transport {
+  let session: unknown = null
+  let transport: { close: () => void } | null = null
+
+  return {
+    async call(method: string, args: unknown[]) {
+      if (!session) {
+        // Dynamic imports
+        const [capnwebModule, { ReconnectingWebSocketTransport }] = await Promise.all([
+          import('capnweb'),
+          import('./transports/reconnecting-ws.js')
+        ])
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const RpcSession = (capnwebModule as any).RpcSession
+        if (!RpcSession) {
+          throw new RPCError('capnweb.RpcSession not found', 'MODULE_ERROR')
+        }
+
+        // Create reconnecting transport
+        const wsUrl = url.replace(/^http/, 'ws')
+        const authProvider: AuthProvider | undefined = typeof options?.auth === 'function'
+          ? options.auth
+          : options?.auth
+          ? () => options.auth as string
+          : undefined
+
+        const reconnectTransport = new ReconnectingWebSocketTransport(wsUrl, {
+          auth: authProvider,
+          allowInsecureAuth: options?.allowInsecureAuth,
+          ...options?.reconnectOptions,
+        })
+
+        transport = reconnectTransport
+
+        // Create RpcSession with the transport
+        const rpcSession = new RpcSession(reconnectTransport, options?.localMain)
+        session = rpcSession.getRemoteMain()
+      }
+
+      // Navigate the session proxy
+      const parts = method.split('.')
+      let target: unknown = session
+      for (const part of parts) {
+        if (typeof target !== 'object' || target === null) {
+          throw new RPCError(`Invalid path: ${part}`, 'INVALID_PATH')
+        }
+        target = (target as Record<string, unknown>)[part]
+      }
+
+      // Call with args
+      if (!isFunction(target)) {
+        throw new RPCError(`Method not found: ${method}`, 'METHOD_NOT_FOUND')
+      }
+      return target(...args)
+    },
+    close() {
+      transport?.close()
+      session = null
+      transport = null
+    }
+  }
+}
+
+/**
  * Composite transport - try multiple transports with fallback
  */
 export function composite(...transports: Transport[]): Transport {
@@ -438,3 +607,18 @@ export function composite(...transports: Transport[]): Transport {
     }
   }
 }
+
+// ============================================================================
+// Re-exports
+// ============================================================================
+
+// Export reconnecting transport for direct use
+export {
+  ReconnectingWebSocketTransport,
+  reconnectingWs,
+  createRpcSession,
+  type ConnectionState,
+  type ConnectionEventHandlers,
+  type ReconnectingWebSocketOptions,
+  type RpcSessionOptions,
+} from './transports/reconnecting-ws.js'
