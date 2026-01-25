@@ -1,0 +1,24 @@
+{
+  "name": "todo-example",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Todo CRUD example using rpc.do and @dotdo/rpc",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "typecheck": "tsc --noEmit",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "@dotdo/rpc": "workspace:*",
+    "rpc.do": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241205.0",
+    "typescript": "^5.5.2",
+    "wrangler": "^3.99.0"
+  }
+}

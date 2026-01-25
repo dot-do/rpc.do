@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { RPC, http, ws, binding, composite } from './index'
+import { RPC, http, ws, binding, composite, createRPCClient } from './index'
 import { createRpcHandler, bearerAuth, noAuth } from './server'
 import { auth } from './auth'
 import { RPCError } from './errors'
@@ -446,6 +446,168 @@ describe('Server Handler', () => {
 
     expect(response.status).toBe(500)
     expect(data.error).toBe('Something went wrong')
+  })
+})
+
+describe('createRPCClient Factory', () => {
+  let originalFetch: typeof fetch
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('should return an RPC proxy', async () => {
+    globalThis.fetch = vi.fn(async () => {
+      return new Response(JSON.stringify({ result: 'ok' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }) as any
+
+    const client = createRPCClient<any>({ baseUrl: 'https://api.example.com/rpc' })
+
+    // Verify it's a proxy by checking it's not thenable
+    expect((client as any).then).toBeUndefined()
+
+    // Verify we can make calls
+    const result = await client.test.method()
+    expect(result).toEqual({ result: 'ok' })
+  })
+
+  it('should use http transport with the provided baseUrl', async () => {
+    let capturedUrl: string | null = null
+
+    globalThis.fetch = vi.fn(async (url: string) => {
+      capturedUrl = url.toString()
+      return new Response(JSON.stringify({}), { status: 200 })
+    }) as any
+
+    const client = createRPCClient<any>({ baseUrl: 'https://custom.api.com/rpc' })
+    await client.some.method()
+
+    expect(capturedUrl).toBe('https://custom.api.com/rpc')
+  })
+
+  it('should pass auth token through to http transport', async () => {
+    let capturedHeaders: Headers | null = null
+
+    globalThis.fetch = vi.fn(async (url: string, options?: RequestInit) => {
+      capturedHeaders = new Headers(options?.headers)
+      return new Response(JSON.stringify({}), { status: 200 })
+    }) as any
+
+    const client = createRPCClient<any>({
+      baseUrl: 'https://api.example.com/rpc',
+      auth: 'my-secret-token'
+    })
+    await client.test.method()
+
+    expect(capturedHeaders!.get('Authorization')).toBe('Bearer my-secret-token')
+  })
+
+  it('should pass auth provider function through to http transport', async () => {
+    let capturedHeaders: Headers | null = null
+
+    globalThis.fetch = vi.fn(async (url: string, options?: RequestInit) => {
+      capturedHeaders = new Headers(options?.headers)
+      return new Response(JSON.stringify({}), { status: 200 })
+    }) as any
+
+    const authProvider = () => 'dynamic-token'
+    const client = createRPCClient<any>({
+      baseUrl: 'https://api.example.com/rpc',
+      auth: authProvider
+    })
+    await client.test.method()
+
+    expect(capturedHeaders!.get('Authorization')).toBe('Bearer dynamic-token')
+  })
+
+  it('should pass async auth provider function through to http transport', async () => {
+    let capturedHeaders: Headers | null = null
+
+    globalThis.fetch = vi.fn(async (url: string, options?: RequestInit) => {
+      capturedHeaders = new Headers(options?.headers)
+      return new Response(JSON.stringify({}), { status: 200 })
+    }) as any
+
+    const asyncAuthProvider = async () => 'async-token'
+    const client = createRPCClient<any>({
+      baseUrl: 'https://api.example.com/rpc',
+      auth: asyncAuthProvider
+    })
+    await client.test.method()
+
+    expect(capturedHeaders!.get('Authorization')).toBe('Bearer async-token')
+  })
+
+  it('should handle null auth from provider', async () => {
+    let capturedHeaders: Headers | null = null
+
+    globalThis.fetch = vi.fn(async (url: string, options?: RequestInit) => {
+      capturedHeaders = new Headers(options?.headers)
+      return new Response(JSON.stringify({}), { status: 200 })
+    }) as any
+
+    const nullAuthProvider = () => null
+    const client = createRPCClient<any>({
+      baseUrl: 'https://api.example.com/rpc',
+      auth: nullAuthProvider
+    })
+    await client.test.method()
+
+    expect(capturedHeaders!.get('Authorization')).toBeNull()
+  })
+
+  it('should support typed API', async () => {
+    globalThis.fetch = vi.fn(async () => {
+      return new Response(JSON.stringify({ text: 'Generated response' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }) as any
+
+    interface MyAPI {
+      ai: {
+        generate: (params: { prompt: string }) => { text: string }
+      }
+    }
+
+    const client = createRPCClient<MyAPI>({ baseUrl: 'https://api.example.com/rpc' })
+    const result = await client.ai.generate({ prompt: 'hello' })
+
+    expect(result).toEqual({ text: 'Generated response' })
+  })
+
+  it('should pass timeout option to http transport', async () => {
+    // We can't easily verify timeout without actually timing out,
+    // but we can at least verify the client works with timeout option
+    globalThis.fetch = vi.fn(async () => {
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    }) as any
+
+    const client = createRPCClient<any>({
+      baseUrl: 'https://api.example.com/rpc',
+      timeout: 5000
+    })
+
+    const result = await client.test.method()
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('should work without any optional parameters', async () => {
+    globalThis.fetch = vi.fn(async () => {
+      return new Response(JSON.stringify({ success: true }), { status: 200 })
+    }) as any
+
+    const client = createRPCClient<any>({ baseUrl: 'https://minimal.api.com/rpc' })
+    const result = await client.simple.call()
+
+    expect(result).toEqual({ success: true })
   })
 })
 

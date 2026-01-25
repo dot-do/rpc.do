@@ -1,0 +1,36 @@
+# Todo Example - rpc.do
+# A simple todo application demonstrating DurableRPC usage
+
+name = "todo-example"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Serve static files from public directory
+[site]
+bucket = "./public"
+
+# Durable Object bindings
+[[durable_objects.bindings]]
+name = "TODO_LIST"
+class_name = "TodoList"
+
+# Durable Object migrations
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TodoList"]
+
+# Development settings
+[dev]
+port = 8787
+local_protocol = "http"
+
+# Environment-specific overrides
+[env.production]
+name = "todo-example-prod"
+routes = [
+  { pattern = "todo.example.com", custom_domain = true }
+]
+
+[env.staging]
+name = "todo-example-staging"

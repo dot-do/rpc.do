@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>rpc.do Dashboard Example</title>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --card-bg: #1a1a1a;
+      --border: #333;
+      --text: #fff;
+      --text-muted: #888;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --error: #ef4444;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+
+    .header-right {
+      text-align: right;
+    }
+
+    .connection-status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--error);
+    }
+
+    .status-dot.connected { background: var(--success); }
+    .status-dot.connecting { background: var(--warning); animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .transport-info {
+      display: flex;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      justify-content: flex-end;
+    }
+
+    .transport-badge {
+      padding: 0.25rem 0.5rem;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .transport-badge:hover {
+      border-color: var(--text-muted);
+    }
+
+    .transport-badge.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+
+    .stat-label {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stat-value.small {
+      font-size: 1.25rem;
+    }
+
+    .counters-section {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .counters-section h2 {
+      font-size: 1rem;
+      color: var(--text-muted);
+    }
+
+    .counter-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    button {
+      padding: 0.75rem 1.5rem;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    button:hover { background: var(--accent-hover); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    button.secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    button.secondary:hover {
+      border-color: var(--text);
+      color: var(--text);
+    }
+
+    .counter-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .counter-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      background: var(--bg);
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+
+    .counter-item:hover {
+      background: #111;
+    }
+
+    .counter-item.updated {
+      animation: highlight 0.5s ease-out;
+    }
+
+    @keyframes highlight {
+      from { background: rgba(59, 130, 246, 0.3); }
+      to { background: var(--bg); }
+    }
+
+    .counter-name { font-weight: 500; }
+    .counter-value {
+      font-variant-numeric: tabular-nums;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .log-section {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+
+    .log-section h2 {
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      color: var(--text-muted);
+    }
+
+    .log-entries {
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      font-size: 0.75rem;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .log-entry {
+      padding: 0.25rem 0;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .log-entry:last-child { border-bottom: none; }
+
+    .log-time { color: var(--text-muted); flex-shrink: 0; }
+    .log-type {
+      flex-shrink: 0;
+      width: 70px;
+      text-align: center;
+    }
+    .log-type.info { color: var(--accent); }
+    .log-type.success { color: var(--success); }
+    .log-type.warning { color: var(--warning); }
+    .log-type.error { color: var(--error); }
+    .log-type.event { color: #a855f7; }
+    .log-type.action { color: #14b8a6; }
+
+    .log-message { color: var(--text); word-break: break-all; }
+
+    .empty-state {
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    .code-example {
+      background: var(--bg);
+      padding: 1rem;
+      border-radius: 6px;
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      font-size: 0.75rem;
+      overflow-x: auto;
+      white-space: pre;
+      color: var(--text-muted);
+      margin-top: 1rem;
+    }
+
+    .code-example .keyword { color: #c678dd; }
+    .code-example .string { color: #98c379; }
+    .code-example .comment { color: #5c6370; }
+    .code-example .function { color: #61afef; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>rpc.do Dashboard</h1>
+      <div class="header-right">
+        <div class="connection-status">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-text">Disconnected</span>
+        </div>
+        <div class="transport-info">
+          <span class="transport-badge" id="ws-badge" onclick="forceTransport('ws')" title="Click to force WebSocket">WebSocket</span>
+          <span class="transport-badge" id="http-badge" onclick="forceTransport('http')" title="Click to force HTTP">HTTP</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Connected Clients</div>
+        <div class="stat-value" id="connection-count">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Last Updated</div>
+        <div class="stat-value small" id="last-updated">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Active Transport</div>
+        <div class="stat-value small" id="current-transport">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Events</div>
+        <div class="stat-value" id="total-events">0</div>
+      </div>
+    </div>
+
+    <div class="counters-section">
+      <div class="section-header">
+        <h2>Live Counters</h2>
+        <button class="secondary" onclick="refreshStats()">Refresh</button>
+      </div>
+      <div class="counter-buttons">
+        <button onclick="incrementCounter('clicks')">+ Click</button>
+        <button onclick="incrementCounter('api-calls')">+ API Call</button>
+        <button onclick="incrementCounter('events')">+ Event</button>
+        <button onclick="incrementCounter('errors')">+ Error</button>
+      </div>
+      <div class="counter-list" id="counter-list">
+        <div class="empty-state">No counters yet. Click a button above!</div>
+      </div>
+
+      <div class="code-example">
+<span class="comment">// Example: Using the typed client</span>
+<span class="keyword">import</span> { createDashboardClient } <span class="keyword">from</span> <span class="string">'./client'</span>
+
+<span class="keyword">const</span> client = <span class="function">createDashboardClient</span>({
+  baseUrl: <span class="string">'https://dashboard.example.com/api/stats'</span>,
+  onBroadcast: (msg) => <span class="function">console.log</span>(msg)
+})
+
+<span class="keyword">await</span> client.<span class="function">incrementCounter</span>(<span class="string">'page-views'</span>)
+<span class="keyword">const</span> stats = <span class="keyword">await</span> client.<span class="function">getStats</span>()
+      </div>
+    </div>
+
+    <div class="log-section">
+      <div class="section-header">
+        <h2>Event Log</h2>
+        <button class="secondary" onclick="clearLog()">Clear</button>
+      </div>
+      <div class="log-entries" id="log-entries">
+        <div class="empty-state">Waiting for events...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ========================================================================
+    // State
+    // ========================================================================
+    let ws = null;
+    let counters = {};
+    let forceHttpMode = false;
+    let reconnectAttempts = 0;
+    let totalEvents = 0;
+    const maxReconnectAttempts = 10;
+    const baseReconnectDelay = 1000;
+
+    // ========================================================================
+    // DOM Elements
+    // ========================================================================
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const wsBadge = document.getElementById('ws-badge');
+    const httpBadge = document.getElementById('http-badge');
+    const connectionCount = document.getElementById('connection-count');
+    const lastUpdated = document.getElementById('last-updated');
+    const currentTransport = document.getElementById('current-transport');
+    const totalEventsEl = document.getElementById('total-events');
+    const counterList = document.getElementById('counter-list');
+    const logEntries = document.getElementById('log-entries');
+
+    // ========================================================================
+    // Initialize
+    // ========================================================================
+    init();
+
+    function init() {
+      log('info', 'Dashboard initialized');
+      connectWebSocket();
+    }
+
+    // ========================================================================
+    // WebSocket Connection
+    // ========================================================================
+    function connectWebSocket() {
+      if (forceHttpMode) {
+        log('info', 'HTTP mode forced, skipping WebSocket');
+        fetchStatsViaHttp();
+        return;
+      }
+
+      if (ws && ws.readyState === WebSocket.OPEN) return;
+
+      updateStatus('connecting');
+      log('info', 'Connecting to WebSocket...');
+
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(protocol + '//' + location.host + '/api/stats/ws');
+
+      ws.onopen = () => {
+        updateStatus('connected');
+        setActiveTransport('ws');
+        reconnectAttempts = 0;
+        log('success', 'WebSocket connected');
+
+        // Subscribe to get initial stats
+        sendWsMessage('subscribe', []);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          handleMessage(data);
+        } catch (e) {
+          log('error', 'Parse error: ' + e.message);
+        }
+      };
+
+      ws.onclose = (event) => {
+        updateStatus('disconnected');
+        log('warning', 'WebSocket closed' + (event.reason ? ': ' + event.reason : ''));
+
+        if (!forceHttpMode && reconnectAttempts < maxReconnectAttempts) {
+          const delay = Math.min(baseReconnectDelay * Math.pow(2, reconnectAttempts), 30000);
+          reconnectAttempts++;
+          log('info', 'Reconnecting in ' + (delay/1000).toFixed(1) + 's (attempt ' + reconnectAttempts + ')');
+          setTimeout(connectWebSocket, delay);
+        } else if (!forceHttpMode) {
+          log('error', 'Max reconnect attempts reached, switching to HTTP');
+          forceHttpMode = true;
+          setActiveTransport('http');
+          fetchStatsViaHttp();
+        }
+      };
+
+      ws.onerror = () => {
+        log('error', 'WebSocket error');
+      };
+    }
+
+    function sendWsMessage(path, args) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          id: Date.now(),
+          method: 'do',
+          path: path,
+          args: args
+        }));
+      }
+    }
+
+    function handleMessage(data) {
+      // RPC response
+      if (data.id) {
+        if (data.result) {
+          if (data.result.stats) {
+            updateStats(data.result.stats);
+            log('event', 'Received initial stats');
+          }
+        } else if (data.error) {
+          log('error', 'RPC error: ' + (data.error.message || data.error));
+        }
+        return;
+      }
+
+      // Broadcast events
+      totalEvents++;
+      totalEventsEl.textContent = totalEvents;
+
+      if (data.type === 'counter_update') {
+        counters[data.name] = data.value;
+        renderCounters(data.name);
+        log('event', 'Counter "' + data.name + '" updated to ' + data.value);
+      } else if (data.type === 'connection_count') {
+        connectionCount.textContent = data.count;
+        log('event', 'Connection count: ' + data.count);
+      }
+
+      lastUpdated.textContent = formatTime(data.timestamp || Date.now());
+    }
+
+    // ========================================================================
+    // HTTP Fallback
+    // ========================================================================
+    async function fetchStatsViaHttp() {
+      try {
+        updateStatus('connecting');
+        const response = await fetch('/api/stats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'do', path: 'getStats', args: [] })
+        });
+        const data = await response.json();
+        updateStats(data);
+        updateStatus('connected');
+        log('success', 'Stats fetched via HTTP');
+      } catch (e) {
+        updateStatus('disconnected');
+        log('error', 'HTTP error: ' + e.message);
+      }
+    }
+
+    async function incrementViaHttp(name) {
+      try {
+        const response = await fetch('/api/stats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'do', path: 'incrementCounter', args: [name] })
+        });
+        const data = await response.json();
+        if (data.success) {
+          counters[data.name] = data.value;
+          renderCounters(data.name);
+          totalEvents++;
+          totalEventsEl.textContent = totalEvents;
+          log('success', 'Counter "' + data.name + '" = ' + data.value + ' (HTTP)');
+        }
+      } catch (e) {
+        log('error', 'Increment failed: ' + e.message);
+      }
+    }
+
+    // ========================================================================
+    // Actions
+    // ========================================================================
+    function incrementCounter(name) {
+      log('action', 'Incrementing "' + name + '"');
+
+      if (!forceHttpMode && ws && ws.readyState === WebSocket.OPEN) {
+        sendWsMessage('incrementCounter', [name]);
+      } else {
+        incrementViaHttp(name);
+      }
+    }
+
+    function refreshStats() {
+      log('action', 'Refreshing stats');
+      if (!forceHttpMode && ws && ws.readyState === WebSocket.OPEN) {
+        sendWsMessage('getStats', []);
+      } else {
+        fetchStatsViaHttp();
+      }
+    }
+
+    function forceTransport(type) {
+      if (type === 'http') {
+        forceHttpMode = true;
+        if (ws) ws.close();
+        setActiveTransport('http');
+        log('action', 'Switched to HTTP-only mode');
+        fetchStatsViaHttp();
+      } else {
+        forceHttpMode = false;
+        reconnectAttempts = 0;
+        log('action', 'Switched to WebSocket mode');
+        connectWebSocket();
+      }
+    }
+
+    function clearLog() {
+      logEntries.innerHTML = '<div class="empty-state">Log cleared</div>';
+    }
+
+    // ========================================================================
+    // UI Updates
+    // ========================================================================
+    function updateStatus(status) {
+      statusDot.className = 'status-dot ' + status;
+      statusText.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    }
+
+    function setActiveTransport(transport) {
+      wsBadge.classList.toggle('active', transport === 'ws');
+      httpBadge.classList.toggle('active', transport === 'http');
+      currentTransport.textContent = transport === 'ws' ? 'WebSocket' : 'HTTP';
+    }
+
+    function updateStats(stats) {
+      counters = stats.counters || {};
+      connectionCount.textContent = stats.connectionCount;
+      lastUpdated.textContent = formatTime(stats.lastUpdated);
+      renderCounters();
+    }
+
+    function renderCounters(highlightName = null) {
+      const entries = Object.entries(counters);
+      if (entries.length === 0) {
+        counterList.innerHTML = '<div class="empty-state">No counters yet. Click a button above!</div>';
+        return;
+      }
+
+      counterList.innerHTML = entries
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, value]) =>
+          '<div class="counter-item' + (name === highlightName ? ' updated' : '') + '">' +
+            '<span class="counter-name">' + escapeHtml(name) + '</span>' +
+            '<span class="counter-value">' + value + '</span>' +
+          '</div>'
+        ).join('');
+    }
+
+    function log(type, message) {
+      const time = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML =
+        '<span class="log-time">' + time + '</span>' +
+        '<span class="log-type ' + type + '">[' + type.toUpperCase() + ']</span>' +
+        '<span class="log-message">' + escapeHtml(message) + '</span>';
+
+      const emptyState = logEntries.querySelector('.empty-state');
+      if (emptyState) emptyState.remove();
+
+      logEntries.insertBefore(entry, logEntries.firstChild);
+
+      while (logEntries.children.length > 100) {
+        logEntries.removeChild(logEntries.lastChild);
+      }
+    }
+
+    function formatTime(timestamp) {
+      if (!timestamp) return '-';
+      return new Date(timestamp).toLocaleTimeString();
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

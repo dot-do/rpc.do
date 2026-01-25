@@ -1,0 +1,24 @@
+# Chat Example - Cloudflare Worker Configuration
+name = "chat-example"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Enable Durable Objects
+[durable_objects]
+bindings = [
+  { name = "CHAT_ROOM", class_name = "ChatRoom" }
+]
+
+# Durable Object migrations
+[[migrations]]
+tag = "v1"
+new_classes = ["ChatRoom"]
+
+# Development settings
+[dev]
+port = 8787
+local_protocol = "http"
+
+# Environment variables (optional, for production)
+# [vars]
+# SOME_CONFIG = "value"

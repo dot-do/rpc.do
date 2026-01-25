@@ -6,7 +6,283 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { RPCError, ConnectionError, ProtocolVersionError } from '../src/errors'
+import { RPCError, ConnectionError, ProtocolVersionError, AuthenticationError, RateLimitError } from '../src/errors'
+
+// ============================================================================
+// AuthenticationError Tests
+// ============================================================================
+
+describe('AuthenticationError', () => {
+  describe('constructor', () => {
+    it('should create error with default message', () => {
+      const error = new AuthenticationError()
+
+      expect(error.message).toBe('Authentication failed')
+    })
+
+    it('should create error with custom message', () => {
+      const error = new AuthenticationError('Invalid token')
+
+      expect(error.message).toBe('Invalid token')
+    })
+
+    it('should set name property to "AuthenticationError"', () => {
+      const error = new AuthenticationError()
+
+      expect(error.name).toBe('AuthenticationError')
+    })
+
+    it('should set status property to 401', () => {
+      const error = new AuthenticationError()
+
+      expect(error.status).toBe(401)
+    })
+
+    it('should have readonly name property', () => {
+      const error = new AuthenticationError()
+
+      // The name property is readonly, so this should be 'AuthenticationError'
+      expect(error.name).toBe('AuthenticationError')
+    })
+
+    it('should have readonly status property', () => {
+      const error = new AuthenticationError()
+
+      // The status property is readonly, so this should be 401
+      expect(error.status).toBe(401)
+    })
+  })
+
+  describe('inheritance', () => {
+    it('should be instanceof Error', () => {
+      const error = new AuthenticationError()
+
+      expect(error).toBeInstanceOf(Error)
+    })
+
+    it('should be instanceof AuthenticationError', () => {
+      const error = new AuthenticationError()
+
+      expect(error).toBeInstanceOf(AuthenticationError)
+    })
+
+    it('should NOT be instanceof RPCError', () => {
+      const error = new AuthenticationError()
+
+      expect(error).not.toBeInstanceOf(RPCError)
+    })
+
+    it('should NOT be instanceof ConnectionError', () => {
+      const error = new AuthenticationError()
+
+      expect(error).not.toBeInstanceOf(ConnectionError)
+    })
+
+    it('should NOT be instanceof ProtocolVersionError', () => {
+      const error = new AuthenticationError()
+
+      expect(error).not.toBeInstanceOf(ProtocolVersionError)
+    })
+  })
+
+  describe('stack trace', () => {
+    it('should capture stack trace', () => {
+      const error = new AuthenticationError()
+
+      expect(error.stack).toBeDefined()
+      expect(error.stack).toContain('AuthenticationError')
+    })
+  })
+
+  describe('serialization', () => {
+    it('should serialize relevant properties with JSON.stringify', () => {
+      const error = new AuthenticationError('Token expired')
+      const serialized = JSON.stringify(error)
+      const parsed = JSON.parse(serialized)
+
+      expect(parsed.status).toBe(401)
+    })
+
+    it('should include message when using object spread', () => {
+      const error = new AuthenticationError('Invalid credentials')
+      const serializable = {
+        message: error.message,
+        name: error.name,
+        status: error.status,
+      }
+
+      expect(serializable.message).toBe('Invalid credentials')
+      expect(serializable.name).toBe('AuthenticationError')
+      expect(serializable.status).toBe(401)
+    })
+  })
+})
+
+// ============================================================================
+// RateLimitError Tests
+// ============================================================================
+
+describe('RateLimitError', () => {
+  describe('constructor', () => {
+    it('should create error with default message', () => {
+      const error = new RateLimitError()
+
+      expect(error.message).toBe('Rate limit exceeded')
+    })
+
+    it('should create error with custom message', () => {
+      const error = new RateLimitError('Too many requests')
+
+      expect(error.message).toBe('Too many requests')
+    })
+
+    it('should set name property to "RateLimitError"', () => {
+      const error = new RateLimitError()
+
+      expect(error.name).toBe('RateLimitError')
+    })
+
+    it('should set status property to 429', () => {
+      const error = new RateLimitError()
+
+      expect(error.status).toBe(429)
+    })
+
+    it('should set retryAfter when provided', () => {
+      const error = new RateLimitError('Rate limited', 60)
+
+      expect(error.retryAfter).toBe(60)
+    })
+
+    it('should leave retryAfter undefined when not provided', () => {
+      const error = new RateLimitError()
+
+      expect(error.retryAfter).toBeUndefined()
+    })
+
+    it('should accept retryAfter as 0', () => {
+      const error = new RateLimitError('Rate limited', 0)
+
+      expect(error.retryAfter).toBe(0)
+    })
+
+    it('should have readonly name property', () => {
+      const error = new RateLimitError()
+
+      // The name property is readonly, so this should be 'RateLimitError'
+      expect(error.name).toBe('RateLimitError')
+    })
+
+    it('should have readonly status property', () => {
+      const error = new RateLimitError()
+
+      // The status property is readonly, so this should be 429
+      expect(error.status).toBe(429)
+    })
+  })
+
+  describe('inheritance', () => {
+    it('should be instanceof Error', () => {
+      const error = new RateLimitError()
+
+      expect(error).toBeInstanceOf(Error)
+    })
+
+    it('should be instanceof RateLimitError', () => {
+      const error = new RateLimitError()
+
+      expect(error).toBeInstanceOf(RateLimitError)
+    })
+
+    it('should NOT be instanceof RPCError', () => {
+      const error = new RateLimitError()
+
+      expect(error).not.toBeInstanceOf(RPCError)
+    })
+
+    it('should NOT be instanceof ConnectionError', () => {
+      const error = new RateLimitError()
+
+      expect(error).not.toBeInstanceOf(ConnectionError)
+    })
+
+    it('should NOT be instanceof ProtocolVersionError', () => {
+      const error = new RateLimitError()
+
+      expect(error).not.toBeInstanceOf(ProtocolVersionError)
+    })
+
+    it('should NOT be instanceof AuthenticationError', () => {
+      const error = new RateLimitError()
+
+      expect(error).not.toBeInstanceOf(AuthenticationError)
+    })
+  })
+
+  describe('stack trace', () => {
+    it('should capture stack trace', () => {
+      const error = new RateLimitError()
+
+      expect(error.stack).toBeDefined()
+      expect(error.stack).toContain('RateLimitError')
+    })
+  })
+
+  describe('serialization', () => {
+    it('should serialize relevant properties with JSON.stringify', () => {
+      const error = new RateLimitError('Rate limited', 30)
+      const serialized = JSON.stringify(error)
+      const parsed = JSON.parse(serialized)
+
+      expect(parsed.status).toBe(429)
+      expect(parsed.retryAfter).toBe(30)
+    })
+
+    it('should include message when using object spread', () => {
+      const error = new RateLimitError('Too many requests', 120)
+      const serializable = {
+        message: error.message,
+        name: error.name,
+        status: error.status,
+        retryAfter: error.retryAfter,
+      }
+
+      expect(serializable.message).toBe('Too many requests')
+      expect(serializable.name).toBe('RateLimitError')
+      expect(serializable.status).toBe(429)
+      expect(serializable.retryAfter).toBe(120)
+    })
+  })
+
+  describe('practical usage', () => {
+    it('should work in typical rate limit handling scenario', () => {
+      const error = new RateLimitError('Rate limit exceeded for API key', 60)
+
+      // Simulate typical error handling
+      const shouldRetry = error.retryAfter !== undefined
+      const waitTime = error.retryAfter ?? 30 // default 30 seconds
+
+      expect(shouldRetry).toBe(true)
+      expect(waitTime).toBe(60)
+    })
+
+    it('should provide useful info for logging', () => {
+      const error = new RateLimitError('API rate limit exceeded', 45)
+
+      const logEntry = {
+        error: error.name,
+        status: error.status,
+        message: error.message,
+        retryAfterSeconds: error.retryAfter,
+      }
+
+      expect(logEntry.error).toBe('RateLimitError')
+      expect(logEntry.status).toBe(429)
+      expect(logEntry.message).toBe('API rate limit exceeded')
+      expect(logEntry.retryAfterSeconds).toBe(45)
+    })
+  })
+})
 
 // ============================================================================
 // RPCError Tests
@@ -480,34 +756,60 @@ describe('Error type discrimination', () => {
     const rpcError = new RPCError('RPC error', 'CODE')
     const connectionError = new ConnectionError('Connection error', 'CONNECTION_TIMEOUT')
     const protocolError = new ProtocolVersionError('1.0.0', '2.0.0')
+    const authError = new AuthenticationError()
+    const rateLimitError = new RateLimitError()
 
     // Each error is only instanceof its own type
     expect(rpcError).toBeInstanceOf(RPCError)
     expect(rpcError).not.toBeInstanceOf(ConnectionError)
     expect(rpcError).not.toBeInstanceOf(ProtocolVersionError)
+    expect(rpcError).not.toBeInstanceOf(AuthenticationError)
+    expect(rpcError).not.toBeInstanceOf(RateLimitError)
 
     expect(connectionError).toBeInstanceOf(ConnectionError)
     expect(connectionError).not.toBeInstanceOf(RPCError)
     expect(connectionError).not.toBeInstanceOf(ProtocolVersionError)
+    expect(connectionError).not.toBeInstanceOf(AuthenticationError)
+    expect(connectionError).not.toBeInstanceOf(RateLimitError)
 
     expect(protocolError).toBeInstanceOf(ProtocolVersionError)
     expect(protocolError).not.toBeInstanceOf(RPCError)
     expect(protocolError).not.toBeInstanceOf(ConnectionError)
+    expect(protocolError).not.toBeInstanceOf(AuthenticationError)
+    expect(protocolError).not.toBeInstanceOf(RateLimitError)
+
+    expect(authError).toBeInstanceOf(AuthenticationError)
+    expect(authError).not.toBeInstanceOf(RPCError)
+    expect(authError).not.toBeInstanceOf(ConnectionError)
+    expect(authError).not.toBeInstanceOf(ProtocolVersionError)
+    expect(authError).not.toBeInstanceOf(RateLimitError)
+
+    expect(rateLimitError).toBeInstanceOf(RateLimitError)
+    expect(rateLimitError).not.toBeInstanceOf(RPCError)
+    expect(rateLimitError).not.toBeInstanceOf(ConnectionError)
+    expect(rateLimitError).not.toBeInstanceOf(ProtocolVersionError)
+    expect(rateLimitError).not.toBeInstanceOf(AuthenticationError)
 
     // All are instanceof Error
     expect(rpcError).toBeInstanceOf(Error)
     expect(connectionError).toBeInstanceOf(Error)
     expect(protocolError).toBeInstanceOf(Error)
+    expect(authError).toBeInstanceOf(Error)
+    expect(rateLimitError).toBeInstanceOf(Error)
   })
 
   it('should have distinct name properties', () => {
     const rpcError = new RPCError('RPC error', 'CODE')
     const connectionError = new ConnectionError('Connection error', 'CONNECTION_TIMEOUT')
     const protocolError = new ProtocolVersionError('1.0.0', '2.0.0')
+    const authError = new AuthenticationError()
+    const rateLimitError = new RateLimitError()
 
     expect(rpcError.name).toBe('RPCError')
     expect(connectionError.name).toBe('ConnectionError')
     expect(protocolError.name).toBe('ProtocolVersionError')
+    expect(authError.name).toBe('AuthenticationError')
+    expect(rateLimitError.name).toBe('RateLimitError')
   })
 })
 

@@ -206,6 +206,76 @@ export class ProtocolVersionError extends Error {
 }
 
 /**
+ * Error thrown when authentication fails (HTTP 401)
+ *
+ * Represents an authentication failure, typically when credentials are
+ * missing, invalid, or expired.
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   await rpc.protected.resource()
+ * } catch (error) {
+ *   if (error instanceof AuthenticationError) {
+ *     console.error(`Auth failed: ${error.message}`)
+ *     // Redirect to login or refresh token
+ *   }
+ * }
+ * ```
+ */
+export class AuthenticationError extends Error {
+  readonly name = 'AuthenticationError'
+  readonly status = 401
+
+  constructor(message: string = 'Authentication failed') {
+    super(message)
+
+    // Maintain proper stack trace for where error was thrown (V8 only)
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, AuthenticationError)
+    }
+  }
+}
+
+/**
+ * Error thrown when rate limited (HTTP 429)
+ *
+ * Thrown when the server returns a 429 Too Many Requests response.
+ * The retryAfter property indicates how many seconds to wait before retrying,
+ * if the server provided a Retry-After header.
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   await client.someMethod()
+ * } catch (error) {
+ *   if (error instanceof RateLimitError) {
+ *     if (error.retryAfter) {
+ *       console.log(`Rate limited. Retry after ${error.retryAfter} seconds`)
+ *       await delay(error.retryAfter * 1000)
+ *     }
+ *   }
+ * }
+ * ```
+ */
+export class RateLimitError extends Error {
+  readonly name = 'RateLimitError'
+  readonly status = 429
+
+  constructor(
+    message: string = 'Rate limit exceeded',
+    /** Seconds to wait before retrying (from Retry-After header) */
+    public readonly retryAfter?: number
+  ) {
+    super(message)
+
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, RateLimitError)
+    }
+  }
+}
+
+/**
  * RPC error from server
  *
  * Represents an error returned by the server in response to an RPC call.

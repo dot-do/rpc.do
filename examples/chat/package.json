@@ -1,0 +1,20 @@
+{
+  "name": "rpc-do-chat-example",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Real-time chat example using rpc.do",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "rpc.do": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241205.0",
+    "typescript": "^5.5.2",
+    "wrangler": "^3.0.0"
+  }
+}

@@ -36,6 +36,7 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "bench": "tsx benchmarks/bench.ts",
     "check:publish": "node -e \"const pkg = require('./package.json'); const deps = JSON.stringify(pkg.dependencies || {}); if (deps.includes('workspace:')) { console.error('ERROR: workspace: protocol found in dependencies. Replace with actual versions before publishing.'); process.exit(1); }\"",
     "prepublishOnly": "pnpm check:publish && pnpm build && pnpm test"
   },
@@ -81,9 +82,12 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
     "@types/node": "^24.10.1",
+    "@types/ws": "^8.5.10",
     "esbuild": "^0.27.1",
     "tsup": "^8.0.0",
+    "tsx": "^4.7.0",
     "typescript": "^5.5.2",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "ws": "^8.16.0"
   }
 }

@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Todo App - rpc.do Example</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+    }
+
+    header {
+      background: #4a5568;
+      color: white;
+      padding: 24px;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    header p {
+      font-size: 0.875rem;
+      opacity: 0.8;
+    }
+
+    .add-form {
+      padding: 20px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      gap: 12px;
+    }
+
+    .add-form input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 1rem;
+      transition: border-color 0.2s;
+    }
+
+    .add-form input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .add-form button {
+      padding: 12px 24px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .add-form button:hover {
+      background: #5a67d8;
+    }
+
+    .add-form button:disabled {
+      background: #a0aec0;
+      cursor: not-allowed;
+    }
+
+    .todo-list {
+      list-style: none;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .todo-item {
+      display: flex;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid #e2e8f0;
+      transition: background 0.2s;
+    }
+
+    .todo-item:hover {
+      background: #f7fafc;
+    }
+
+    .todo-item.done .todo-text {
+      text-decoration: line-through;
+      color: #a0aec0;
+    }
+
+    .todo-checkbox {
+      width: 24px;
+      height: 24px;
+      border: 2px solid #e2e8f0;
+      border-radius: 50%;
+      margin-right: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    .todo-checkbox:hover {
+      border-color: #667eea;
+    }
+
+    .todo-item.done .todo-checkbox {
+      background: #48bb78;
+      border-color: #48bb78;
+    }
+
+    .todo-checkbox svg {
+      width: 14px;
+      height: 14px;
+      fill: white;
+      opacity: 0;
+    }
+
+    .todo-item.done .todo-checkbox svg {
+      opacity: 1;
+    }
+
+    .todo-text {
+      flex: 1;
+      font-size: 1rem;
+      color: #2d3748;
+    }
+
+    .todo-delete {
+      padding: 8px;
+      background: none;
+      border: none;
+      color: #e53e3e;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+      border-radius: 4px;
+    }
+
+    .todo-item:hover .todo-delete {
+      opacity: 1;
+    }
+
+    .todo-delete:hover {
+      background: #fed7d7;
+    }
+
+    .todo-delete svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .footer {
+      padding: 16px 20px;
+      background: #f7fafc;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.875rem;
+      color: #718096;
+    }
+
+    .footer button {
+      padding: 8px 16px;
+      background: none;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      color: #718096;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .footer button:hover {
+      border-color: #e53e3e;
+      color: #e53e3e;
+    }
+
+    .empty-state {
+      padding: 60px 20px;
+      text-align: center;
+      color: #a0aec0;
+    }
+
+    .empty-state svg {
+      width: 64px;
+      height: 64px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    .loading {
+      padding: 40px;
+      text-align: center;
+      color: #718096;
+    }
+
+    .error {
+      padding: 16px 20px;
+      background: #fed7d7;
+      color: #c53030;
+      font-size: 0.875rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Todo List</h1>
+      <p>rpc.do Example Application</p>
+    </header>
+
+    <form class="add-form" id="add-form">
+      <input
+        type="text"
+        id="todo-input"
+        placeholder="What needs to be done?"
+        autocomplete="off"
+      />
+      <button type="submit" id="add-btn">Add</button>
+    </form>
+
+    <div id="error-container"></div>
+    <div id="list-container">
+      <div class="loading">Loading...</div>
+    </div>
+
+    <div class="footer" id="footer" style="display: none;">
+      <span id="todo-count">0 items</span>
+      <button id="clear-completed">Clear Completed</button>
+    </div>
+  </div>
+
+  <script type="module">
+    // API URL - defaults to same origin
+    const API_URL = window.location.origin
+
+    // Simple RPC client using fetch
+    async function rpc(method, ...args) {
+      const response = await fetch(`${API_URL}/todos/default`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: method, args }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: response.statusText }))
+        throw new Error(error.error || 'Request failed')
+      }
+
+      return response.json()
+    }
+
+    // DOM elements
+    const form = document.getElementById('add-form')
+    const input = document.getElementById('todo-input')
+    const addBtn = document.getElementById('add-btn')
+    const listContainer = document.getElementById('list-container')
+    const errorContainer = document.getElementById('error-container')
+    const footer = document.getElementById('footer')
+    const todoCount = document.getElementById('todo-count')
+    const clearCompletedBtn = document.getElementById('clear-completed')
+
+    // State
+    let todos = []
+
+    // Render functions
+    function renderTodos() {
+      if (todos.length === 0) {
+        listContainer.innerHTML = `
+          <div class="empty-state">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <p>No todos yet. Add one above!</p>
+          </div>
+        `
+        footer.style.display = 'none'
+        return
+      }
+
+      const completedCount = todos.filter(t => t.done).length
+      const activeCount = todos.length - completedCount
+
+      listContainer.innerHTML = `
+        <ul class="todo-list">
+          ${todos.map(todo => `
+            <li class="todo-item ${todo.done ? 'done' : ''}" data-id="${todo.id}">
+              <div class="todo-checkbox" onclick="window.toggleTodo('${todo.id}', ${!todo.done})">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                </svg>
+              </div>
+              <span class="todo-text">${escapeHtml(todo.text)}</span>
+              <button class="todo-delete" onclick="window.deleteTodo('${todo.id}')" title="Delete">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </li>
+          `).join('')}
+        </ul>
+      `
+
+      footer.style.display = 'flex'
+      todoCount.textContent = `${activeCount} item${activeCount !== 1 ? 's' : ''} left`
+      clearCompletedBtn.style.display = completedCount > 0 ? 'block' : 'none'
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div')
+      div.textContent = text
+      return div.innerHTML
+    }
+
+    function showError(message) {
+      errorContainer.innerHTML = `<div class="error">${escapeHtml(message)}</div>`
+      setTimeout(() => {
+        errorContainer.innerHTML = ''
+      }, 5000)
+    }
+
+    // API functions
+    async function loadTodos() {
+      try {
+        todos = await rpc('list')
+        renderTodos()
+      } catch (error) {
+        showError(`Failed to load todos: ${error.message}`)
+        listContainer.innerHTML = `<div class="empty-state"><p>Failed to load todos</p></div>`
+      }
+    }
+
+    async function addTodo(text) {
+      addBtn.disabled = true
+      try {
+        const todo = await rpc('create', text)
+        todos.unshift(todo)
+        renderTodos()
+        input.value = ''
+      } catch (error) {
+        showError(`Failed to add todo: ${error.message}`)
+      } finally {
+        addBtn.disabled = false
+      }
+    }
+
+    window.toggleTodo = async function(id, done) {
+      try {
+        const updated = await rpc('update', id, done)
+        const index = todos.findIndex(t => t.id === id)
+        if (index !== -1) {
+          todos[index] = updated
+          renderTodos()
+        }
+      } catch (error) {
+        showError(`Failed to update todo: ${error.message}`)
+      }
+    }
+
+    window.deleteTodo = async function(id) {
+      try {
+        await rpc('delete', id)
+        todos = todos.filter(t => t.id !== id)
+        renderTodos()
+      } catch (error) {
+        showError(`Failed to delete todo: ${error.message}`)
+      }
+    }
+
+    async function clearCompleted() {
+      try {
+        await rpc('clearCompleted')
+        todos = todos.filter(t => !t.done)
+        renderTodos()
+      } catch (error) {
+        showError(`Failed to clear completed: ${error.message}`)
+      }
+    }
+
+    // Event listeners
+    form.addEventListener('submit', (e) => {
+      e.preventDefault()
+      const text = input.value.trim()
+      if (text) {
+        addTodo(text)
+      }
+    })
+
+    clearCompletedBtn.addEventListener('click', clearCompleted)
+
+    // Initial load
+    loadTodos()
+  </script>
+</body>
+</html>

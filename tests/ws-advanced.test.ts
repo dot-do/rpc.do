@@ -17,83 +17,7 @@ import {
   PROTOCOL_VERSION,
 } from '../src/transports/ws-advanced'
 import { ConnectionError, ProtocolVersionError, RPCError } from '../src/errors'
-
-// ============================================================================
-// Mock WebSocket
-// ============================================================================
-
-class MockWebSocket {
-  static readonly CONNECTING = 0
-  static readonly OPEN = 1
-  static readonly CLOSING = 2
-  static readonly CLOSED = 3
-
-  readonly url: string
-  readyState: number = MockWebSocket.CONNECTING
-  private listeners: Map<string, Function[]> = new Map()
-
-  sentMessages: string[] = []
-
-  constructor(url: string) {
-    this.url = url
-  }
-
-  addEventListener(type: string, handler: Function) {
-    if (!this.listeners.has(type)) {
-      this.listeners.set(type, [])
-    }
-    this.listeners.get(type)!.push(handler)
-  }
-
-  removeEventListener(type: string, handler: Function) {
-    const handlers = this.listeners.get(type)
-    if (handlers) {
-      const index = handlers.indexOf(handler)
-      if (index !== -1) handlers.splice(index, 1)
-    }
-  }
-
-  send(data: string) {
-    if (this.readyState !== MockWebSocket.OPEN) {
-      throw new Error('WebSocket is not open')
-    }
-    this.sentMessages.push(data)
-  }
-
-  close(code?: number, reason?: string) {
-    if (this.readyState === MockWebSocket.CLOSED) return
-    this.readyState = MockWebSocket.CLOSED
-    const event = { code: code ?? 1000, reason: reason ?? '' }
-    this.triggerEvent('close', event)
-  }
-
-  // Test helpers
-  simulateOpen() {
-    this.readyState = MockWebSocket.OPEN
-    this.triggerEvent('open', undefined)
-  }
-
-  simulateMessage(data: unknown) {
-    this.triggerEvent('message', { data: JSON.stringify(data) })
-  }
-
-  simulateClose(code: number = 1000, reason: string = '') {
-    if (this.readyState === MockWebSocket.CLOSED) return
-    this.readyState = MockWebSocket.CLOSED
-    this.triggerEvent('close', { code, reason })
-  }
-
-  simulateError(error: Event = new Event('error')) {
-    this.triggerEvent('error', error)
-  }
-
-  private triggerEvent(type: string, event: unknown) {
-    const handlers = this.listeners.get(type) || []
-    for (const handler of handlers) {
-      handler(event)
-    }
-  }
-}
+import { MockWebSocket } from './fixtures'
 
 // Store original WebSocket
 let originalWebSocket: typeof WebSocket
@@ -823,7 +747,7 @@ describe('WebSocketAdvancedTransport', () => {
 
       // Directly trigger message event with invalid JSON
       const event = { data: 'not valid json {' }
-      const listeners = (ws as any).listeners.get('message') || []
+      const listeners = ws.getListeners('message')
       for (const handler of listeners) {
         handler(event)
       }

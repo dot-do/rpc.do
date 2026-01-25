@@ -1,0 +1,22 @@
+{
+  "name": "rpc-dashboard-example",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dashboard example demonstrating multi-transport RPC with rpc.do",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "client:example": "npx tsx src/client.ts"
+  },
+  "dependencies": {
+    "@dotdo/rpc": "workspace:*",
+    "rpc.do": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241205.0",
+    "typescript": "^5.5.2",
+    "wrangler": "^3.100.0"
+  }
+}

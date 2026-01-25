@@ -4,6 +4,8 @@
 
 Lightweight transport-agnostic RPC proxy.
 
+**New to rpc.do?** Check out the [Getting Started Guide](docs/GETTING_STARTED.md) for a beginner-friendly introduction.
+
 ## Why rpc.do?
 
 **Ergonomic Proxy-based API** - Call remote procedures with natural JavaScript syntax. No code generation, no schema compilation, just `$.ai.generate({ prompt: 'hello' })`.

@@ -1,0 +1,26 @@
+# Dashboard Example - rpc.do
+# Demonstrates multi-transport RPC with Durable Objects
+
+name = "rpc-dashboard-example"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+# Enable Durable Objects
+[durable_objects]
+bindings = [
+  { name = "STATS", class_name = "Stats" }
+]
+
+# Durable Object migrations
+[[migrations]]
+tag = "v1"
+new_classes = ["Stats"]
+
+# Development settings
+[dev]
+port = 8787
+local_protocol = "http"
+
+# Static assets (optional - for separate static files)
+# [site]
+# bucket = "./public"

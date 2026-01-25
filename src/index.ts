@@ -141,11 +141,86 @@ export function RPC<T = any>(transport: Transport | TransportFactory): RPCProxy<
   return createMethodProxy([]) as RPCProxy<T>
 }
 
+// ============================================================================
+// RPC Client Factory
+// ============================================================================
+
+/**
+ * Options for createRPCClient factory
+ */
+export interface RPCClientOptions {
+  /** Base URL for the RPC endpoint */
+  baseUrl: string
+  /** Custom headers to include (reserved for future use) */
+  headers?: Record<string, string>
+  /** Custom fetch implementation (reserved for future use) */
+  fetch?: typeof globalThis.fetch
+  /** Request timeout in milliseconds */
+  timeout?: number
+  /** Retry configuration (reserved for future use) */
+  retry?: { maxAttempts?: number; backoff?: number }
+  /** Auth token or provider */
+  auth?: string | (() => string | null | Promise<string | null>)
+}
+
+/**
+ * Create an RPC client with simplified options.
+ * Wraps RPC() + http() transport for common use cases.
+ *
+ * @example
+ * // Basic usage
+ * const client = createRPCClient({ baseUrl: 'https://api.example.com/rpc' })
+ * await client.ai.generate({ prompt: 'hello' })
+ *
+ * @example
+ * // With auth token
+ * const client = createRPCClient({
+ *   baseUrl: 'https://api.example.com/rpc',
+ *   auth: 'my-secret-token'
+ * })
+ *
+ * @example
+ * // With auth provider function
+ * const client = createRPCClient({
+ *   baseUrl: 'https://api.example.com/rpc',
+ *   auth: () => localStorage.getItem('token')
+ * })
+ *
+ * @example
+ * // Typed client
+ * interface MyAPI {
+ *   ai: { generate: (p: { prompt: string }) => { text: string } }
+ * }
+ * const client = createRPCClient<MyAPI>({ baseUrl: 'https://api.example.com/rpc' })
+ * const result = await client.ai.generate({ prompt: 'hello' }) // typed!
+ */
+export function createRPCClient<T = unknown>(options: RPCClientOptions): RPCProxy<T> {
+  const { baseUrl, auth, timeout } = options
+
+  // Build http transport options
+  const transportOptions: { auth?: string | (() => string | null | Promise<string | null>); timeout?: number } = {}
+
+  if (auth !== undefined) {
+    transportOptions.auth = auth
+  }
+
+  if (timeout !== undefined) {
+    transportOptions.timeout = timeout
+  }
+
+  // Create transport - use options object if we have any options, otherwise just baseUrl
+  const transport = Object.keys(transportOptions).length > 0
+    ? http(baseUrl, transportOptions)
+    : http(baseUrl)
+
+  return RPC<T>(transport)
+}
+
 // Re-export transports (browser-safe)
 export * from './transports'
 
 // Explicit type re-exports for better discoverability
-export type { AuthProvider } from './transports'
+export type { AuthProvider, ServerMessage } from './transports'
 export { isFunction, isServerMessage } from './transports'
 
 // Note: auth() is available via 'rpc.do/auth' for server-side usage

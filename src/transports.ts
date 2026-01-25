@@ -17,10 +17,25 @@ export function isFunction(value: unknown): value is (...args: unknown[]) => unk
 }
 
 /**
+ * Server message type - discriminated union for result vs error responses
+ * This allows TypeScript to narrow types based on presence of result vs error
+ */
+export type ServerMessage =
+  | { id?: number; result: unknown; error?: undefined }
+  | { id?: number; result?: undefined; error: { message: string; code?: string; data?: unknown } }
+
+/**
  * Type guard for WebSocket server messages
  */
-export function isServerMessage(data: unknown): data is { id?: number; result?: unknown; error?: unknown } {
-  return typeof data === 'object' && data !== null
+export function isServerMessage(data: unknown): data is ServerMessage {
+  if (typeof data !== 'object' || data === null) {
+    return false
+  }
+  const msg = data as Record<string, unknown>
+  // Must have either result or error (but not both as valid data)
+  const hasResult = 'result' in msg
+  const hasError = 'error' in msg && typeof msg.error === 'object' && msg.error !== null
+  return hasResult || hasError
 }
 
 /**
@@ -254,14 +269,18 @@ export function ws(url: string, authOrOptions?: string | AuthProvider | WsTransp
             if (!isServerMessage(data)) {
               throw new Error('Invalid server message format')
             }
-            const { id, result, error } = data
+            const { id } = data
             if (id === undefined) return
             const handler = pending.get(id)
             if (handler) {
               clearPendingTimeout(id)
               pending.delete(id)
-              if (error) handler.reject(new RPCError(String(error), 'RPC_ERROR'))
-              else handler.resolve(result)
+              // Discriminated union: if error is defined, result is undefined and vice versa
+              if (data.error !== undefined) {
+                handler.reject(new RPCError(data.error.message, data.error.code ?? 'RPC_ERROR', data.error.data))
+              } else {
+                handler.resolve(data.result)
+              }
             }
           } catch (parseError) {
             // Log the parse error for debugging

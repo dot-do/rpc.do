@@ -11,116 +11,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ws } from '../src/transports'
 import { RPCError } from '../src/errors'
+import {
+  MockWebSocket,
+  installMockWebSocket,
+  restoreMockWebSocket,
+  type MockWebSocketGlobal,
+} from './fixtures'
 
-// ============================================================================
-// Mock WebSocket
-// ============================================================================
+// Store mock state
+let mockState: MockWebSocketGlobal
 
-class MockWebSocket {
-  static readonly CONNECTING = 0
-  static readonly OPEN = 1
-  static readonly CLOSING = 2
-  static readonly CLOSED = 3
-
-  readonly url: string
-  readyState: number = MockWebSocket.CONNECTING
-  private listeners: Map<string, Function[]> = new Map()
-
-  sentMessages: string[] = []
-
-  constructor(url: string) {
-    this.url = url
-  }
-
-  addEventListener(type: string, handler: Function) {
-    if (!this.listeners.has(type)) {
-      this.listeners.set(type, [])
-    }
-    this.listeners.get(type)!.push(handler)
-  }
-
-  removeEventListener(type: string, handler: Function) {
-    const handlers = this.listeners.get(type)
-    if (handlers) {
-      const index = handlers.indexOf(handler)
-      if (index !== -1) handlers.splice(index, 1)
-    }
-  }
-
-  send(data: string) {
-    if (this.readyState !== MockWebSocket.OPEN) {
-      throw new Error('WebSocket is not open')
-    }
-    this.sentMessages.push(data)
-  }
-
-  close(code?: number, reason?: string) {
-    if (this.readyState === MockWebSocket.CLOSED) return
-    this.readyState = MockWebSocket.CLOSED
-    const event = { code: code ?? 1000, reason: reason ?? '' }
-    this.triggerEvent('close', event)
-  }
-
-  dispatchEvent(event: Event) {
-    const handlers = this.listeners.get(event.type) || []
-    for (const handler of handlers) {
-      handler(event)
-    }
-    return true
-  }
-
-  // Test helpers
-  simulateOpen() {
-    this.readyState = MockWebSocket.OPEN
-    this.triggerEvent('open', undefined)
-  }
-
-  simulateMessage(data: unknown) {
-    this.triggerEvent('message', { data: JSON.stringify(data) })
-  }
-
-  simulateRawMessage(data: string) {
-    this.triggerEvent('message', { data })
-  }
-
-  simulateClose(code: number = 1000, reason: string = '') {
-    if (this.readyState === MockWebSocket.CLOSED) return
-    this.readyState = MockWebSocket.CLOSED
-    this.triggerEvent('close', { code, reason })
-  }
-
-  simulateError(error: Event = new Event('error')) {
-    this.triggerEvent('error', error)
-  }
-
-  private triggerEvent(type: string, event: unknown) {
-    const handlers = this.listeners.get(type) || []
-    for (const handler of handlers) {
-      handler(event)
-    }
-  }
-}
-
-// Store created WebSocket instances for test access
-let lastCreatedWebSocket: MockWebSocket | null = null
-
-// Store original WebSocket
-let originalWebSocket: typeof WebSocket
+// Convenience accessor for last created WebSocket
+const getLastWebSocket = () => mockState.lastCreatedWebSocket
 
 beforeEach(() => {
-  originalWebSocket = globalThis.WebSocket
-  ;(globalThis as any).WebSocket = class extends MockWebSocket {
-    constructor(url: string) {
-      super(url)
-      lastCreatedWebSocket = this
-    }
-  }
-  lastCreatedWebSocket = null
+  mockState = installMockWebSocket()
 })
 
 afterEach(() => {
-  globalThis.WebSocket = originalWebSocket
-  lastCreatedWebSocket = null
+  restoreMockWebSocket(mockState)
 })
 
 // ============================================================================
@@ -136,15 +45,15 @@ describe('ws() Transport - Connection', () => {
     // Wait for WebSocket to be created
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(lastCreatedWebSocket).not.toBeNull()
-    expect(lastCreatedWebSocket!.url).toBe('wss://test.example.com/rpc')
+    expect(getLastWebSocket()).not.toBeNull()
+    expect(getLastWebSocket()!.url).toBe('wss://test.example.com/rpc')
 
     // Simulate connection and response
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'ok' })
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({ id: sentMessage.id, result: 'ok' })
 
     await callPromise
   })
@@ -156,14 +65,14 @@ describe('ws() Transport - Connection', () => {
 
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(lastCreatedWebSocket).not.toBeNull()
-    expect(lastCreatedWebSocket!.url).toBe('ws://localhost:8080/rpc')
+    expect(getLastWebSocket()).not.toBeNull()
+    expect(getLastWebSocket()!.url).toBe('ws://localhost:8080/rpc')
 
     // Complete the call
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'ok' })
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({ id: sentMessage.id, result: 'ok' })
 
     await callPromise
   })
@@ -175,14 +84,14 @@ describe('ws() Transport - Connection', () => {
 
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(lastCreatedWebSocket).not.toBeNull()
-    expect(lastCreatedWebSocket!.url).toBe('wss://secure.example.com/rpc')
+    expect(getLastWebSocket()).not.toBeNull()
+    expect(getLastWebSocket()!.url).toBe('wss://secure.example.com/rpc')
 
     // Complete the call
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'ok' })
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({ id: sentMessage.id, result: 'ok' })
 
     await callPromise
   })
@@ -196,8 +105,8 @@ describe('ws() Transport - Connection', () => {
 
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(lastCreatedWebSocket).not.toBeNull()
-    const url = new URL(lastCreatedWebSocket!.url)
+    expect(getLastWebSocket()).not.toBeNull()
+    const url = new URL(getLastWebSocket()!.url)
     expect(url.searchParams.get('token')).toBe('my-secret-token')
 
     // Should warn about security
@@ -206,10 +115,10 @@ describe('ws() Transport - Connection', () => {
     )
 
     // Complete the call
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'ok' })
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({ id: sentMessage.id, result: 'ok' })
 
     await callPromise
 
@@ -227,15 +136,15 @@ describe('ws() Transport - Connection', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
 
     expect(tokenProvider).toHaveBeenCalled()
-    expect(lastCreatedWebSocket).not.toBeNull()
-    const url = new URL(lastCreatedWebSocket!.url)
+    expect(getLastWebSocket()).not.toBeNull()
+    const url = new URL(getLastWebSocket()!.url)
     expect(url.searchParams.get('token')).toBe('dynamic-token')
 
     // Complete the call
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'ok' })
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({ id: sentMessage.id, result: 'ok' })
 
     await callPromise
 
@@ -253,15 +162,15 @@ describe('ws() Transport - Connection', () => {
     await new Promise(resolve => setTimeout(resolve, 10))
 
     expect(asyncTokenProvider).toHaveBeenCalled()
-    expect(lastCreatedWebSocket).not.toBeNull()
-    const url = new URL(lastCreatedWebSocket!.url)
+    expect(getLastWebSocket()).not.toBeNull()
+    const url = new URL(getLastWebSocket()!.url)
     expect(url.searchParams.get('token')).toBe('async-token')
 
     // Complete the call
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'ok' })
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({ id: sentMessage.id, result: 'ok' })
 
     await callPromise
 
@@ -276,15 +185,15 @@ describe('ws() Transport - Connection', () => {
 
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(lastCreatedWebSocket).not.toBeNull()
-    const url = new URL(lastCreatedWebSocket!.url)
+    expect(getLastWebSocket()).not.toBeNull()
+    const url = new URL(getLastWebSocket()!.url)
     expect(url.searchParams.has('token')).toBe(false)
 
     // Complete the call
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'ok' })
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({ id: sentMessage.id, result: 'ok' })
 
     await callPromise
   })
@@ -296,7 +205,7 @@ describe('ws() Transport - Connection', () => {
     const call1Promise = transport.call('method1', [])
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    const firstSocket = lastCreatedWebSocket
+    const firstSocket = getLastWebSocket()
     firstSocket!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
@@ -308,7 +217,7 @@ describe('ws() Transport - Connection', () => {
     const call2Promise = transport.call('method2', [])
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(lastCreatedWebSocket).toBe(firstSocket)
+    expect(getLastWebSocket()).toBe(firstSocket)
     expect(firstSocket!.sentMessages.length).toBe(2)
 
     const msg2 = JSON.parse(firstSocket!.sentMessages[1])
@@ -330,11 +239,11 @@ describe('ws() Transport - Message Handling', () => {
     const callPromise = transport.call('users.find', [{ id: '123' }, { fields: ['name', 'email'] }])
 
     await new Promise(resolve => setTimeout(resolve, 0))
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(lastCreatedWebSocket!.sentMessages.length).toBe(1)
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
+    expect(getLastWebSocket()!.sentMessages.length).toBe(1)
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
 
     expect(sentMessage).toMatchObject({
       method: 'do',
@@ -344,7 +253,7 @@ describe('ws() Transport - Message Handling', () => {
     expect(typeof sentMessage.id).toBe('number')
 
     // Complete the call
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: { name: 'Test' } })
+    getLastWebSocket()!.simulateMessage({ id: sentMessage.id, result: { name: 'Test' } })
     await callPromise
   })
 
@@ -357,18 +266,18 @@ describe('ws() Transport - Message Handling', () => {
     const call3Promise = transport.call('method3', [])
 
     await new Promise(resolve => setTimeout(resolve, 0))
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
     // Extract message IDs
-    const msg1 = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    const msg2 = JSON.parse(lastCreatedWebSocket!.sentMessages[1])
-    const msg3 = JSON.parse(lastCreatedWebSocket!.sentMessages[2])
+    const msg1 = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    const msg2 = JSON.parse(getLastWebSocket()!.sentMessages[1])
+    const msg3 = JSON.parse(getLastWebSocket()!.sentMessages[2])
 
     // Respond out of order
-    lastCreatedWebSocket!.simulateMessage({ id: msg3.id, result: 'result3' })
-    lastCreatedWebSocket!.simulateMessage({ id: msg1.id, result: 'result1' })
-    lastCreatedWebSocket!.simulateMessage({ id: msg2.id, result: 'result2' })
+    getLastWebSocket()!.simulateMessage({ id: msg3.id, result: 'result3' })
+    getLastWebSocket()!.simulateMessage({ id: msg1.id, result: 'result1' })
+    getLastWebSocket()!.simulateMessage({ id: msg2.id, result: 'result2' })
 
     // Each promise should resolve with the correct result
     const [result1, result2, result3] = await Promise.all([call1Promise, call2Promise, call3Promise])
@@ -384,11 +293,11 @@ describe('ws() Transport - Message Handling', () => {
     const callPromise = transport.call('test.method', ['arg1'])
 
     await new Promise(resolve => setTimeout(resolve, 0))
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({
       id: sentMessage.id,
       result: { success: true, data: [1, 2, 3] }
     })
@@ -404,13 +313,13 @@ describe('ws() Transport - Message Handling', () => {
     const callPromise = transport.call('test.method', [])
 
     await new Promise(resolve => setTimeout(resolve, 0))
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({
       id: sentMessage.id,
-      error: 'Method not found'
+      error: { message: 'Method not found', code: 'METHOD_NOT_FOUND' }
     })
 
     await expect(callPromise).rejects.toThrow(RPCError)
@@ -423,17 +332,17 @@ describe('ws() Transport - Message Handling', () => {
     const callPromise = transport.call('test.method', [])
 
     await new Promise(resolve => setTimeout(resolve, 0))
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
 
     // Send a response with an unknown id (should be ignored)
-    lastCreatedWebSocket!.simulateMessage({ id: 99999, result: 'unknown' })
+    getLastWebSocket()!.simulateMessage({ id: 99999, result: 'unknown' })
 
     // Original call should still be pending
     // Now send the correct response
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'correct' })
+    getLastWebSocket()!.simulateMessage({ id: sentMessage.id, result: 'correct' })
 
     const result = await callPromise
     expect(result).toBe('correct')
@@ -453,17 +362,17 @@ describe('ws() Transport - Error Handling', () => {
     const callPromise = transport.call('test.method', [])
 
     await new Promise(resolve => setTimeout(resolve, 0))
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
     // Track rpc-error events
     let rpcErrorEvent: CustomEvent | null = null
-    lastCreatedWebSocket!.addEventListener('rpc-error', (e: any) => {
+    getLastWebSocket()!.addEventListener('rpc-error', (e: any) => {
       rpcErrorEvent = e
     })
 
     // Send invalid JSON
-    lastCreatedWebSocket!.simulateRawMessage('this is not valid json {{{')
+    getLastWebSocket()!.simulateRawMessage('this is not valid json {{{')
 
     // Should log the error
     expect(errorSpy).toHaveBeenCalledWith(
@@ -496,17 +405,17 @@ describe('ws() Transport - Error Handling', () => {
     const callPromise = transport.call('test.method', [])
 
     await new Promise(resolve => setTimeout(resolve, 0))
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
     let rpcErrorEvent: CustomEvent | null = null
-    lastCreatedWebSocket!.addEventListener('rpc-error', (e: any) => {
+    getLastWebSocket()!.addEventListener('rpc-error', (e: any) => {
       rpcErrorEvent = e
     })
 
     // Send long invalid message
     const longMessage = 'x'.repeat(300)
-    lastCreatedWebSocket!.simulateRawMessage(longMessage)
+    getLastWebSocket()!.simulateRawMessage(longMessage)
 
     expect(rpcErrorEvent).not.toBeNull()
     // Should truncate to 200 chars
@@ -527,11 +436,11 @@ describe('ws() Transport - Error Handling', () => {
     const call2Promise = transport.call('method2', [])
 
     await new Promise(resolve => setTimeout(resolve, 0))
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
     // Close the connection unexpectedly
-    lastCreatedWebSocket!.simulateClose(1006, 'Abnormal closure')
+    getLastWebSocket()!.simulateClose(1006, 'Abnormal closure')
 
     // All pending promises should reject
     await expect(call1Promise).rejects.toThrow(RPCError)
@@ -547,10 +456,10 @@ describe('ws() Transport - Error Handling', () => {
     const callPromise = transport.call('test.method', [])
 
     await new Promise(resolve => setTimeout(resolve, 0))
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    lastCreatedWebSocket!.simulateClose()
+    getLastWebSocket()!.simulateClose()
 
     try {
       await callPromise
@@ -569,7 +478,7 @@ describe('ws() Transport - Error Handling', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
 
     // Simulate error before connection is established
-    lastCreatedWebSocket!.simulateError(new Event('error'))
+    getLastWebSocket()!.simulateError(new Event('error'))
 
     await expect(callPromise).rejects.toBeTruthy()
   })
@@ -586,19 +495,19 @@ describe('ws() Transport - Close', () => {
     // Establish connection
     const callPromise = transport.call('test.method', [])
     await new Promise(resolve => setTimeout(resolve, 0))
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'ok' })
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({ id: sentMessage.id, result: 'ok' })
     await callPromise
 
     // Now close
-    expect(lastCreatedWebSocket!.readyState).toBe(MockWebSocket.OPEN)
+    expect(getLastWebSocket()!.readyState).toBe(MockWebSocket.OPEN)
 
     transport.close!()
 
-    expect(lastCreatedWebSocket!.readyState).toBe(MockWebSocket.CLOSED)
+    expect(getLastWebSocket()!.readyState).toBe(MockWebSocket.CLOSED)
   })
 
   it('should handle close() when not connected', () => {
@@ -614,11 +523,11 @@ describe('ws() Transport - Close', () => {
     // Establish connection
     const callPromise = transport.call('test.method', [])
     await new Promise(resolve => setTimeout(resolve, 0))
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'ok' })
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({ id: sentMessage.id, result: 'ok' })
     await callPromise
 
     // Close multiple times should not throw
@@ -634,7 +543,7 @@ describe('ws() Transport - Close', () => {
     const call1Promise = transport.call('method1', [])
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    const firstSocket = lastCreatedWebSocket
+    const firstSocket = getLastWebSocket()
     firstSocket!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
@@ -649,13 +558,13 @@ describe('ws() Transport - Close', () => {
     const call2Promise = transport.call('method2', [])
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(lastCreatedWebSocket).not.toBe(firstSocket)
+    expect(getLastWebSocket()).not.toBe(firstSocket)
 
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    const msg2 = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: msg2.id, result: 'result2' })
+    const msg2 = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({ id: msg2.id, result: 'result2' })
 
     const result2 = await call2Promise
     expect(result2).toBe('result2')

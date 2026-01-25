@@ -1,0 +1,121 @@
+{
+  "timestamp": "2026-01-25T07:33:59.676Z",
+  "nodeVersion": "v22.21.1",
+  "platform": "darwin arm64",
+  "latency": {
+    "rpcHttp": {
+      "p50": 0.24266599999998562,
+      "p95": 0.46033400000001734,
+      "p99": 0.9594169999999735,
+      "min": 0.21170799999998735,
+      "max": 1.0698340000000144,
+      "mean": 0.2847191999999993,
+      "samples": 100
+    },
+    "plainFetch": {
+      "p50": 0.1862910000000113,
+      "p95": 0.2933749999999975,
+      "p99": 0.3521250000000009,
+      "min": 0.1642079999999737,
+      "max": 0.7847920000000101,
+      "mean": 0.20332116999999983,
+      "samples": 100
+    },
+    "rpcWs": {
+      "p50": 0.042374999999992724,
+      "p95": 0.10787500000003547,
+      "p99": 0.1452499999999759,
+      "min": 0.036207999999987805,
+      "max": 0.6425420000000486,
+      "mean": 0.058047530000001756,
+      "samples": 100
+    },
+    "rawWs": {
+      "p50": 0.03558299999997416,
+      "p95": 0.06112500000000409,
+      "p99": 0.08633300000002464,
+      "min": 0.03029199999997445,
+      "max": 0.10220799999996188,
+      "mean": 0.04000739999999723,
+      "samples": 100
+    }
+  },
+  "throughput": {
+    "httpNoAuth": {
+      "requestsPerSecond": 11922.863056146462,
+      "duration": 2000.442334,
+      "totalRequests": 23851
+    },
+    "httpWithAuth": {
+      "requestsPerSecond": 13991.076633598448,
+      "duration": 2000.3464159999999,
+      "totalRequests": 27987
+    },
+    "wsNoAuth": {
+      "requestsPerSecond": 93591.4490148233,
+      "duration": 2000.0224589999998,
+      "totalRequests": 187185
+    },
+    "wsWithAuth": {
+      "requestsPerSecond": 95610.23138560959,
+      "duration": 2000.0892919999997,
+      "totalRequests": 191229
+    }
+  },
+  "bundleSize": [
+    {
+      "name": "rpc.do core (index.js)",
+      "sizeBytes": 1917,
+      "sizeKB": "1.87",
+      "gzipBytes": 718,
+      "gzipKB": "0.70"
+    },
+    {
+      "name": "rpc.do transports",
+      "sizeBytes": 243,
+      "sizeKB": "0.24",
+      "gzipBytes": 158,
+      "gzipKB": "0.15"
+    },
+    {
+      "name": "rpc.do auth",
+      "sizeBytes": 2856,
+      "sizeKB": "2.79",
+      "gzipBytes": 855,
+      "gzipKB": "0.83"
+    },
+    {
+      "name": "rpc.do errors",
+      "sizeBytes": 241,
+      "sizeKB": "0.24",
+      "gzipBytes": 137,
+      "gzipKB": "0.13"
+    },
+    {
+      "name": "rpc.do combined (core + transports + errors)",
+      "sizeBytes": 2401,
+      "sizeKB": "2.34"
+    },
+    {
+      "name": "tRPC client (for comparison, approx)",
+      "sizeBytes": 15000,
+      "sizeKB": "~14.6"
+    },
+    {
+      "name": "Plain fetch wrapper (minimal)",
+      "sizeBytes": 500,
+      "sizeKB": "~0.5"
+    }
+  ],
+  "memory": {
+    "baselineHeapMB": 32.890174865722656,
+    "afterConnectionsHeapMB": 41.55860900878906,
+    "perConnectionKB": 88.764765625,
+    "afterRequestsHeapMB": 41.727867126464844,
+    "perPendingRequestKB": 1.733203125
+  },
+  "startup": {
+    "transportInitMs": 1.8063750000001164,
+    "firstCallMs": 3.731166999999914
+  }
+}

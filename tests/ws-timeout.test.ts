@@ -7,112 +7,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ws } from '../src/transports'
 import { ConnectionError, RPCError } from '../src/errors'
+import {
+  installMockWebSocket,
+  restoreMockWebSocket,
+  type MockWebSocketGlobal,
+} from './fixtures'
 
-// ============================================================================
-// Mock WebSocket
-// ============================================================================
+// Store mock state
+let mockState: MockWebSocketGlobal
 
-class MockWebSocket {
-  static readonly CONNECTING = 0
-  static readonly OPEN = 1
-  static readonly CLOSING = 2
-  static readonly CLOSED = 3
-
-  readonly url: string
-  readyState: number = MockWebSocket.CONNECTING
-  private listeners: Map<string, Function[]> = new Map()
-
-  sentMessages: string[] = []
-
-  constructor(url: string) {
-    this.url = url
-  }
-
-  addEventListener(type: string, handler: Function) {
-    if (!this.listeners.has(type)) {
-      this.listeners.set(type, [])
-    }
-    this.listeners.get(type)!.push(handler)
-  }
-
-  removeEventListener(type: string, handler: Function) {
-    const handlers = this.listeners.get(type)
-    if (handlers) {
-      const index = handlers.indexOf(handler)
-      if (index !== -1) handlers.splice(index, 1)
-    }
-  }
-
-  send(data: string) {
-    if (this.readyState !== MockWebSocket.OPEN) {
-      throw new Error('WebSocket is not open')
-    }
-    this.sentMessages.push(data)
-  }
-
-  close(code?: number, reason?: string) {
-    if (this.readyState === MockWebSocket.CLOSED) return
-    this.readyState = MockWebSocket.CLOSED
-    const event = { code: code ?? 1000, reason: reason ?? '' }
-    this.triggerEvent('close', event)
-  }
-
-  dispatchEvent(event: Event) {
-    const handlers = this.listeners.get(event.type) || []
-    for (const handler of handlers) {
-      handler(event)
-    }
-    return true
-  }
-
-  // Test helpers
-  simulateOpen() {
-    this.readyState = MockWebSocket.OPEN
-    this.triggerEvent('open', undefined)
-  }
-
-  simulateMessage(data: unknown) {
-    this.triggerEvent('message', { data: JSON.stringify(data) })
-  }
-
-  simulateClose(code: number = 1000, reason: string = '') {
-    if (this.readyState === MockWebSocket.CLOSED) return
-    this.readyState = MockWebSocket.CLOSED
-    this.triggerEvent('close', { code, reason })
-  }
-
-  simulateError(error: Event = new Event('error')) {
-    this.triggerEvent('error', error)
-  }
-
-  private triggerEvent(type: string, event: unknown) {
-    const handlers = this.listeners.get(type) || []
-    for (const handler of handlers) {
-      handler(event)
-    }
-  }
-}
-
-// Store created WebSocket instances for test access
-let lastCreatedWebSocket: MockWebSocket | null = null
-
-// Store original WebSocket
-let originalWebSocket: typeof WebSocket
+// Convenience accessor for last created WebSocket
+const getLastWebSocket = () => mockState.lastCreatedWebSocket
 
 beforeEach(() => {
-  originalWebSocket = globalThis.WebSocket
-  ;(globalThis as any).WebSocket = class extends MockWebSocket {
-    constructor(url: string) {
-      super(url)
-      lastCreatedWebSocket = this
-    }
-  }
-  lastCreatedWebSocket = null
+  mockState = installMockWebSocket()
 })
 
 afterEach(() => {
-  globalThis.WebSocket = originalWebSocket
-  lastCreatedWebSocket = null
+  restoreMockWebSocket(mockState)
   vi.useRealTimers()
 })
 
@@ -127,14 +39,14 @@ describe('ws() Transport - Timeout', () => {
     const callPromise = transport.call('test.method', ['arg1'])
 
     await new Promise(resolve => setTimeout(resolve, 0))
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
     // Get the message ID from the sent message
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
 
     // Respond before timeout
-    lastCreatedWebSocket!.simulateMessage({
+    getLastWebSocket()!.simulateMessage({
       id: sentMessage.id,
       result: { success: true }
     })
@@ -155,7 +67,7 @@ describe('ws() Transport - Timeout', () => {
 
     // Simulate connection
     await vi.advanceTimersByTimeAsync(0)
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await vi.advanceTimersByTimeAsync(0)
 
     // Advance time past timeout without sending response
@@ -174,13 +86,13 @@ describe('ws() Transport - Timeout', () => {
     const callPromise = transport.call('test.method', [])
 
     await new Promise(resolve => setTimeout(resolve, 0))
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
 
     // Respond after some delay (would timeout if timeout was set)
-    lastCreatedWebSocket!.simulateMessage({
+    getLastWebSocket()!.simulateMessage({
       id: sentMessage.id,
       result: 'delayed-result'
     })
@@ -199,14 +111,14 @@ describe('ws() Transport - Timeout', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
 
     // Verify token in URL
-    const url = new URL(lastCreatedWebSocket!.url)
+    const url = new URL(getLastWebSocket()!.url)
     expect(url.searchParams.get('token')).toBe('my-token')
 
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'ok' })
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({ id: sentMessage.id, result: 'ok' })
 
     await callPromise
 
@@ -226,14 +138,14 @@ describe('ws() Transport - Timeout', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
 
     // Verify token in URL
-    const url = new URL(lastCreatedWebSocket!.url)
+    const url = new URL(getLastWebSocket()!.url)
     expect(url.searchParams.get('token')).toBe('my-token')
 
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'ok' })
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({ id: sentMessage.id, result: 'ok' })
 
     await callPromise
 
@@ -249,13 +161,13 @@ describe('ws() Transport - Timeout', () => {
     const callPromise = transport.call('test.method', [])
 
     await vi.advanceTimersByTimeAsync(0)
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await vi.advanceTimersByTimeAsync(0)
 
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
 
     // Respond before timeout
-    lastCreatedWebSocket!.simulateMessage({
+    getLastWebSocket()!.simulateMessage({
       id: sentMessage.id,
       result: 'success'
     })
@@ -282,22 +194,22 @@ describe('ws() Transport - Timeout', () => {
     call3Promise.catch(() => {})
 
     await vi.advanceTimersByTimeAsync(0)
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await vi.advanceTimersByTimeAsync(0)
 
     // Get message IDs
-    const msg1 = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    const msg2 = JSON.parse(lastCreatedWebSocket!.sentMessages[1])
-    const msg3 = JSON.parse(lastCreatedWebSocket!.sentMessages[2])
+    const msg1 = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    const msg2 = JSON.parse(getLastWebSocket()!.sentMessages[1])
+    const msg3 = JSON.parse(getLastWebSocket()!.sentMessages[2])
 
     // Respond to first request immediately
-    lastCreatedWebSocket!.simulateMessage({ id: msg1.id, result: 'result1' })
+    getLastWebSocket()!.simulateMessage({ id: msg1.id, result: 'result1' })
 
     // Advance time - but not past timeout
     await vi.advanceTimersByTimeAsync(1000)
 
     // Respond to second request
-    lastCreatedWebSocket!.simulateMessage({ id: msg2.id, result: 'result2' })
+    getLastWebSocket()!.simulateMessage({ id: msg2.id, result: 'result2' })
 
     // Advance past timeout for third request
     await vi.advanceTimersByTimeAsync(1500)
@@ -323,11 +235,11 @@ describe('ws() Transport - Timeout', () => {
     callPromise.catch(() => {})
 
     await vi.advanceTimersByTimeAsync(0)
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await vi.advanceTimersByTimeAsync(0)
 
     // Close connection before timeout
-    lastCreatedWebSocket!.simulateClose(1006, 'Connection lost')
+    getLastWebSocket()!.simulateClose(1006, 'Connection lost')
 
     // Request should reject with connection closed error
     await expect(callPromise).rejects.toThrow(RPCError)
@@ -350,7 +262,7 @@ describe('ws() Transport - Timeout', () => {
     callPromise.catch(() => {})
 
     await vi.advanceTimersByTimeAsync(0)
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await vi.advanceTimersByTimeAsync(0)
 
     // Close transport explicitly
@@ -370,16 +282,16 @@ describe('ws() Transport - Timeout', () => {
     const callPromise = transport.call('test.method', [])
 
     await vi.advanceTimersByTimeAsync(0)
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await vi.advanceTimersByTimeAsync(0)
 
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
 
     // Advance time significantly - should not timeout
     await vi.advanceTimersByTimeAsync(100000)
 
     // Now respond
-    lastCreatedWebSocket!.simulateMessage({
+    getLastWebSocket()!.simulateMessage({
       id: sentMessage.id,
       result: 'delayed-result'
     })
@@ -396,16 +308,16 @@ describe('ws() Transport - Timeout', () => {
     const callPromise = transport.call('test.method', [])
 
     await vi.advanceTimersByTimeAsync(0)
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await vi.advanceTimersByTimeAsync(0)
 
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
 
     // Advance time significantly - should not timeout
     await vi.advanceTimersByTimeAsync(100000)
 
     // Now respond
-    lastCreatedWebSocket!.simulateMessage({
+    getLastWebSocket()!.simulateMessage({
       id: sentMessage.id,
       result: 'delayed-result'
     })
@@ -425,7 +337,7 @@ describe('ws() Transport - Timeout', () => {
     callPromise.catch(() => {})
 
     await vi.advanceTimersByTimeAsync(0)
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await vi.advanceTimersByTimeAsync(0)
 
     // Advance past timeout
@@ -454,10 +366,10 @@ describe('ws() Transport - Timeout', () => {
     callPromise.catch(() => {})
 
     await vi.advanceTimersByTimeAsync(0)
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await vi.advanceTimersByTimeAsync(0)
 
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
 
     // Advance past timeout
     await vi.advanceTimersByTimeAsync(1001)
@@ -467,7 +379,7 @@ describe('ws() Transport - Timeout', () => {
 
     // Now if a late response arrives, it should be ignored (no double rejection)
     // This should not throw or cause issues
-    lastCreatedWebSocket!.simulateMessage({
+    getLastWebSocket()!.simulateMessage({
       id: sentMessage.id,
       result: 'late-response'
     })
@@ -491,14 +403,14 @@ describe('ws() Transport - Timeout', () => {
 
     expect(asyncAuthProvider).toHaveBeenCalled()
 
-    const url = new URL(lastCreatedWebSocket!.url)
+    const url = new URL(getLastWebSocket()!.url)
     expect(url.searchParams.get('token')).toBe('async-token')
 
-    lastCreatedWebSocket!.simulateOpen()
+    getLastWebSocket()!.simulateOpen()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    const sentMessage = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: sentMessage.id, result: 'ok' })
+    const sentMessage = JSON.parse(getLastWebSocket()!.sentMessages[0])
+    getLastWebSocket()!.simulateMessage({ id: sentMessage.id, result: 'ok' })
 
     await callPromise
 
