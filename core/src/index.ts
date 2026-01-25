@@ -4,7 +4,7 @@
  * Wraps capnweb with Cloudflare DO-specific features:
  * - $ context (sql, storage, state)
  * - WebSocket hibernation
- * - Worker → DO routing
+ * - Worker -> DO routing
  * - Auth middleware
  *
  * @example
@@ -24,6 +24,23 @@
  * }
  * ```
  */
+
+import {
+  RpcSession,
+  RpcTarget,
+  newHttpBatchRpcResponse,
+  type RpcTransport,
+  type RpcSessionOptions,
+} from 'capnweb'
+
+import {
+  HibernatableWebSocketTransport,
+  TransportRegistry,
+} from './transports/hibernatable-ws.js'
+
+// Re-export capnweb types for convenience
+export { RpcTarget, RpcSession, type RpcTransport, type RpcSessionOptions }
+export { HibernatableWebSocketTransport, TransportRegistry }
 
 // ============================================================================
 // Cloudflare DO Base (declared for type safety without runtime import)
@@ -62,6 +79,91 @@ export interface RpcContext {
 }
 
 // ============================================================================
+// RPC Interface Wrapper
+// ============================================================================
+
+/**
+ * Wraps the DurableRPC instance as an RpcTarget for capnweb
+ *
+ * This is necessary because:
+ * 1. DurableRPC extends DurableObject, not RpcTarget
+ * 2. We need to control which methods are exposed over RPC
+ * 3. We want to preserve the $ context access pattern
+ */
+class RpcInterface extends RpcTarget {
+  constructor(private durableRpc: DurableRPC) {
+    super()
+
+    // Dynamically expose all public methods and namespaces from the DurableRPC instance
+    // Only prototype properties are exposed by RpcTarget, so we define getters
+    this.exposeInterface()
+  }
+
+  private exposeInterface(): void {
+    const instance = this.durableRpc
+    const seen = new Set<string>()
+
+    // Collect properties from instance and prototype chain
+    const collectProps = (obj: any) => {
+      if (!obj || obj === Object.prototype) return
+      for (const key of Object.getOwnPropertyNames(obj)) {
+        if (!seen.has(key) && !SKIP_PROPS.has(key) && !key.startsWith('_')) {
+          seen.add(key)
+
+          let value: any
+          try {
+            value = (instance as any)[key]
+          } catch {
+            continue
+          }
+
+          if (typeof value === 'function') {
+            // Bind method to the DurableRPC instance
+            Object.defineProperty(this, key, {
+              value: value.bind(instance),
+              enumerable: true,
+              configurable: true,
+            })
+          } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+            // Check if it's a namespace (object with function properties)
+            const hasMethodKeys = Object.keys(value).some(k => typeof value[k] === 'function')
+            if (hasMethodKeys) {
+              // Create a namespace object with bound methods
+              const namespace: Record<string, Function> = {}
+              for (const nsKey of Object.keys(value)) {
+                if (typeof value[nsKey] === 'function') {
+                  namespace[nsKey] = value[nsKey].bind(value)
+                }
+              }
+              Object.defineProperty(this, key, {
+                value: namespace,
+                enumerable: true,
+                configurable: true,
+              })
+            }
+          }
+        }
+      }
+    }
+
+    // Walk instance own props first, then prototype chain
+    collectProps(instance)
+    let proto = Object.getPrototypeOf(instance)
+    while (proto && proto !== DurableRPC.prototype && proto !== DurableObject.prototype) {
+      collectProps(proto)
+      proto = Object.getPrototypeOf(proto)
+    }
+  }
+
+  /**
+   * Schema reflection method - always available
+   */
+  __schema(): RpcSchema {
+    return this.durableRpc.getSchema()
+  }
+}
+
+// ============================================================================
 // DurableRPC Base Class
 // ============================================================================
 
@@ -69,12 +171,21 @@ export interface RpcContext {
  * Base class for RPC-enabled Durable Objects
  *
  * Extends DurableObject with:
- * - Automatic WebSocket hibernation
- * - JSON RPC over WebSocket + HTTP
+ * - Automatic WebSocket hibernation with capnweb RPC
+ * - HTTP batch RPC via capnweb
  * - $ context for storage/sql access
- * - capnweb-compatible protocol
+ * - Schema reflection
  */
 export class DurableRPC extends DurableObject {
+  /** Transport registry for managing WebSocket transports */
+  private _transportRegistry = new TransportRegistry()
+
+  /** Map of WebSocket -> RpcSession for active sessions */
+  private _sessions = new Map<WebSocket, RpcSession>()
+
+  /** RPC interface wrapper for capnweb */
+  private _rpcInterface?: RpcInterface
+
   /** Context accessor for storage, sql, state */
   get $(): RpcContext {
     return {
@@ -90,22 +201,53 @@ export class DurableRPC extends DurableObject {
   private _currentAuth?: Record<string, any>
 
   /**
+   * Get or create the RPC interface wrapper
+   */
+  private getRpcInterface(): RpcInterface {
+    if (!this._rpcInterface) {
+      this._rpcInterface = new RpcInterface(this)
+    }
+    return this._rpcInterface
+  }
+
+  /**
+   * RPC session options (can be overridden in subclasses)
+   */
+  protected getRpcSessionOptions(): RpcSessionOptions {
+    return {
+      onSendError: (error: Error) => {
+        // Log errors but don't expose stack traces by default
+        console.error('[DurableRPC] Error:', error.message)
+        return new Error(error.message) // Return error without stack
+      },
+    }
+  }
+
+  /**
    * Handle incoming fetch requests (HTTP + WebSocket upgrade)
    */
   async fetch(request: Request): Promise<Response> {
     this._currentRequest = request
 
-    // WebSocket upgrade → hibernation-aware handler
+    // GET /__schema -> return API schema (like GraphQL introspection)
+    if (request.method === 'GET') {
+      const url = new URL(request.url)
+      if (url.pathname === '/__schema' || url.pathname === '/') {
+        return Response.json(this.getSchema())
+      }
+    }
+
+    // WebSocket upgrade -> hibernation-aware handler with capnweb
     if (request.headers.get('Upgrade') === 'websocket') {
       return this.handleWebSocketUpgrade(request)
     }
 
-    // HTTP RPC
+    // HTTP RPC via capnweb batch
     return this.handleHttpRpc(request)
   }
 
   // ==========================================================================
-  // WebSocket Hibernation
+  // WebSocket Hibernation with capnweb
   // ==========================================================================
 
   private handleWebSocketUpgrade(request: Request): Response {
@@ -115,6 +257,23 @@ export class DurableRPC extends DurableObject {
     // Use hibernation API
     this.ctx.acceptWebSocket(server)
 
+    // Create transport for this WebSocket
+    const transport = new HibernatableWebSocketTransport(server)
+    this._transportRegistry.register(transport)
+
+    // Create capnweb RpcSession with the transport
+    const session = new RpcSession(
+      transport,
+      this.getRpcInterface(),
+      this.getRpcSessionOptions()
+    )
+
+    // Store session reference
+    this._sessions.set(server, session)
+
+    // Store transport ID in WebSocket attachment for hibernation recovery
+    server.serializeAttachment({ transportId: transport.id })
+
     return new Response(null, { status: 101, webSocket: client })
   }
 
@@ -123,112 +282,112 @@ export class DurableRPC extends DurableObject {
    * (Part of the Hibernation API)
    */
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    if (typeof message !== 'string') return
+    if (typeof message !== 'string') {
+      // Binary messages not supported by capnweb text protocol
+      return
+    }
+
+    // Get transport from attachment (survives hibernation)
+    let transport: HibernatableWebSocketTransport | undefined
 
     try {
-      const { id, path, args } = JSON.parse(message)
-      const result = await this.dispatch(path, args || [])
-      ws.send(JSON.stringify({ id, result }))
-    } catch (error: any) {
-      try {
-        const { id } = JSON.parse(message as string)
-        ws.send(JSON.stringify({ id, error: error.message }))
-      } catch {
-        ws.send(JSON.stringify({ error: error.message }))
+      const attachment = ws.deserializeAttachment() as { transportId?: string } | null
+      if (attachment?.transportId) {
+        transport = this._transportRegistry.get(attachment.transportId)
       }
+    } catch {
+      // Attachment parsing failed
     }
+
+    // If transport not found, we need to recreate it (DO woke from hibernation)
+    if (!transport) {
+      transport = new HibernatableWebSocketTransport(ws)
+      this._transportRegistry.register(transport)
+
+      // Recreate session
+      const session = new RpcSession(
+        transport,
+        this.getRpcInterface(),
+        this.getRpcSessionOptions()
+      )
+      this._sessions.set(ws, session)
+
+      // Update attachment with new transport ID
+      ws.serializeAttachment({ transportId: transport.id })
+    }
+
+    // Feed message to transport -> capnweb session will process it
+    transport.enqueueMessage(message)
   }
 
   /**
    * Called when a hibernated WebSocket is closed
    */
   async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
-    // Override in subclass for cleanup
+    // Get transport and clean up
+    try {
+      const attachment = ws.deserializeAttachment() as { transportId?: string } | null
+      if (attachment?.transportId) {
+        const transport = this._transportRegistry.get(attachment.transportId)
+        if (transport) {
+          transport.handleClose(code, reason)
+          this._transportRegistry.remove(attachment.transportId)
+        }
+      }
+    } catch {
+      // Ignore cleanup errors
+    }
+
+    // Remove session
+    this._sessions.delete(ws)
   }
 
   /**
    * Called when a hibernated WebSocket encounters an error
    */
   async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-    // Override in subclass for error handling
+    const err = error instanceof Error ? error : new Error(String(error))
+
+    try {
+      const attachment = ws.deserializeAttachment() as { transportId?: string } | null
+      if (attachment?.transportId) {
+        const transport = this._transportRegistry.get(attachment.transportId)
+        if (transport) {
+          transport.handleError(err)
+          this._transportRegistry.remove(attachment.transportId)
+        }
+      }
+    } catch {
+      // Ignore cleanup errors
+    }
+
+    // Remove session
+    this._sessions.delete(ws)
   }
 
   // ==========================================================================
-  // HTTP RPC
+  // HTTP RPC via capnweb batch
   // ==========================================================================
 
   private async handleHttpRpc(request: Request): Promise<Response> {
-    // GET /__schema → return API schema (like GraphQL introspection)
-    if (request.method === 'GET') {
-      const url = new URL(request.url)
-      if (url.pathname === '/__schema' || url.pathname === '/') {
-        return Response.json(this.getSchema())
-      }
-      return new Response('Method not allowed', { status: 405 })
-    }
-
     if (request.method !== 'POST') {
       return new Response('Method not allowed', { status: 405 })
     }
 
-    let body: any
+    // Use capnweb's HTTP batch handler
     try {
-      body = await request.json()
-    } catch {
-      return Response.json({ error: 'Invalid JSON' }, { status: 400 })
-    }
-
-    const { path, args, method } = body
-
-    // Support both { path, args } and { method, path, args } formats
-    const rpcPath = path || method
-    if (!rpcPath) {
-      return Response.json({ error: 'Missing path' }, { status: 400 })
-    }
-
-    try {
-      const result = await this.dispatch(rpcPath, args || [])
-      return Response.json(result)
+      const response = await newHttpBatchRpcResponse(
+        request,
+        this.getRpcInterface(),
+        this.getRpcSessionOptions()
+      )
+      return response
     } catch (error: any) {
       return Response.json(
         { error: error.message || 'RPC error' },
         { status: 500 }
       )
     }
-  }
-
-  // ==========================================================================
-  // Method Dispatch
-  // ==========================================================================
-
-  /**
-   * Dispatch an RPC call to the appropriate method on this object
-   */
-  private async dispatch(path: string, args: any[]): Promise<any> {
-    // Built-in schema reflection
-    if (path === '__schema') {
-      return this.getSchema()
-    }
-
-    const parts = path.split('.')
-
-    // Navigate the object tree
-    let target: any = this
-    for (let i = 0; i < parts.length - 1; i++) {
-      target = target[parts[i]]
-      if (target === undefined || target === null) {
-        throw new Error(`Invalid path: ${path} (failed at '${parts[i]}')`)
-      }
-    }
-
-    const methodName = parts[parts.length - 1]
-    const method = target[methodName]
-
-    if (typeof method !== 'function') {
-      throw new Error(`Not a function: ${path}`)
-    }
-
-    return method.apply(target, args)
   }
 
   // ==========================================================================
@@ -249,6 +408,9 @@ export class DurableRPC extends DurableObject {
 
   /**
    * Broadcast a message to all connected WebSocket clients
+   *
+   * Note: This sends raw messages, not capnweb RPC calls.
+   * For RPC notifications, use the client's stub methods.
    */
   broadcast(message: any, exclude?: WebSocket): void {
     const sockets = this.ctx.getWebSockets()
@@ -256,7 +418,11 @@ export class DurableRPC extends DurableObject {
 
     for (const ws of sockets) {
       if (ws !== exclude) {
-        try { ws.send(data) } catch { /* ignore closed sockets */ }
+        try {
+          ws.send(data)
+        } catch {
+          /* ignore closed sockets */
+        }
       }
     }
   }
@@ -270,7 +436,7 @@ export class DurableRPC extends DurableObject {
 }
 
 // ============================================================================
-// Worker Router (Worker → DO routing)
+// Worker Router (Worker -> DO routing)
 // ============================================================================
 
 /**
@@ -347,7 +513,7 @@ export function router<Env extends Record<string, any>>(options: RouterOptions<E
 
       const forwardRequest = new Request(forwardUrl.toString(), request)
       return stub.fetch(forwardRequest)
-    }
+    },
   }
 }
 
@@ -393,11 +559,26 @@ export interface RpcSchema {
 /** Properties to skip during introspection */
 const SKIP_PROPS = new Set([
   // DurableObject lifecycle
-  'fetch', 'alarm', 'webSocketMessage', 'webSocketClose', 'webSocketError',
+  'fetch',
+  'alarm',
+  'webSocketMessage',
+  'webSocketClose',
+  'webSocketError',
   // DurableRPC internals
-  'constructor', 'getSchema', 'broadcast', 'connectionCount',
-  '$', '_currentRequest', '_currentAuth',
-  'handleWebSocketUpgrade', 'handleHttpRpc', 'dispatch',
+  'constructor',
+  'getSchema',
+  'broadcast',
+  'connectionCount',
+  '$',
+  '_currentRequest',
+  '_currentAuth',
+  '_transportRegistry',
+  '_sessions',
+  '_rpcInterface',
+  'handleWebSocketUpgrade',
+  'handleHttpRpc',
+  'getRpcInterface',
+  'getRpcSessionOptions',
 ])
 
 /**
@@ -490,4 +671,3 @@ export interface RpcDoConfig {
 export function defineConfig(config: RpcDoConfig): RpcDoConfig {
   return config
 }
-
