@@ -5,6 +5,8 @@ export default defineConfig({
     'index': 'src/index.ts',
     'lite': 'src/lite.ts',
     'collections': 'src/collections.ts',
+    'do-collections': 'src/do-collections.ts',
+    'events-integration': 'src/events-integration.ts',
   },
   format: ['esm'],
   dts: true,
@@ -12,5 +14,5 @@ export default defineConfig({
   sourcemap: true,
   treeshake: true,
   minify: true,
-  external: ['capnweb', 'colo.do', '@cloudflare/workers-types', 'cloudflare:workers'],
+  external: ['@dotdo/capnweb', '@dotdo/events', 'colo.do', '@cloudflare/workers-types', 'cloudflare:workers'],
 })

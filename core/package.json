@@ -18,6 +18,14 @@
     "./collections": {
       "types": "./dist/collections.d.ts",
       "import": "./dist/collections.js"
+    },
+    "./do-collections": {
+      "types": "./dist/do-collections.d.ts",
+      "import": "./dist/do-collections.js"
+    },
+    "./events": {
+      "types": "./dist/events-integration.d.ts",
+      "import": "./dist/events-integration.js"
     }
   },
   "files": [
@@ -49,10 +57,11 @@
     "directory": "core"
   },
   "dependencies": {
-    "capnweb": "^0.4.0"
+    "@dotdo/capnweb": "file:../../dotdo-capnweb"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
+    "@dotdo/events": "file:../../events/core",
     "colo.do": "file:../../colo",
     "esbuild": "^0.27.2",
     "sql.js": "^1.13.0",
@@ -62,9 +71,13 @@
   },
   "peerDependencies": {
     "@cloudflare/workers-types": "^4.0.0",
+    "@dotdo/events": "^0.1.0",
     "colo.do": "^0.1.0"
   },
   "peerDependenciesMeta": {
+    "@dotdo/events": {
+      "optional": true
+    },
     "colo.do": {
       "optional": true
     }
