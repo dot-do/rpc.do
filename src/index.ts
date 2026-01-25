@@ -223,7 +223,7 @@ export * from './transports'
 export type { AuthProvider, ServerMessage } from './transports'
 export { isFunction, isServerMessage } from './transports'
 
-// DO Client - remote access to DO sql/storage
+// DO Client - remote access to DO sql/storage/collections
 export {
   createDOClient,
   connectDO,
@@ -231,6 +231,11 @@ export {
   type SqlQuery,
   type SqlQueryResult,
   type RemoteStorage,
+  type RemoteCollection,
+  type RemoteCollections,
+  type Filter,
+  type FilterOperator,
+  type QueryOptions,
   type DatabaseSchema,
   type TableSchema,
   type ColumnSchema,

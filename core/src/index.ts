@@ -48,6 +48,15 @@ import {
   type ColoInfo,
 } from 'colo.do'
 
+// Collections
+import {
+  createCollection,
+  Collections,
+  type Collection,
+  type Filter,
+  type QueryOptions,
+} from './collections.js'
+
 // Re-export capnweb types for convenience
 export { RpcTarget, RpcSession, type RpcTransport, type RpcSessionOptions }
 export { HibernatableWebSocketTransport, TransportRegistry }
@@ -258,6 +267,9 @@ export class DurableRPC extends DurableObject {
   /** Cached colo for this DO instance */
   private _colo: string | null = null
 
+  /** Collections manager (lazy-initialized) */
+  private _collections?: Collections
+
   // ==========================================================================
   // Direct accessors (same API inside DO and via RPC)
   // ==========================================================================
@@ -299,6 +311,46 @@ export class DurableRPC extends DurableObject {
    */
   get state(): DurableObjectState {
     return this.ctx
+  }
+
+  // ==========================================================================
+  // Collections (MongoDB-style document store on SQLite)
+  // ==========================================================================
+
+  /**
+   * Get or create a named collection
+   *
+   * Collections provide MongoDB-style document operations on SQLite:
+   * - get/put/delete by ID
+   * - find with filters ($eq, $gt, $in, etc.)
+   * - count, list, keys, clear
+   *
+   * @example
+   * ```typescript
+   * // Inside DO
+   * interface User { name: string; email: string; active: boolean }
+   *
+   * export class MyDO extends DurableRPC {
+   *   users = this.collection<User>('users')
+   *
+   *   async createUser(data: User) {
+   *     this.users.put(data.email, data)
+   *   }
+   *
+   *   async getActiveUsers() {
+   *     return this.users.find({ active: true })
+   *   }
+   * }
+   *
+   * // Via RPC (same API)
+   * const users = await $.collection('users').find({ active: true })
+   * ```
+   */
+  collection<T extends Record<string, unknown> = Record<string, unknown>>(name: string): Collection<T> {
+    if (!this._collections) {
+      this._collections = new Collections(this.sql)
+    }
+    return this._collections.collection<T>(name)
   }
 
   /**
@@ -416,6 +468,77 @@ export class DurableRPC extends DurableObject {
     const options: DurableObjectListOptions = prefix ? { prefix } : {}
     const map = await this.storage.list(options)
     return Array.from(map.keys())
+  }
+
+  // ==========================================================================
+  // RPC-callable collection methods
+  // ==========================================================================
+
+  /** @internal */ __collectionGet<T extends Record<string, unknown>>(
+    collection: string,
+    id: string
+  ): T | null {
+    return this.collection<T>(collection).get(id)
+  }
+
+  /** @internal */ __collectionPut<T extends Record<string, unknown>>(
+    collection: string,
+    id: string,
+    doc: T
+  ): void {
+    this.collection<T>(collection).put(id, doc)
+  }
+
+  /** @internal */ __collectionDelete(collection: string, id: string): boolean {
+    return this.collection(collection).delete(id)
+  }
+
+  /** @internal */ __collectionHas(collection: string, id: string): boolean {
+    return this.collection(collection).has(id)
+  }
+
+  /** @internal */ __collectionFind<T extends Record<string, unknown>>(
+    collection: string,
+    filter?: Filter<T>,
+    options?: QueryOptions
+  ): T[] {
+    return this.collection<T>(collection).find(filter, options)
+  }
+
+  /** @internal */ __collectionCount<T extends Record<string, unknown>>(
+    collection: string,
+    filter?: Filter<T>
+  ): number {
+    return this.collection<T>(collection).count(filter)
+  }
+
+  /** @internal */ __collectionList<T extends Record<string, unknown>>(
+    collection: string,
+    options?: QueryOptions
+  ): T[] {
+    return this.collection<T>(collection).list(options)
+  }
+
+  /** @internal */ __collectionKeys(collection: string): string[] {
+    return this.collection(collection).keys()
+  }
+
+  /** @internal */ __collectionClear(collection: string): number {
+    return this.collection(collection).clear()
+  }
+
+  /** @internal */ __collectionNames(): string[] {
+    if (!this._collections) {
+      this._collections = new Collections(this.sql)
+    }
+    return this._collections.names()
+  }
+
+  /** @internal */ __collectionStats(): Array<{ name: string; count: number; size: number }> {
+    if (!this._collections) {
+      this._collections = new Collections(this.sql)
+    }
+    return this._collections.stats()
   }
 
   /**
@@ -947,6 +1070,20 @@ const SKIP_PROPS = new Set([
   '__storageList',
   '__dbSchema',
   '__storageKeys',
+  // Collection methods
+  '__collectionGet',
+  '__collectionPut',
+  '__collectionDelete',
+  '__collectionHas',
+  '__collectionFind',
+  '__collectionCount',
+  '__collectionList',
+  '__collectionKeys',
+  '__collectionClear',
+  '__collectionNames',
+  '__collectionStats',
+  'collection',
+  '_collections',
 ])
 
 /**
@@ -1118,3 +1255,16 @@ export interface RpcDoConfig {
 export function defineConfig(config: RpcDoConfig): RpcDoConfig {
   return config
 }
+
+// ============================================================================
+// Collections Exports
+// ============================================================================
+
+export {
+  createCollection,
+  Collections,
+  type Collection,
+  type Filter,
+  type FilterOperator,
+  type QueryOptions,
+} from './collections.js'

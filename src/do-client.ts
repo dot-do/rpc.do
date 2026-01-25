@@ -4,6 +4,7 @@
  * Provides the same API remotely as you have inside the DO:
  * - $.sql`SELECT * FROM users` → this.sql`SELECT * FROM users`
  * - $.storage.get('key') → this.storage.get('key')
+ * - $.collection('users').find({ active: true }) → this.collection('users').find({ active: true })
  *
  * @example
  * ```typescript
@@ -16,6 +17,10 @@
  *
  * // Access storage
  * const value = await $.storage.get('config')
+ *
+ * // Access collections (MongoDB-style)
+ * const users = await $.collection('users').find({ active: true, role: 'admin' })
+ * await $.collection('users').put('user-123', { name: 'John', active: true })
  *
  * // Get database schema
  * const schema = await $.dbSchema()
@@ -70,6 +75,83 @@ export interface RemoteStorage {
   keys(prefix?: string): Promise<string[]>
 }
 
+// ============================================================================
+// Collection Types (MongoDB-style)
+// ============================================================================
+
+/**
+ * MongoDB-style filter operators
+ */
+export type FilterOperator =
+  | { $eq: unknown }
+  | { $ne: unknown }
+  | { $gt: number }
+  | { $gte: number }
+  | { $lt: number }
+  | { $lte: number }
+  | { $in: unknown[] }
+  | { $nin: unknown[] }
+  | { $exists: boolean }
+  | { $regex: string }
+
+/**
+ * MongoDB-style filter query
+ */
+export type Filter<T> = {
+  [K in keyof T]?: T[K] | FilterOperator
+} & {
+  $and?: Filter<T>[]
+  $or?: Filter<T>[]
+}
+
+/**
+ * Query options for find/list
+ */
+export interface QueryOptions {
+  /** Maximum number of results */
+  limit?: number
+  /** Number of results to skip */
+  offset?: number
+  /** Sort by field (prefix with - for descending) */
+  sort?: string
+}
+
+/**
+ * Remote collection interface (MongoDB-style document store)
+ */
+export interface RemoteCollection<T extends Record<string, unknown> = Record<string, unknown>> {
+  /** Get a document by ID */
+  get(id: string): Promise<T | null>
+  /** Put a document (insert or update) */
+  put(id: string, doc: T): Promise<void>
+  /** Delete a document */
+  delete(id: string): Promise<boolean>
+  /** Check if document exists */
+  has(id: string): Promise<boolean>
+  /** Find documents matching filter */
+  find(filter?: Filter<T>, options?: QueryOptions): Promise<T[]>
+  /** Count documents matching filter */
+  count(filter?: Filter<T>): Promise<number>
+  /** List all documents */
+  list(options?: QueryOptions): Promise<T[]>
+  /** Get all IDs */
+  keys(): Promise<string[]>
+  /** Delete all documents in collection */
+  clear(): Promise<number>
+}
+
+/**
+ * Collections manager interface
+ */
+export interface RemoteCollections {
+  /** Get or create a collection by name */
+  <T extends Record<string, unknown> = Record<string, unknown>>(name: string): RemoteCollection<T>
+  /** List all collection names */
+  names(): Promise<string[]>
+  /** Get stats for all collections */
+  stats(): Promise<Array<{ name: string; count: number; size: number }>>
+}
+
 /**
  * Database schema types
  */
@@ -111,13 +193,15 @@ export interface RpcSchema {
 }
 
 /**
- * DO Client type - combines remote sql/storage with custom methods
+ * DO Client type - combines remote sql/storage/collections with custom methods
  */
 export type DOClient<T = unknown> = {
   /** Tagged template SQL query */
   sql: <R = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]) => SqlQuery<R>
   /** Remote storage access */
   storage: RemoteStorage
+  /** Remote collection access (MongoDB-style) */
+  collection: RemoteCollections
   /** Get database schema */
   dbSchema: () => Promise<DatabaseSchema>
   /** Get full RPC schema */
@@ -165,6 +249,63 @@ function createSqlQuery<T>(
       return transport.call('__sql', [serialized]) as Promise<SqlQueryResult<T>>
     },
   }
+}
+
+/**
+ * Create a remote collection proxy
+ */
+function createCollectionProxy<T extends Record<string, unknown>>(
+  transport: Transport,
+  name: string
+): RemoteCollection<T> {
+  return {
+    async get(id: string): Promise<T | null> {
+      return transport.call('__collectionGet', [name, id]) as Promise<T | null>
+    },
+    async put(id: string, doc: T): Promise<void> {
+      await transport.call('__collectionPut', [name, id, doc])
+    },
+    async delete(id: string): Promise<boolean> {
+      return transport.call('__collectionDelete', [name, id]) as Promise<boolean>
+    },
+    async has(id: string): Promise<boolean> {
+      return transport.call('__collectionHas', [name, id]) as Promise<boolean>
+    },
+    async find(filter?: Filter<T>, options?: QueryOptions): Promise<T[]> {
+      return transport.call('__collectionFind', [name, filter, options]) as Promise<T[]>
+    },
+    async count(filter?: Filter<T>): Promise<number> {
+      return transport.call('__collectionCount', [name, filter]) as Promise<number>
+    },
+    async list(options?: QueryOptions): Promise<T[]> {
+      return transport.call('__collectionList', [name, options]) as Promise<T[]>
+    },
+    async keys(): Promise<string[]> {
+      return transport.call('__collectionKeys', [name]) as Promise<string[]>
+    },
+    async clear(): Promise<number> {
+      return transport.call('__collectionClear', [name]) as Promise<number>
+    },
+  }
+}
+
+/**
+ * Create a remote collections manager
+ */
+function createCollectionsProxy(getTransport: () => Transport): RemoteCollections {
+  const fn = <T extends Record<string, unknown>>(name: string): RemoteCollection<T> => {
+    return createCollectionProxy<T>(getTransport(), name)
+  }
+
+  fn.names = async (): Promise<string[]> => {
+    return getTransport().call('__collectionNames', []) as Promise<string[]>
+  }
+
+  fn.stats = async (): Promise<Array<{ name: string; count: number; size: number }>> => {
+    return getTransport().call('__collectionStats', []) as Promise<Array<{ name: string; count: number; size: number }>>
+  }
+
+  return fn as RemoteCollections
 }
 
 /**
@@ -285,6 +426,10 @@ export function createDOClient<T = unknown>(
 
       if (prop === 'storage') {
         return createStorageProxy(getTransportSync())
+      }
+
+      if (prop === 'collection') {
+        return createCollectionsProxy(getTransportSync)
       }
 
       if (prop === 'dbSchema') {
