@@ -6,6 +6,9 @@
  * Auth: Optional, handled by transport or middleware
  */
 
+import { http, capnweb } from './transports'
+import { createDOClient } from './do-client'
+
 // ============================================================================
 // Transport Types
 // ============================================================================
@@ -80,73 +83,109 @@ export type RPCInput<T> = T extends (input: infer I) => any ? I : never
 // ============================================================================
 
 /**
- * Create an RPC proxy over any transport
+ * Options for RPC client
+ */
+export interface RPCOptions {
+  /** Auth token or provider */
+  auth?: string | (() => string | null | Promise<string | null>)
+  /** Request timeout in milliseconds */
+  timeout?: number
+  /** Enable WebSocket reconnection (default: true for ws/wss URLs) */
+  reconnect?: boolean
+}
+
+/**
+ * Create an RPC proxy
  *
  * @example
- * // Untyped (any)
- * const rpc = RPC(http('https://rpc.do'))
- * await rpc.ai.generate({ prompt: 'hello' })
+ * // Simple URL (recommended)
+ * const $ = RPC('https://my-do.workers.dev')
+ * await $.users.create({ name: 'John' })
+ *
+ * // With auth
+ * const $ = RPC('https://my-do.workers.dev', { auth: 'my-token' })
+ *
+ * // WebSocket for real-time
+ * const $ = RPC('wss://my-do.workers.dev')
+ *
+ * // DO features (sql, storage, collections)
+ * const users = await $.sql`SELECT * FROM users`.all()
+ * const config = await $.storage.get('config')
+ * const admins = await $.collection('users').find({ role: 'admin' })
+ *
+ * @example
+ * // With explicit transport (advanced)
+ * const $ = RPC(http('https://my-do.workers.dev'))
  *
  * @example
  * // Typed API
  * interface API {
- *   ai: { generate: (p: { prompt: string }) => { text: string } }
- *   db: { get: (p: { id: string }) => { data: any } }
+ *   users: { create: (data: { name: string }) => { id: string } }
  * }
- * const rpc = RPC<API>(http('https://rpc.do'))
- * const result = await rpc.ai.generate({ prompt: 'hello' }) // typed!
+ * const $ = RPC<API>('https://my-do.workers.dev')
+ * const result = await $.users.create({ name: 'John' }) // typed!
  */
-export function RPC<T = any>(transport: Transport | TransportFactory): RPCProxy<T> {
-  let _transport: Transport | null = null
-  let _transportPromise: Promise<Transport> | null = null
+export function RPC<T = any>(
+  urlOrTransport: string | Transport | TransportFactory,
+  options?: RPCOptions
+): RPCProxy<T> & DOClientFeatures {
+  let transport: Transport | TransportFactory
 
-  const getTransport = async (): Promise<Transport> => {
-    if (_transport) return _transport
-    if (_transportPromise) return _transportPromise
+  if (typeof urlOrTransport === 'string') {
+    const url = urlOrTransport
+    const isWebSocket = url.startsWith('ws://') || url.startsWith('wss://')
 
-    if (typeof transport === 'function') {
-      _transportPromise = Promise.resolve(transport())
-      _transport = await _transportPromise
-      _transportPromise = null
+    if (isWebSocket) {
+      transport = capnweb(url, {
+        auth: options?.auth,
+        reconnect: options?.reconnect ?? true,
+      })
     } else {
-      _transport = transport
+      transport = http(url, {
+        auth: options?.auth,
+        timeout: options?.timeout,
+      })
     }
-    return _transport
+  } else {
+    transport = urlOrTransport
   }
 
-  const createMethodProxy = (path: string[]): any => {
-    return new Proxy(() => {}, {
-      get(_, prop: string) {
-        if (prop === 'then' || prop === 'catch' || prop === 'finally') {
-          return undefined // Not a promise
-        }
-        // Only handle close/dispose at root level to allow user.account.close() etc
-        if (path.length === 0 && (prop === Symbol.dispose as any || prop === 'close')) {
-          return async () => {
-            const t = await getTransport()
-            t.close?.()
-          }
-        }
-        return createMethodProxy([...path, prop])
-      },
-      apply(_, __, args: any[]) {
-        return (async () => {
-          const t = await getTransport()
-          return t.call(path.join('.'), args)
-        })()
-      }
-    })
-  }
-
-  return createMethodProxy([]) as RPCProxy<T>
+  // Use DOClient which has sql, storage, collection built in
+  return createDOClient<T>(transport) as RPCProxy<T> & DOClientFeatures
 }
 
+/**
+ * DO Client features available on RPC proxy
+ */
+interface DOClientFeatures {
+  /** Tagged template SQL query */
+  sql: <R = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]) => SqlQuery<R>
+  /** Remote storage access */
+  storage: RemoteStorage
+  /** Remote collection access (MongoDB-style) */
+  collection: RemoteCollections
+  /** Get database schema */
+  dbSchema: () => Promise<DatabaseSchema>
+  /** Get full RPC schema */
+  schema: () => Promise<RpcSchema>
+}
+
+// Import types for DOClientFeatures
+import type {
+  SqlQuery,
+  RemoteStorage,
+  RemoteCollections,
+  DatabaseSchema,
+  RpcSchema,
+} from './do-client'
+
 // ============================================================================
-// RPC Client Factory
+// RPC Client Factory (deprecated - use RPC() directly)
 // ============================================================================
 
 /**
  * Options for createRPCClient factory
+ * @deprecated Use RPCOptions with RPC() instead
  */
 export interface RPCClientOptions {
   /** Base URL for the RPC endpoint */
@@ -165,55 +204,26 @@ export interface RPCClientOptions {
 
 /**
  * Create an RPC client with simplified options.
- * Wraps RPC() + http() transport for common use cases.
+ *
+ * @deprecated Use `RPC(url, options)` instead:
+ * ```typescript
+ * // Old
+ * const client = createRPCClient({ baseUrl: 'https://example.com', auth: 'token' })
+ *
+ * // New (recommended)
+ * const client = RPC('https://example.com', { auth: 'token' })
+ * ```
  *
  * @example
  * // Basic usage
  * const client = createRPCClient({ baseUrl: 'https://api.example.com/rpc' })
  * await client.ai.generate({ prompt: 'hello' })
- *
- * @example
- * // With auth token
- * const client = createRPCClient({
- *   baseUrl: 'https://api.example.com/rpc',
- *   auth: 'my-secret-token'
- * })
- *
- * @example
- * // With auth provider function
- * const client = createRPCClient({
- *   baseUrl: 'https://api.example.com/rpc',
- *   auth: () => localStorage.getItem('token')
- * })
- *
- * @example
- * // Typed client
- * interface MyAPI {
- *   ai: { generate: (p: { prompt: string }) => { text: string } }
- * }
- * const client = createRPCClient<MyAPI>({ baseUrl: 'https://api.example.com/rpc' })
- * const result = await client.ai.generate({ prompt: 'hello' }) // typed!
  */
-export function createRPCClient<T = unknown>(options: RPCClientOptions): RPCProxy<T> {
-  const { baseUrl, auth, timeout } = options
-
-  // Build http transport options
-  const transportOptions: { auth?: string | (() => string | null | Promise<string | null>); timeout?: number } = {}
-
-  if (auth !== undefined) {
-    transportOptions.auth = auth
-  }
-
-  if (timeout !== undefined) {
-    transportOptions.timeout = timeout
-  }
-
-  // Create transport - use options object if we have any options, otherwise just baseUrl
-  const transport = Object.keys(transportOptions).length > 0
-    ? http(baseUrl, transportOptions)
-    : http(baseUrl)
-
-  return RPC<T>(transport)
+export function createRPCClient<T = unknown>(options: RPCClientOptions): RPCProxy<T> & DOClientFeatures {
+  return RPC<T>(options.baseUrl, {
+    auth: options.auth,
+    timeout: options.timeout,
+  })
 }
 
 // Re-export transports (browser-safe)
@@ -253,25 +263,23 @@ export {
 // Default RPC Client (without auth - browser-safe)
 // ============================================================================
 
-import { http } from './transports'
-
 /**
  * Pre-configured RPC client for rpc.do without auth
  *
- * For authenticated requests, either:
- * 1. Pass a token directly: RPC(http('https://rpc.do', 'your-token'))
- * 2. Use auth() from 'rpc.do/auth': RPC(http('https://rpc.do', auth()))
- *
  * @example
- * import { $, RPC, http } from 'rpc.do'
+ * import { $, RPC } from 'rpc.do'
  *
  * // Anonymous request
  * await $.ai.generate({ prompt: 'hello' })
  *
- * // With token
- * const authenticated = RPC(http('https://rpc.do', 'your-token'))
+ * // With auth token
+ * const authenticated = RPC('https://rpc.do', { auth: 'your-token' })
  * await authenticated.db.get({ id: '123' })
+ *
+ * // Connect to your own DO
+ * const myDO = RPC('https://my-do.workers.dev')
+ * const users = await myDO.sql`SELECT * FROM users`.all()
  */
-export const $ = RPC(http('https://rpc.do'))
+export const $ = RPC('https://rpc.do')
 
 export default $

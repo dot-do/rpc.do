@@ -8,9 +8,10 @@
  *
  * @example
  * ```typescript
- * import { createDOClient } from 'rpc.do'
+ * import { RPC } from 'rpc.do'
  *
- * const $ = createDOClient(transport)
+ * // Connect to your DO (recommended)
+ * const $ = RPC('https://my-do.workers.dev')
  *
  * // Query the DO's SQLite database
  * const users = await $.sql`SELECT * FROM users WHERE active = ${true}`.all()
@@ -19,13 +20,13 @@
  * const value = await $.storage.get('config')
  *
  * // Access collections (MongoDB-style)
- * const users = await $.collection('users').find({ active: true, role: 'admin' })
+ * const admins = await $.collection('users').find({ active: true, role: 'admin' })
  * await $.collection('users').put('user-123', { name: 'John', active: true })
  *
  * // Get database schema
  * const schema = await $.dbSchema()
  *
- * // Call custom methods
+ * // Call custom RPC methods
  * const result = await $.users.create({ name: 'John' })
  * ```
  */
@@ -346,10 +347,16 @@ function createStorageProxy(transport: Transport): RemoteStorage {
 /**
  * Create a DO client with remote sql/storage access
  *
+ * Note: For most use cases, use `RPC(url)` instead which is simpler:
+ * ```typescript
+ * const $ = RPC('https://my-do.workers.dev')
+ * ```
+ *
  * @example
  * ```typescript
  * import { createDOClient, capnweb } from 'rpc.do'
  *
+ * // With explicit transport (advanced use)
  * const $ = createDOClient(capnweb('wss://my-do.workers.dev'))
  *
  * // Query SQL (same syntax as inside DO)
