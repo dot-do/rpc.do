@@ -235,7 +235,7 @@ function generateEntrypoint(): string {
 interface InitOptions {
   projectName: string
   includeExamples: boolean
-  transport: 'http' | 'ws' | 'both'
+  transport: 'http' | 'capnweb' | 'both'
 }
 
 async function prompt(question: string): Promise<string> {
@@ -285,10 +285,10 @@ async function initProject(args: string[]): Promise<void> {
   const includeExamplesAnswer = await prompt('Include examples? (Y/n): ')
   const includeExamples = includeExamplesAnswer.toLowerCase() !== 'n'
 
-  const transportAnswer = await prompt('Transport preference (http/ws/both) [both]: ')
-  const transport = (['http', 'ws', 'both'].includes(transportAnswer.toLowerCase())
+  const transportAnswer = await prompt('Transport preference (http/capnweb/both) [both]: ')
+  const transport = (['http', 'capnweb', 'both'].includes(transportAnswer.toLowerCase())
     ? transportAnswer.toLowerCase()
-    : 'both') as 'http' | 'ws' | 'both'
+    : 'both') as 'http' | 'capnweb' | 'both'
 
   const options: InitOptions = {
     projectName,
@@ -441,8 +441,8 @@ function generateIndexTs(options: InitOptions): string {
   if (options.transport === 'http' || options.transport === 'both') {
     transportImports.push('createHTTPTransport')
   }
-  if (options.transport === 'ws' || options.transport === 'both') {
-    transportImports.push('createWebSocketTransport')
+  if (options.transport === 'capnweb' || options.transport === 'both') {
+    transportImports.push('createCapnwebTransport')
   }
 
   return `import { DurableRPC${transportImports.length > 0 ? ', ' + transportImports.join(', ') : ''} } from 'rpc.do'
@@ -688,7 +688,7 @@ Init Command:
   Interactive prompts:
     - Project name (if not provided)
     - Include examples? (y/n)
-    - Transport preference (http/ws/both)
+    - Transport preference (http/capnweb/both)
 
 Generate Options:
   --url <url>       Schema endpoint URL (e.g. https://my-do.workers.dev)

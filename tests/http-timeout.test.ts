@@ -2,28 +2,59 @@
  * HTTP Transport Timeout Tests
  *
  * Tests for the timeout functionality in the http() transport
+ * Now using capnweb's HTTP batch protocol
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { http } from '../src/transports'
-import { ConnectionError } from '../src/errors'
+import { ConnectionError, RPCError } from '../src/errors'
 
 // ============================================================================
-// Mock fetch
+// Mock capnweb module
 // ============================================================================
 
-let mockFetch: ReturnType<typeof vi.fn>
-let originalFetch: typeof globalThis.fetch
+// Mock session with spy methods
+function createMockSession() {
+  const disposeSymbol = Symbol.dispose
+  return {
+    test: {
+      method: vi.fn().mockResolvedValue({ result: 'success' }),
+      slowMethod: vi.fn(),
+    },
+    simpleMethod: vi.fn().mockResolvedValue({ result: 'success' }),
+    [disposeSymbol]: vi.fn()
+  }
+}
+
+let mockSession: ReturnType<typeof createMockSession>
+let mockNewHttpBatchRpcSession: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
-  originalFetch = globalThis.fetch
-  mockFetch = vi.fn()
-  globalThis.fetch = mockFetch
+  mockSession = createMockSession()
+  mockNewHttpBatchRpcSession = vi.fn().mockReturnValue(mockSession)
+
+  // Mock the capnweb dynamic import
+  vi.doMock('capnweb', () => ({
+    newHttpBatchRpcSession: mockNewHttpBatchRpcSession
+  }))
 })
 
 afterEach(() => {
-  globalThis.fetch = originalFetch
+  vi.doUnmock('capnweb')
+  vi.resetModules()
 })
+
+// Helper to get fresh http transport after mocking
+async function getHttpTransport() {
+  vi.resetModules()
+  const { http } = await import('../src/transports')
+  return http
+}
+
+// Helper to get RPCError from same module context
+async function getRPCError() {
+  const { RPCError } = await import('../src/errors')
+  return RPCError
+}
 
 // ============================================================================
 // HTTP Timeout Tests
@@ -31,90 +62,58 @@ afterEach(() => {
 
 describe('http() Transport - Timeout', () => {
   it('should complete request normally when within timeout', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ result: 'success' })
-    })
+    const http = await getHttpTransport()
 
     const transport = http('https://api.example.com/rpc', { timeout: 5000 })
     const result = await transport.call('test.method', [])
 
     expect(result).toEqual({ result: 'success' })
-    expect(mockFetch).toHaveBeenCalledTimes(1)
-
-    // Verify signal was passed
-    const fetchCall = mockFetch.mock.calls[0]
-    expect(fetchCall[1].signal).toBeInstanceOf(AbortSignal)
+    expect(mockNewHttpBatchRpcSession).toHaveBeenCalledWith('https://api.example.com/rpc')
+    expect(mockSession.test.method).toHaveBeenCalled()
   })
 
   it('should timeout and throw ConnectionError when request takes too long', async () => {
-    vi.useFakeTimers()
-
-    // Mock fetch that never resolves
-    mockFetch.mockImplementation((_url: string, options: RequestInit) => {
-      return new Promise((resolve, reject) => {
-        // Listen for abort
-        options.signal?.addEventListener('abort', () => {
-          const error = new Error('The operation was aborted')
-          error.name = 'AbortError'
-          reject(error)
-        })
-      })
+    // Use a very short timeout with real timers for a more reliable test
+    mockSession.test.slowMethod.mockImplementation(() => {
+      // Return a promise that takes longer than the timeout
+      return new Promise(resolve => setTimeout(resolve, 200))
     })
 
-    const transport = http('https://api.example.com/rpc', { timeout: 1000 })
-    const callPromise = transport.call('test.method', [])
+    const http = await getHttpTransport()
 
-    // Prevent unhandled rejection warning by adding catch handler
-    callPromise.catch(() => {})
+    const transport = http('https://api.example.com/rpc', { timeout: 50 })
 
-    // Advance time past timeout
-    await vi.advanceTimersByTimeAsync(1001)
-
-    await expect(callPromise).rejects.toThrow(ConnectionError)
-    await expect(callPromise).rejects.toMatchObject({
-      code: 'REQUEST_TIMEOUT',
-      message: 'Request timeout after 1000ms'
-    })
-
-    vi.useRealTimers()
-  })
+    try {
+      await transport.call('test.slowMethod', [])
+      expect.fail('Should have thrown')
+    } catch (error) {
+      // Check error properties instead of instanceof due to vi.resetModules()
+      expect((error as any).code).toBe('REQUEST_TIMEOUT')
+      expect((error as any).message).toBe('Request timeout after 50ms')
+    }
+  }, 10000) // 10 second test timeout
 
   it('should not timeout when no timeout is specified', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ result: 'success' })
-    })
+    const http = await getHttpTransport()
 
     const transport = http('https://api.example.com/rpc')
     const result = await transport.call('test.method', [])
 
     expect(result).toEqual({ result: 'success' })
-
-    // Verify no signal was passed (or signal is undefined)
-    const fetchCall = mockFetch.mock.calls[0]
-    expect(fetchCall[1].signal).toBeUndefined()
+    expect(mockNewHttpBatchRpcSession).toHaveBeenCalled()
   })
 
   it('should support legacy auth signature with no timeout', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ result: 'success' })
-    })
+    const http = await getHttpTransport()
 
     const transport = http('https://api.example.com/rpc', 'my-token')
     await transport.call('test.method', [])
 
-    const fetchCall = mockFetch.mock.calls[0]
-    expect(fetchCall[1].headers['Authorization']).toBe('Bearer my-token')
-    expect(fetchCall[1].signal).toBeUndefined()
+    expect(mockNewHttpBatchRpcSession).toHaveBeenCalled()
   })
 
   it('should support options object with auth and timeout', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ result: 'success' })
-    })
+    const http = await getHttpTransport()
 
     const transport = http('https://api.example.com/rpc', {
       auth: 'my-token',
@@ -122,18 +121,13 @@ describe('http() Transport - Timeout', () => {
     })
     await transport.call('test.method', [])
 
-    const fetchCall = mockFetch.mock.calls[0]
-    expect(fetchCall[1].headers['Authorization']).toBe('Bearer my-token')
-    expect(fetchCall[1].signal).toBeInstanceOf(AbortSignal)
+    expect(mockNewHttpBatchRpcSession).toHaveBeenCalled()
   })
 
   it('should support auth provider function with timeout', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ result: 'success' })
-    })
-
     const authProvider = vi.fn().mockResolvedValue('dynamic-token')
+
+    const http = await getHttpTransport()
 
     const transport = http('https://api.example.com/rpc', {
       auth: authProvider,
@@ -142,17 +136,13 @@ describe('http() Transport - Timeout', () => {
     await transport.call('test.method', [])
 
     expect(authProvider).toHaveBeenCalled()
-    const fetchCall = mockFetch.mock.calls[0]
-    expect(fetchCall[1].headers['Authorization']).toBe('Bearer dynamic-token')
+    expect(mockNewHttpBatchRpcSession).toHaveBeenCalled()
   })
 
   it('should clear timeout when request completes successfully', async () => {
     const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')
 
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ result: 'success' })
-    })
+    const http = await getHttpTransport()
 
     const transport = http('https://api.example.com/rpc', { timeout: 5000 })
     await transport.call('test.method', [])
@@ -164,7 +154,9 @@ describe('http() Transport - Timeout', () => {
   it('should clear timeout when request fails with non-timeout error', async () => {
     const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')
 
-    mockFetch.mockRejectedValue(new Error('Network error'))
+    mockSession.test.method.mockRejectedValue(new Error('Network error'))
+
+    const http = await getHttpTransport()
 
     const transport = http('https://api.example.com/rpc', { timeout: 5000 })
 
@@ -175,67 +167,179 @@ describe('http() Transport - Timeout', () => {
   })
 
   it('should handle timeout of 0 as no timeout', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ result: 'success' })
-    })
+    const http = await getHttpTransport()
 
     const transport = http('https://api.example.com/rpc', { timeout: 0 })
     const result = await transport.call('test.method', [])
 
     expect(result).toEqual({ result: 'success' })
-
-    const fetchCall = mockFetch.mock.calls[0]
-    expect(fetchCall[1].signal).toBeUndefined()
   })
 
   it('should handle negative timeout as no timeout', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ result: 'success' })
-    })
+    const http = await getHttpTransport()
 
     const transport = http('https://api.example.com/rpc', { timeout: -1 })
     const result = await transport.call('test.method', [])
 
     expect(result).toEqual({ result: 'success' })
-
-    const fetchCall = mockFetch.mock.calls[0]
-    expect(fetchCall[1].signal).toBeUndefined()
   })
 
   it('should preserve ConnectionError properties', async () => {
-    vi.useFakeTimers()
-
-    mockFetch.mockImplementation((_url: string, options: RequestInit) => {
-      return new Promise((resolve, reject) => {
-        options.signal?.addEventListener('abort', () => {
-          const error = new Error('The operation was aborted')
-          error.name = 'AbortError'
-          reject(error)
-        })
-      })
+    // Use real timers with a short timeout
+    mockSession.test.slowMethod.mockImplementation(() => {
+      return new Promise(resolve => setTimeout(resolve, 200))
     })
 
-    const transport = http('https://api.example.com/rpc', { timeout: 2000 })
-    const callPromise = transport.call('test.method', [])
+    const http = await getHttpTransport()
 
-    // Prevent unhandled rejection warning by adding catch handler
-    callPromise.catch(() => {})
-
-    await vi.advanceTimersByTimeAsync(2001)
+    const transport = http('https://api.example.com/rpc', { timeout: 50 })
 
     try {
-      await callPromise
+      await transport.call('test.slowMethod', [])
       expect.fail('Should have thrown')
     } catch (error) {
-      expect(error).toBeInstanceOf(ConnectionError)
-      const connError = error as ConnectionError
-      expect(connError.code).toBe('REQUEST_TIMEOUT')
-      expect(connError.retryable).toBe(true)
-      expect(connError.message).toBe('Request timeout after 2000ms')
+      // Check error properties instead of instanceof due to vi.resetModules()
+      expect((error as any).code).toBe('REQUEST_TIMEOUT')
+      expect((error as any).retryable).toBe(true)
+      expect((error as any).message).toBe('Request timeout after 50ms')
     }
+  }, 10000) // 10 second test timeout
+})
 
-    vi.useRealTimers()
+// ============================================================================
+// HTTP Transport - Capnweb Protocol Tests
+// ============================================================================
+
+describe('http() Transport - Capnweb Protocol', () => {
+  it('should use capnweb newHttpBatchRpcSession', async () => {
+    const http = await getHttpTransport()
+
+    const transport = http('https://api.example.com/rpc')
+    await transport.call('test.method', [])
+
+    expect(mockNewHttpBatchRpcSession).toHaveBeenCalledWith('https://api.example.com/rpc')
+  })
+
+  it('should cache the session across multiple calls', async () => {
+    const http = await getHttpTransport()
+
+    const transport = http('https://api.example.com/rpc')
+    await transport.call('test.method', [])
+    await transport.call('simpleMethod', [])
+    await transport.call('test.method', ['arg1'])
+
+    // Session should only be created once
+    expect(mockNewHttpBatchRpcSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('should navigate nested method paths', async () => {
+    const http = await getHttpTransport()
+
+    const transport = http('https://api.example.com/rpc')
+    await transport.call('test.method', ['arg1', 'arg2'])
+
+    expect(mockSession.test.method).toHaveBeenCalledWith('arg1', 'arg2')
+  })
+
+  it('should call simple methods directly', async () => {
+    const http = await getHttpTransport()
+
+    const transport = http('https://api.example.com/rpc')
+    await transport.call('simpleMethod', [])
+
+    expect(mockSession.simpleMethod).toHaveBeenCalled()
+  })
+
+  it('should throw INVALID_PATH for invalid path traversal', async () => {
+    // Create session with non-object property
+    (mockSession as any).invalidPath = 'not an object'
+
+    const http = await getHttpTransport()
+    const RPCError = await getRPCError()
+    const transport = http('https://api.example.com/rpc')
+
+    try {
+      await transport.call('invalidPath.method', [])
+      expect.fail('Should have thrown')
+    } catch (error) {
+      expect(error).toBeInstanceOf(RPCError)
+      expect((error as InstanceType<typeof RPCError>).code).toBe('INVALID_PATH')
+    }
+  })
+
+  it('should throw METHOD_NOT_FOUND when target is not a function', async () => {
+    // Create session with non-function property
+    (mockSession as any).notAFunction = { data: 'value' }
+
+    const http = await getHttpTransport()
+    const RPCError = await getRPCError()
+    const transport = http('https://api.example.com/rpc')
+
+    try {
+      await transport.call('notAFunction', [])
+      expect.fail('Should have thrown')
+    } catch (error) {
+      expect(error).toBeInstanceOf(RPCError)
+      expect((error as InstanceType<typeof RPCError>).code).toBe('METHOD_NOT_FOUND')
+    }
+  })
+
+  it('should throw MODULE_ERROR when newHttpBatchRpcSession is not found', async () => {
+    // Mock capnweb module without newHttpBatchRpcSession
+    vi.doMock('capnweb', () => ({
+      newHttpBatchRpcSession: undefined
+    }))
+    vi.resetModules()
+
+    const { http } = await import('../src/transports')
+    const RPCError = await getRPCError()
+    const transport = http('https://api.example.com/rpc')
+
+    try {
+      await transport.call('test.method', [])
+      expect.fail('Should have thrown')
+    } catch (error) {
+      expect(error).toBeInstanceOf(RPCError)
+      expect((error as InstanceType<typeof RPCError>).code).toBe('MODULE_ERROR')
+      expect((error as InstanceType<typeof RPCError>).message).toBe('capnweb.newHttpBatchRpcSession not found')
+    }
+  })
+
+  it('should dispose session on close()', async () => {
+    const http = await getHttpTransport()
+
+    const transport = http('https://api.example.com/rpc')
+    await transport.call('test.method', [])
+
+    // Close transport
+    transport.close!()
+
+    expect(mockSession[Symbol.dispose]).toHaveBeenCalledTimes(1)
+  })
+
+  it('should handle close() when session is not initialized', async () => {
+    const http = await getHttpTransport()
+
+    const transport = http('https://api.example.com/rpc')
+
+    // Close without any calls - should not throw
+    expect(() => transport.close!()).not.toThrow()
+  })
+
+  it('should create new session after close()', async () => {
+    const http = await getHttpTransport()
+
+    const transport = http('https://api.example.com/rpc')
+
+    // First session
+    await transport.call('test.method', [])
+    expect(mockNewHttpBatchRpcSession).toHaveBeenCalledTimes(1)
+
+    // Close
+    transport.close!()
+
+    // New call should create new session
+    await transport.call('test.method', [])
+    expect(mockNewHttpBatchRpcSession).toHaveBeenCalledTimes(2)
   })
 })

@@ -1,0 +1,33 @@
+# Wrangler configuration for WebSocket Fetch Bypass POC
+#
+# This file defines both workers needed for the experiment:
+# 1. proxy-worker: Accepts WebSocket connections and proxies fetch requests
+# 2. client-worker: Tests making concurrent requests via the proxy
+
+name = "ws-fetch-proxy"
+main = "proxy-worker.ts"
+compatibility_date = "2024-01-01"
+
+# The proxy worker just needs basic fetch capabilities
+# No special bindings required
+
+# Development settings
+[dev]
+port = 8787
+local_protocol = "http"
+
+# -------------------------------------------------------------------
+# To deploy the client worker, create a separate wrangler.client.toml
+# or use environments:
+
+[env.client]
+name = "ws-fetch-client"
+main = "client-worker.ts"
+
+[env.client.vars]
+# Update this URL after deploying the proxy worker
+PROXY_URL = "wss://ws-fetch-proxy.YOUR_SUBDOMAIN.workers.dev"
+
+[env.client.dev]
+port = 8788
+local_protocol = "http"

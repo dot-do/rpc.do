@@ -1,0 +1,18 @@
+# POC: Testing ctx.waitUntil with WebSocket connections
+#
+# This experiment tests whether ctx.waitUntil can keep WebSocket connections
+# alive and processing after the fetch handler returns a response.
+
+name = "waituntil-ws-experiment"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+
+# Enable the Durable Objects feature
+[[durable_objects.bindings]]
+name = "TEST_DO"
+class_name = "TestDO"
+
+# Durable Object migrations
+[[migrations]]
+tag = "v1"
+new_classes = ["TestDO"]

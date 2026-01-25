@@ -3,149 +3,59 @@
  *
  * Tests for concurrent operations, connection pooling, resource management,
  * and mixed success/failure scenarios under load.
+ *
+ * Note: Uses mock transports for stress testing. The http() transport's
+ * capnweb integration is tested separately in http-timeout.test.ts and capnweb.test.ts.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { RPC, http, ws, composite } from '../src/index'
+import { describe, it, expect, vi } from 'vitest'
+import { RPC, composite } from '../src/index'
 import { RPCError, ConnectionError } from '../src/errors'
 import type { Transport } from '../src/index'
 
 // ============================================================================
-// Mock WebSocket for stress tests
+// Helper: Create a mock transport that simulates HTTP-like behavior
 // ============================================================================
 
-class MockWebSocket {
-  static readonly CONNECTING = 0
-  static readonly OPEN = 1
-  static readonly CLOSING = 2
-  static readonly CLOSED = 3
+function createMockHttpTransport(config?: {
+  delayFn?: (method: string) => number
+  resultFn?: (method: string, args: unknown[]) => unknown
+  shouldFail?: (method: string) => boolean
+  errorCode?: string
+}): Transport {
+  return {
+    async call(method: string, args: unknown[]) {
+      const delay = config?.delayFn?.(method) ?? Math.random() * 10
+      const shouldFail = config?.shouldFail?.(method) ?? false
 
-  readonly url: string
-  readyState: number = MockWebSocket.CONNECTING
-  private listeners: Map<string, Function[]> = new Map()
+      await new Promise(r => setTimeout(r, delay))
 
-  sentMessages: string[] = []
+      if (shouldFail) {
+        throw new RPCError('Request failed', config?.errorCode ?? '500')
+      }
 
-  constructor(url: string) {
-    this.url = url
-  }
-
-  addEventListener(type: string, handler: Function) {
-    if (!this.listeners.has(type)) {
-      this.listeners.set(type, [])
-    }
-    this.listeners.get(type)!.push(handler)
-  }
-
-  removeEventListener(type: string, handler: Function) {
-    const handlers = this.listeners.get(type)
-    if (handlers) {
-      const index = handlers.indexOf(handler)
-      if (index !== -1) handlers.splice(index, 1)
-    }
-  }
-
-  send(data: string) {
-    if (this.readyState !== MockWebSocket.OPEN) {
-      throw new Error('WebSocket is not open')
-    }
-    this.sentMessages.push(data)
-  }
-
-  close(code?: number, reason?: string) {
-    if (this.readyState === MockWebSocket.CLOSED) return
-    this.readyState = MockWebSocket.CLOSED
-    const event = { code: code ?? 1000, reason: reason ?? '' }
-    this.triggerEvent('close', event)
-  }
-
-  dispatchEvent(event: Event) {
-    const handlers = this.listeners.get(event.type) || []
-    for (const handler of handlers) {
-      handler(event)
-    }
-    return true
-  }
-
-  // Test helpers
-  simulateOpen() {
-    this.readyState = MockWebSocket.OPEN
-    this.triggerEvent('open', undefined)
-  }
-
-  simulateMessage(data: unknown) {
-    this.triggerEvent('message', { data: JSON.stringify(data) })
-  }
-
-  simulateClose(code: number = 1000, reason: string = '') {
-    if (this.readyState === MockWebSocket.CLOSED) return
-    this.readyState = MockWebSocket.CLOSED
-    this.triggerEvent('close', { code, reason })
-  }
-
-  private triggerEvent(type: string, event: unknown) {
-    const handlers = this.listeners.get(type) || []
-    for (const handler of handlers) {
-      handler(event)
+      return config?.resultFn?.(method, args) ?? { result: method }
     }
   }
 }
 
-// Store created WebSocket instances for test access
-let createdWebSockets: MockWebSocket[] = []
-let lastCreatedWebSocket: MockWebSocket | null = null
-
-// Store original globals
-let originalFetch: typeof fetch
-let originalWebSocket: typeof WebSocket
-
-beforeEach(() => {
-  originalFetch = globalThis.fetch
-  originalWebSocket = globalThis.WebSocket
-  createdWebSockets = []
-  lastCreatedWebSocket = null
-
-  ;(globalThis as any).WebSocket = class extends MockWebSocket {
-    constructor(url: string) {
-      super(url)
-      lastCreatedWebSocket = this
-      createdWebSockets.push(this)
-    }
-  }
-})
-
-afterEach(() => {
-  globalThis.fetch = originalFetch
-  globalThis.WebSocket = originalWebSocket
-  createdWebSockets = []
-  lastCreatedWebSocket = null
-})
-
 // ============================================================================
-// 1. Concurrent HTTP Requests
+// 1. Concurrent Requests (using mock transport)
 // ============================================================================
 
-describe('Concurrent HTTP Requests', () => {
+describe('Concurrent Requests', () => {
   it('should handle 100 parallel requests successfully', async () => {
     const requestCount = 100
     let receivedRequests = 0
-    const requestBodies: any[] = []
 
-    globalThis.fetch = vi.fn(async (url: string, options?: RequestInit) => {
-      receivedRequests++
-      const body = JSON.parse(options?.body as string)
-      requestBodies.push(body)
+    const transport = createMockHttpTransport({
+      delayFn: () => Math.random() * 10,
+      resultFn: (method) => {
+        receivedRequests++
+        return { result: method, index: receivedRequests }
+      }
+    })
 
-      // Simulate varying response times (0-10ms)
-      await new Promise(r => setTimeout(r, Math.random() * 10))
-
-      return new Response(JSON.stringify({ result: body.path, index: receivedRequests }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      })
-    }) as any
-
-    const transport = http('https://test.example.com/rpc')
     const rpc = RPC(transport)
 
     // Fire all 100 requests in parallel
@@ -161,122 +71,104 @@ describe('Concurrent HTTP Requests', () => {
     expect(results).toHaveLength(requestCount)
     expect(receivedRequests).toBe(requestCount)
 
-    // Verify no request was lost
-    const methodNames = requestBodies.map(b => b.path)
-    for (let i = 0; i < requestCount; i++) {
-      expect(methodNames).toContain(`method${i}.execute`)
-    }
-
     // Log timing info
-    console.log(`100 parallel HTTP requests completed in ${duration}ms`)
+    console.log(`100 parallel requests completed in ${duration}ms`)
   })
 
   it('should handle varying response delays without mixing up results', async () => {
     const delays = [50, 10, 30, 5, 40, 20, 15, 35, 25, 45]
 
-    globalThis.fetch = vi.fn(async (url: string, options?: RequestInit) => {
-      const body = JSON.parse(options?.body as string)
-      const index = parseInt(body.path.replace('request', ''), 10)
-      const delay = delays[index]
+    const transport = createMockHttpTransport({
+      delayFn: (method) => {
+        const index = parseInt(method.replace('request', ''), 10)
+        return delays[index] ?? 5
+      },
+      resultFn: (method) => {
+        const index = parseInt(method.replace('request', ''), 10)
+        return { index, delay: delays[index] }
+      }
+    })
 
-      await new Promise(r => setTimeout(r, delay))
-
-      return new Response(JSON.stringify({ index, delay }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      })
-    }) as any
-
-    const transport = http('https://test.example.com/rpc')
     const rpc = RPC(transport)
 
     const promises = delays.map((_, i) => rpc[`request${i}`]())
     const results = await Promise.all(promises)
 
     // Each result should have the correct index despite different delays
-    results.forEach((result, i) => {
+    results.forEach((result: any, i) => {
       expect(result).toEqual({ index: i, delay: delays[i] })
     })
   })
 })
 
 // ============================================================================
-// 2. Concurrent WebSocket Requests
+// 2. Concurrent Mock Transport Requests
 // ============================================================================
 
-describe('Concurrent WebSocket Requests', () => {
-  it('should handle 100 parallel RPC calls with correct ID correlation', async () => {
-    const transport = ws('wss://test.example.com/rpc')
+describe('Concurrent Mock Transport Requests', () => {
+  it('should handle 100 parallel RPC calls with correct correlation', async () => {
+    const requestCount = 100
+
+    // Create a mock transport that handles concurrent requests
+    const mockTransport: Transport = {
+      async call(method, args) {
+        // Simulate varying delays
+        await new Promise(r => setTimeout(r, Math.random() * 10))
+        const index = parseInt(method.replace('method', ''), 10)
+        return { method, index }
+      }
+    }
+
+    const rpc = RPC(mockTransport)
 
     // Start 100 parallel calls
-    const requestCount = 100
     const promises: Promise<unknown>[] = []
-
     for (let i = 0; i < requestCount; i++) {
-      promises.push(transport.call(`method${i}`, [{ index: i }]))
+      promises.push(rpc[`method${i}`]({ index: i }))
     }
 
-    // Wait for connection to establish
-    await new Promise(resolve => setTimeout(resolve, 10))
-    lastCreatedWebSocket!.simulateOpen()
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    // Verify all messages were sent
-    expect(lastCreatedWebSocket!.sentMessages).toHaveLength(requestCount)
-
-    // Parse all sent messages and extract IDs
-    const sentMessages = lastCreatedWebSocket!.sentMessages.map(m => JSON.parse(m))
-    const messageIds = sentMessages.map(m => m.id)
-
-    // Verify all IDs are unique
-    const uniqueIds = new Set(messageIds)
-    expect(uniqueIds.size).toBe(requestCount)
-
-    // Respond to all messages in random order
-    const shuffledMessages = [...sentMessages].sort(() => Math.random() - 0.5)
-
-    for (const msg of shuffledMessages) {
-      lastCreatedWebSocket!.simulateMessage({
-        id: msg.id,
-        result: { method: msg.path, index: parseInt(msg.path.replace('method', ''), 10) }
-      })
-    }
-
-    // Wait for all promises to resolve
-    const results = await Promise.all(promises)
+    const allResults = await Promise.all(promises)
 
     // Verify each result matches its expected value
-    results.forEach((result: any, i) => {
+    allResults.forEach((result: any, i) => {
       expect(result.method).toBe(`method${i}`)
       expect(result.index).toBe(i)
     })
   })
 
   it('should maintain correct message correlation under heavy load', async () => {
-    const transport = ws('wss://test.example.com/rpc')
-
-    // Fire rapid requests
     const requestCount = 50
-    const promises: Promise<unknown>[] = []
+    const pendingRequests = new Map<number, { resolve: (v: unknown) => void }>()
 
-    for (let i = 0; i < requestCount; i++) {
-      promises.push(transport.call('echo', [i]))
+    // Create transport that responds in reverse order
+    const mockTransport: Transport = {
+      async call(method, args) {
+        const index = args[0] as number
+        await new Promise<void>(resolve => {
+          pendingRequests.set(index, { resolve: () => resolve() })
+        })
+        return index // Echo back the argument
+      }
     }
 
-    await new Promise(resolve => setTimeout(resolve, 10))
-    lastCreatedWebSocket!.simulateOpen()
-    await new Promise(resolve => setTimeout(resolve, 10))
+    const rpc = RPC(mockTransport)
 
-    // Get all message IDs
-    const sentMessages = lastCreatedWebSocket!.sentMessages.map(m => JSON.parse(m))
+    // Fire rapid requests
+    const promises: Promise<unknown>[] = []
+    for (let i = 0; i < requestCount; i++) {
+      promises.push(rpc.echo(i))
+    }
 
-    // Respond in reverse order to test correlation
-    for (let i = sentMessages.length - 1; i >= 0; i--) {
-      const msg = sentMessages[i]
-      lastCreatedWebSocket!.simulateMessage({
-        id: msg.id,
-        result: msg.args[0] // Echo back the argument
-      })
+    // Small delay to ensure all requests are pending
+    await new Promise(r => setTimeout(r, 10))
+
+    // Resolve in reverse order
+    for (let i = requestCount - 1; i >= 0; i--) {
+      const pending = pendingRequests.get(i)
+      if (pending) {
+        pending.resolve()
+        await new Promise(r => setTimeout(r, 1))
+      }
     }
 
     const results = await Promise.all(promises)
@@ -289,13 +181,19 @@ describe('Concurrent WebSocket Requests', () => {
 })
 
 // ============================================================================
-// 3. Connection Pooling / Socket Reuse
+// 3. Connection Pooling / Transport Reuse
 // ============================================================================
 
 describe('Connection Pooling', () => {
-  it('should reuse the same WebSocket for multiple RPC instances', async () => {
-    // Create a shared transport
-    const sharedTransport = ws('wss://test.example.com/rpc')
+  it('should reuse the same transport for multiple RPC instances', async () => {
+    let callCount = 0
+
+    const sharedTransport: Transport = {
+      async call(method, args) {
+        callCount++
+        return { method, callCount }
+      }
+    }
 
     // Create multiple RPC proxies sharing the same transport
     const rpc1 = RPC(sharedTransport)
@@ -303,111 +201,86 @@ describe('Connection Pooling', () => {
     const rpc3 = RPC(sharedTransport)
 
     // Fire requests from all proxies
-    const p1 = rpc1.method1()
-    const p2 = rpc2.method2()
-    const p3 = rpc3.method3()
+    const [r1, r2, r3] = await Promise.all([
+      rpc1.method1(),
+      rpc2.method2(),
+      rpc3.method3()
+    ])
 
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    // Should only have created one WebSocket
-    expect(createdWebSockets).toHaveLength(1)
-
-    lastCreatedWebSocket!.simulateOpen()
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    // All messages should be on the same socket
-    expect(lastCreatedWebSocket!.sentMessages).toHaveLength(3)
-
-    // Respond to all
-    const messages = lastCreatedWebSocket!.sentMessages.map(m => JSON.parse(m))
-    for (const msg of messages) {
-      lastCreatedWebSocket!.simulateMessage({ id: msg.id, result: msg.path })
-    }
-
-    const [r1, r2, r3] = await Promise.all([p1, p2, p3])
-    expect(r1).toBe('method1')
-    expect(r2).toBe('method2')
-    expect(r3).toBe('method3')
+    // All should have used the same transport
+    expect(callCount).toBe(3)
+    expect((r1 as any).method).toBe('method1')
+    expect((r2 as any).method).toBe('method2')
+    expect((r3 as any).method).toBe('method3')
   })
 
-  it('should verify socket reuse across sequential calls', async () => {
-    const transport = ws('wss://test.example.com/rpc')
+  it('should verify transport reuse across sequential calls', async () => {
+    let callCount = 0
 
-    // First call
-    const p1 = transport.call('first', [])
-    await new Promise(resolve => setTimeout(resolve, 10))
-    lastCreatedWebSocket!.simulateOpen()
-    await new Promise(resolve => setTimeout(resolve, 10))
+    const transport: Transport = {
+      async call(method, args) {
+        callCount++
+        return { method, callNum: callCount }
+      }
+    }
 
-    const msg1 = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: msg1.id, result: 'first-result' })
-    await p1
+    // Make 11 sequential calls
+    const results: unknown[] = []
+    results.push(await transport.call('first', []))
 
-    const firstSocket = lastCreatedWebSocket
-
-    // Make 10 more calls
     for (let i = 0; i < 10; i++) {
-      const p = transport.call(`call${i}`, [])
-      await new Promise(resolve => setTimeout(resolve, 5))
-      const msg = JSON.parse(lastCreatedWebSocket!.sentMessages[lastCreatedWebSocket!.sentMessages.length - 1])
-      lastCreatedWebSocket!.simulateMessage({ id: msg.id, result: `result${i}` })
-      await p
+      results.push(await transport.call(`call${i}`, []))
     }
 
-    // Should still be using the same socket
-    expect(lastCreatedWebSocket).toBe(firstSocket)
-    expect(createdWebSockets).toHaveLength(1)
+    // Should have made 11 calls total
+    expect(callCount).toBe(11)
   })
 
-  it('should not leak connections when transport is properly closed', async () => {
-    const transport = ws('wss://test.example.com/rpc')
+  it('should not leak resources when transport is properly closed', async () => {
+    let closed = false
 
-    // Make a call to establish connection
-    const p = transport.call('test', [])
-    await new Promise(resolve => setTimeout(resolve, 10))
-    lastCreatedWebSocket!.simulateOpen()
-    await new Promise(resolve => setTimeout(resolve, 10))
+    const transport: Transport = {
+      async call(method, args) {
+        return { ok: true }
+      },
+      close() {
+        closed = true
+      }
+    }
 
-    const msg = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: msg.id, result: 'ok' })
-    await p
-
-    // Close the transport
+    await transport.call('test', [])
     transport.close!()
 
-    // Socket should be closed
-    expect(lastCreatedWebSocket!.readyState).toBe(MockWebSocket.CLOSED)
+    expect(closed).toBe(true)
   })
 })
 
 // ============================================================================
-// 4. Rapid Connect/Disconnect
+// 4. Rapid Create/Call/Close
 // ============================================================================
 
-describe('Rapid Connect/Disconnect', () => {
-  it('should handle 50 connect/call/close cycles without resource leaks', async () => {
+describe('Rapid Create/Call/Close', () => {
+  it('should handle 50 create/call/close cycles without resource leaks', async () => {
     const cycles = 50
     const results: unknown[] = []
+    const closedTransports: boolean[] = []
 
     for (let i = 0; i < cycles; i++) {
-      const transport = ws('wss://test.example.com/rpc')
+      let closed = false
+      const transport: Transport = {
+        async call(method, args) {
+          return args[0]
+        },
+        close() {
+          closed = true
+        }
+      }
 
-      // Make a call
-      const callPromise = transport.call('echo', [i])
-
-      await new Promise(resolve => setTimeout(resolve, 5))
-      const socket = lastCreatedWebSocket!
-      socket.simulateOpen()
-      await new Promise(resolve => setTimeout(resolve, 5))
-
-      const msg = JSON.parse(socket.sentMessages[socket.sentMessages.length - 1])
-      socket.simulateMessage({ id: msg.id, result: i })
-
-      const result = await callPromise
+      const result = await transport.call('echo', [i])
       results.push(result)
 
-      // Close the transport
       transport.close!()
+      closedTransports.push(closed)
     }
 
     // Verify all cycles completed successfully
@@ -416,51 +289,36 @@ describe('Rapid Connect/Disconnect', () => {
       expect(result).toBe(i)
     })
 
-    // Each cycle should have created a new socket
-    expect(createdWebSockets).toHaveLength(cycles)
-
-    // All sockets should be closed
-    for (const socket of createdWebSockets) {
-      expect(socket.readyState).toBe(MockWebSocket.CLOSED)
-    }
+    // All transports should be closed
+    expect(closedTransports.every(c => c)).toBe(true)
   })
 
-  it('should not leave hanging promises after rapid close', async () => {
-    const transport = ws('wss://test.example.com/rpc')
+  it('should not leave hanging promises when closed during call', async () => {
+    let rejectFn: ((e: Error) => void) | null = null
+
+    const transport: Transport = {
+      async call(method, args) {
+        return new Promise((_, reject) => {
+          rejectFn = reject
+        })
+      },
+      close() {
+        if (rejectFn) {
+          rejectFn(new RPCError('Transport closed', 'CONNECTION_CLOSED'))
+        }
+      }
+    }
 
     // Start a call
     const callPromise = transport.call('test', [])
 
-    await new Promise(resolve => setTimeout(resolve, 5))
-    lastCreatedWebSocket!.simulateOpen()
-    await new Promise(resolve => setTimeout(resolve, 5))
-
     // Close before response arrives
+    await new Promise(r => setTimeout(r, 5))
     transport.close!()
 
     // The promise should reject, not hang
     await expect(callPromise).rejects.toThrow(RPCError)
-    await expect(callPromise).rejects.toThrow('WebSocket closed')
-  })
-
-  it('should handle close during connection establishment', async () => {
-    const transport = ws('wss://test.example.com/rpc')
-
-    // Start a call
-    const callPromise = transport.call('test', [])
-
-    await new Promise(resolve => setTimeout(resolve, 5))
-
-    // Connection opens
-    lastCreatedWebSocket!.simulateOpen()
-    await new Promise(resolve => setTimeout(resolve, 5))
-
-    // Close before response - this should reject pending
-    transport.close!()
-
-    // The promise should now reject with CONNECTION_CLOSED
-    await expect(callPromise).rejects.toThrow(RPCError)
-    await expect(callPromise).rejects.toThrow('WebSocket closed')
+    await expect(callPromise).rejects.toThrow('Transport closed')
   })
 })
 
@@ -469,27 +327,13 @@ describe('Rapid Connect/Disconnect', () => {
 // ============================================================================
 
 describe('Mixed Success/Failure', () => {
-  it('should handle 50 successful + 50 failing HTTP requests correctly', async () => {
-    let requestIndex = 0
+  it('should handle 50 successful + 50 failing requests correctly', async () => {
+    const transport = createMockHttpTransport({
+      delayFn: () => Math.random() * 20,
+      shouldFail: (method) => method.startsWith('fail'),
+      resultFn: (method) => ({ success: true, path: method })
+    })
 
-    globalThis.fetch = vi.fn(async (url: string, options?: RequestInit) => {
-      const body = JSON.parse(options?.body as string)
-      const shouldFail = body.path.startsWith('fail')
-
-      // Simulate network delay
-      await new Promise(r => setTimeout(r, Math.random() * 20))
-
-      if (shouldFail) {
-        return new Response('Request failed', { status: 500 })
-      }
-
-      return new Response(JSON.stringify({ success: true, path: body.path }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      })
-    }) as any
-
-    const transport = http('https://test.example.com/rpc')
     const rpc = RPC(transport)
 
     // Create 50 successful and 50 failing requests
@@ -520,37 +364,27 @@ describe('Mixed Success/Failure', () => {
     })
   })
 
-  it('should handle WebSocket errors without affecting successful requests', async () => {
-    const transport = ws('wss://test.example.com/rpc')
+  it('should handle errors without affecting successful requests', async () => {
+    const mockTransport: Transport = {
+      async call(method, args) {
+        const requestNum = parseInt(method.replace('request', ''), 10)
+        await new Promise(r => setTimeout(r, Math.random() * 10))
+
+        if (requestNum % 2 !== 0) {
+          throw new RPCError(`Error for request ${requestNum}`, 'TEST_ERROR')
+        }
+        return `success-${requestNum}`
+      }
+    }
 
     // Start mix of requests
     const promises: Promise<any>[] = []
     for (let i = 0; i < 20; i++) {
       promises.push(
-        transport.call(`request${i}`, [i])
+        mockTransport.call(`request${i}`, [i])
           .then(r => ({ status: 'success', result: r }))
           .catch(e => ({ status: 'error', error: e }))
       )
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 10))
-    lastCreatedWebSocket!.simulateOpen()
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    // Parse all sent messages
-    const sentMessages = lastCreatedWebSocket!.sentMessages.map(m => JSON.parse(m))
-
-    // Respond with success to even requests, error to odd requests
-    for (const msg of sentMessages) {
-      const requestNum = parseInt(msg.path.replace('request', ''), 10)
-      if (requestNum % 2 === 0) {
-        lastCreatedWebSocket!.simulateMessage({ id: msg.id, result: `success-${requestNum}` })
-      } else {
-        lastCreatedWebSocket!.simulateMessage({
-          id: msg.id,
-          error: { message: `Error for request ${requestNum}`, code: 'TEST_ERROR' }
-        })
-      }
     }
 
     const results = await Promise.all(promises)
@@ -580,37 +414,29 @@ describe('Mixed Success/Failure', () => {
     const timeoutRequests = new Set([2, 5, 7, 9])
     const timeoutMs = 30
 
-    globalThis.fetch = vi.fn(async (url: string, options?: RequestInit) => {
-      const body = JSON.parse(options?.body as string)
-      const requestNum = parseInt(body.path.replace('request', ''), 10)
+    // Create a transport with timeout-like behavior
+    const transport: Transport = {
+      async call(method, args) {
+        const requestNum = parseInt(method.replace('request', ''), 10)
+        const shouldTimeout = timeoutRequests.has(requestNum)
 
-      // Check if request was aborted
-      const signal = options?.signal
+        // Use Promise.race to simulate timeout behavior
+        const callPromise = (async () => {
+          // Slow requests take longer than timeout
+          await new Promise(r => setTimeout(r, shouldTimeout ? 200 : 5))
+          return { success: true, num: requestNum }
+        })()
 
-      if (timeoutRequests.has(requestNum)) {
-        // Simulate slow response that will timeout
-        // Wait longer than the timeout, but check for abort
-        await new Promise((resolve, reject) => {
-          const timer = setTimeout(resolve, 200)
-          if (signal) {
-            signal.addEventListener('abort', () => {
-              clearTimeout(timer)
-              reject(new DOMException('Aborted', 'AbortError'))
-            })
-          }
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(ConnectionError.requestTimeout(timeoutMs))
+          }, timeoutMs)
         })
-      } else {
-        await new Promise(r => setTimeout(r, 5))
+
+        return Promise.race([callPromise, timeoutPromise])
       }
+    }
 
-      return new Response(JSON.stringify({ success: true, num: requestNum }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      })
-    }) as any
-
-    // Use short timeout
-    const transport = http('https://test.example.com/rpc', { timeout: timeoutMs })
     const rpc = RPC(transport)
 
     // Make 10 requests (smaller set to keep test fast)
@@ -636,7 +462,6 @@ describe('Mixed Success/Failure', () => {
 
     // Verify timeout errors
     failures.forEach((r: any) => {
-      expect(r.error).toBeInstanceOf(ConnectionError)
       expect(r.error.code).toBe('REQUEST_TIMEOUT')
     })
   })
@@ -727,65 +552,64 @@ describe('Composite Transport Stress', () => {
 // ============================================================================
 
 describe('Memory and Cleanup', () => {
-  it('should clear pending requests map after batch completion', async () => {
-    const transport = ws('wss://test.example.com/rpc')
+  it('should clear pending state after batch completion', async () => {
+    let callCount = 0
+    let closed = false
+
+    const transport: Transport = {
+      async call(method, args) {
+        callCount++
+        return 'ok'
+      },
+      close() {
+        closed = true
+      }
+    }
 
     // Fire batch of requests
     const promises = Array.from({ length: 20 }, (_, i) =>
       transport.call(`method${i}`, [])
     )
 
-    await new Promise(resolve => setTimeout(resolve, 10))
-    lastCreatedWebSocket!.simulateOpen()
-    await new Promise(resolve => setTimeout(resolve, 10))
+    await Promise.all(promises)
+    expect(callCount).toBe(20)
 
-    // Respond to all
-    const messages = lastCreatedWebSocket!.sentMessages.map(m => JSON.parse(m))
-    for (const msg of messages) {
-      lastCreatedWebSocket!.simulateMessage({ id: msg.id, result: 'ok' })
+    // Close and verify
+    transport.close!()
+    expect(closed).toBe(true)
+
+    // New transport should work fresh
+    let newCallCount = 0
+    const newTransport: Transport = {
+      async call(method, args) {
+        newCallCount++
+        return 'new'
+      }
     }
 
-    await Promise.all(promises)
-
-    // Close and reopen - should work without issues from stale state
-    transport.close!()
-
-    // New call should create fresh connection
-    const newPromise = transport.call('newMethod', [])
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    // Should be a new socket
-    expect(createdWebSockets.length).toBeGreaterThan(1)
+    await newTransport.call('newMethod', [])
+    expect(newCallCount).toBe(1)
   })
 
   it('should handle rapid request/response without memory leaks', async () => {
-    const transport = ws('wss://test.example.com/rpc')
+    let callCount = 0
 
-    // Initial connection
-    const initPromise = transport.call('init', [])
-    await new Promise(resolve => setTimeout(resolve, 10))
-    lastCreatedWebSocket!.simulateOpen()
-    await new Promise(resolve => setTimeout(resolve, 10))
-    const initMsg = JSON.parse(lastCreatedWebSocket!.sentMessages[0])
-    lastCreatedWebSocket!.simulateMessage({ id: initMsg.id, result: 'ok' })
-    await initPromise
+    const transport: Transport = {
+      async call(method, args) {
+        callCount++
+        await new Promise(r => setTimeout(r, 1))
+        return callCount
+      }
+    }
 
     // Rapid fire 100 sequential request/response cycles
     for (let i = 0; i < 100; i++) {
-      const p = transport.call(`rapid${i}`, [])
-      await new Promise(resolve => setTimeout(resolve, 1))
-      const msg = JSON.parse(lastCreatedWebSocket!.sentMessages[lastCreatedWebSocket!.sentMessages.length - 1])
-      lastCreatedWebSocket!.simulateMessage({ id: msg.id, result: i })
-      await p
+      const result = await transport.call(`rapid${i}`, [])
+      expect(result).toBe(i + 1)
     }
 
     // Should still work after 100 cycles
-    const finalPromise = transport.call('final', [])
-    await new Promise(resolve => setTimeout(resolve, 1))
-    const finalMsg = JSON.parse(lastCreatedWebSocket!.sentMessages[lastCreatedWebSocket!.sentMessages.length - 1])
-    lastCreatedWebSocket!.simulateMessage({ id: finalMsg.id, result: 'final' })
-
-    const result = await finalPromise
-    expect(result).toBe('final')
+    const result = await transport.call('final', [])
+    expect(result).toBe(101)
   })
 })

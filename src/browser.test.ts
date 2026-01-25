@@ -15,8 +15,8 @@ describe('Browser Compatibility', () => {
   it('should bundle main entry for browser without Node.js dependencies', async () => {
     // Create a simple entry that imports from our package
     const entryCode = `
-      import { RPC, http, ws, binding, composite } from './src/index.ts'
-      export { RPC, http, ws, binding, composite }
+      import { RPC, http, binding, composite, capnweb } from './src/index.ts'
+      export { RPC, http, binding, composite, capnweb }
     `
 
     const result = await build({
@@ -46,8 +46,8 @@ describe('Browser Compatibility', () => {
 
   it('should bundle transports entry for browser', async () => {
     const entryCode = `
-      import { http, ws, binding, composite } from './src/transports.ts'
-      export { http, ws, binding, composite }
+      import { http, binding, composite, capnweb } from './src/transports.ts'
+      export { http, binding, composite, capnweb }
     `
 
     const result = await build({
