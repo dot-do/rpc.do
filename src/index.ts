@@ -223,6 +223,21 @@ export * from './transports'
 export type { AuthProvider, ServerMessage } from './transports'
 export { isFunction, isServerMessage } from './transports'
 
+// DO Client - remote access to DO sql/storage
+export {
+  createDOClient,
+  connectDO,
+  type DOClient,
+  type SqlQuery,
+  type SqlQueryResult,
+  type RemoteStorage,
+  type DatabaseSchema,
+  type TableSchema,
+  type ColumnSchema,
+  type IndexSchema,
+  type RpcSchema,
+} from './do-client'
+
 // Note: auth() is available via 'rpc.do/auth' for server-side usage
 // It's not exported from main index to avoid oauth.do dependency in browser contexts
 

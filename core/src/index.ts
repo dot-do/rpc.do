@@ -108,6 +108,7 @@ export interface ColoContext {
 
 /**
  * Server-side context available inside DO RPC methods
+ * @deprecated Use this.sql and this.storage directly instead
  */
 export interface RpcContext {
   /** SQLite tagged template (DO SQLite storage) */
@@ -122,6 +123,25 @@ export interface RpcContext {
   auth?: { token?: string; user?: any; [key: string]: any }
   /** Colo (location) context */
   colo: ColoContext
+}
+
+/**
+ * SQL query result from remote execution
+ */
+export interface SqlQueryResult<T = Record<string, unknown>> {
+  results: T[]
+  meta: {
+    rows_read: number
+    rows_written: number
+  }
+}
+
+/**
+ * Serialized SQL query for RPC transport
+ */
+export interface SerializedSqlQuery {
+  strings: string[]
+  values: unknown[]
 }
 
 // ============================================================================
@@ -238,7 +258,53 @@ export class DurableRPC extends DurableObject {
   /** Cached colo for this DO instance */
   private _colo: string | null = null
 
-  /** Context accessor for storage, sql, state, colo */
+  // ==========================================================================
+  // Direct accessors (same API inside DO and via RPC)
+  // ==========================================================================
+
+  /**
+   * SQLite tagged template - use directly as this.sql`query`
+   *
+   * @example
+   * ```typescript
+   * // Inside DO
+   * const users = this.sql`SELECT * FROM users`.all()
+   *
+   * // Via RPC (same syntax)
+   * const users = await $.sql`SELECT * FROM users`.all()
+   * ```
+   */
+  get sql(): SqlStorage {
+    return this.ctx.storage.sql
+  }
+
+  /**
+   * Durable Object storage API
+   *
+   * @example
+   * ```typescript
+   * // Inside DO
+   * const value = await this.storage.get('key')
+   *
+   * // Via RPC (same syntax)
+   * const value = await $.storage.get('key')
+   * ```
+   */
+  get storage(): DurableObjectStorage {
+    return this.ctx.storage
+  }
+
+  /**
+   * Durable Object state (for advanced use)
+   */
+  get state(): DurableObjectState {
+    return this.ctx
+  }
+
+  /**
+   * Context accessor (legacy, prefer direct this.sql/this.storage)
+   * @deprecated Use this.sql and this.storage directly
+   */
   get $(): RpcContext {
     const workerColo = this._currentRequest?.headers.get(WORKER_COLO_HEADER) ?? undefined
     const colo = this._colo ?? 'UNKNOWN'
@@ -257,6 +323,99 @@ export class DurableRPC extends DurableObject {
         distanceKm: workerColo && this._colo ? coloDistance(workerColo, this._colo) : undefined,
       },
     }
+  }
+
+  // ==========================================================================
+  // RPC-callable SQL methods (used by client-side $ proxy)
+  // ==========================================================================
+
+  /**
+   * Execute SQL query via RPC
+   * Called by client-side $.sql`...` proxy
+   * @internal
+   */
+  __sql(query: SerializedSqlQuery): SqlQueryResult {
+    const cursor = this.sql.exec(query.strings.join('?'), ...query.values)
+    const results = cursor.toArray()
+    return {
+      results,
+      meta: {
+        rows_read: cursor.rowsRead,
+        rows_written: cursor.rowsWritten,
+      },
+    }
+  }
+
+  /**
+   * Execute SQL and return first row
+   * @internal
+   */
+  __sqlFirst<T = Record<string, unknown>>(query: SerializedSqlQuery): T | null {
+    const cursor = this.sql.exec(query.strings.join('?'), ...query.values)
+    return cursor.one() as T | null
+  }
+
+  /**
+   * Execute SQL for write operations (INSERT, UPDATE, DELETE)
+   * @internal
+   */
+  __sqlRun(query: SerializedSqlQuery): { rowsWritten: number } {
+    const cursor = this.sql.exec(query.strings.join('?'), ...query.values)
+    return { rowsWritten: cursor.rowsWritten }
+  }
+
+  // ==========================================================================
+  // RPC-callable storage methods
+  // ==========================================================================
+
+  /** @internal */ async __storageGet<T>(key: string): Promise<T | undefined> {
+    return this.storage.get<T>(key)
+  }
+
+  /** @internal */ async __storageGetMultiple<T>(keys: string[]): Promise<Map<string, T>> {
+    return this.storage.get<T>(keys)
+  }
+
+  /** @internal */ async __storagePut<T>(key: string, value: T): Promise<void> {
+    return this.storage.put(key, value)
+  }
+
+  /** @internal */ async __storagePutMultiple<T>(entries: Record<string, T>): Promise<void> {
+    return this.storage.put(entries)
+  }
+
+  /** @internal */ async __storageDelete(key: string): Promise<boolean> {
+    return this.storage.delete(key)
+  }
+
+  /** @internal */ async __storageDeleteMultiple(keys: string[]): Promise<number> {
+    return this.storage.delete(keys)
+  }
+
+  /** @internal */ async __storageList<T>(options?: DurableObjectListOptions): Promise<Map<string, T>> {
+    return this.storage.list<T>(options)
+  }
+
+  // ==========================================================================
+  // Schema & Discovery
+  // ==========================================================================
+
+  /**
+   * Get database schema (tables, columns, indexes)
+   * @internal
+   */
+  __dbSchema(): DatabaseSchema {
+    return introspectDatabase(this.sql)
+  }
+
+  /**
+   * Get storage keys (with optional prefix filter)
+   * @internal
+   */
+  async __storageKeys(prefix?: string): Promise<string[]> {
+    const options: DurableObjectListOptions = prefix ? { prefix } : {}
+    const map = await this.storage.list(options)
+    return Array.from(map.keys())
   }
 
   /**
@@ -686,6 +845,43 @@ export interface RpcNamespaceSchema {
 }
 
 /**
+ * Database column schema
+ */
+export interface ColumnSchema {
+  name: string
+  type: string
+  nullable: boolean
+  primaryKey: boolean
+  defaultValue?: string
+}
+
+/**
+ * Database table schema
+ */
+export interface TableSchema {
+  name: string
+  columns: ColumnSchema[]
+  indexes: IndexSchema[]
+}
+
+/**
+ * Database index schema
+ */
+export interface IndexSchema {
+  name: string
+  columns: string[]
+  unique: boolean
+}
+
+/**
+ * Full database schema (SQLite)
+ */
+export interface DatabaseSchema {
+  tables: TableSchema[]
+  version?: number
+}
+
+/**
  * Full schema for a DurableRPC class.
  * Returned by GET /__schema and used by `npx rpc.do generate`.
  */
@@ -696,6 +892,12 @@ export interface RpcSchema {
   methods: RpcMethodSchema[]
   /** Grouped namespaces (e.g. { users: { get, create } }) */
   namespaces: RpcNamespaceSchema[]
+  /** Database schema (if SQLite is used) */
+  database?: DatabaseSchema
+  /** Storage keys (sample for discovery) */
+  storageKeys?: string[]
+  /** Colo where this DO is running */
+  colo?: string
 }
 
 /** Properties to skip during introspection */
@@ -712,6 +914,9 @@ const SKIP_PROPS = new Set([
   'broadcast',
   'connectionCount',
   '$',
+  'sql',
+  'storage',
+  'state',
   '_currentRequest',
   '_currentAuth',
   '_transportRegistry',
@@ -729,7 +934,82 @@ const SKIP_PROPS = new Set([
   'findNearestColo',
   'estimateLatencyTo',
   'distanceTo',
+  // RPC internal methods (exposed but not in schema)
+  '__sql',
+  '__sqlFirst',
+  '__sqlRun',
+  '__storageGet',
+  '__storageGetMultiple',
+  '__storagePut',
+  '__storagePutMultiple',
+  '__storageDelete',
+  '__storageDeleteMultiple',
+  '__storageList',
+  '__dbSchema',
+  '__storageKeys',
 ])
+
+/**
+ * Introspect SQLite database schema
+ */
+function introspectDatabase(sql: SqlStorage): DatabaseSchema {
+  const tables: TableSchema[] = []
+
+  try {
+    // Get all tables
+    const tableRows = sql.exec<{ name: string }>(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'`
+    ).toArray()
+
+    for (const { name: tableName } of tableRows) {
+      // Get columns
+      const columns: ColumnSchema[] = []
+      const columnRows = sql.exec<{
+        name: string
+        type: string
+        notnull: number
+        pk: number
+        dflt_value: string | null
+      }>(`PRAGMA table_info('${tableName}')`).toArray()
+
+      for (const col of columnRows) {
+        columns.push({
+          name: col.name,
+          type: col.type,
+          nullable: col.notnull === 0,
+          primaryKey: col.pk > 0,
+          defaultValue: col.dflt_value ?? undefined,
+        })
+      }
+
+      // Get indexes
+      const indexes: IndexSchema[] = []
+      const indexRows = sql.exec<{ name: string; unique: number }>(
+        `PRAGMA index_list('${tableName}')`
+      ).toArray()
+
+      for (const idx of indexRows) {
+        if (idx.name.startsWith('sqlite_')) continue
+
+        const indexCols = sql.exec<{ name: string }>(
+          `PRAGMA index_info('${idx.name}')`
+        ).toArray()
+
+        indexes.push({
+          name: idx.name,
+          columns: indexCols.map(c => c.name),
+          unique: idx.unique === 1,
+        })
+      }
+
+      tables.push({ name: tableName, columns, indexes })
+    }
+  } catch {
+    // SQLite may not be initialized yet
+  }
+
+  return { tables }
+}
 
 /**
  * Introspect a DurableRPC instance and return its API schema.
@@ -785,7 +1065,24 @@ function introspect(instance: DurableRPC): RpcSchema {
     proto = Object.getPrototypeOf(proto)
   }
 
-  return { version: 1, methods, namespaces }
+  // Add database schema
+  let database: DatabaseSchema | undefined
+  try {
+    database = introspectDatabase(instance.sql)
+    if (database.tables.length === 0) {
+      database = undefined
+    }
+  } catch {
+    // SQL not available
+  }
+
+  return {
+    version: 1,
+    methods,
+    namespaces,
+    database,
+    colo: instance.colo,
+  }
 }
 
 // ============================================================================
