@@ -11,13 +11,16 @@ importers:
       capnweb:
         specifier: ^0.4.0
         version: 0.4.0
-      colo.do:
-        specifier: file:../../colo
-        version: file:../../colo(@cloudflare/workers-types@4.20260124.0)
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20241205.0
         version: 4.20260124.0
+      colo.do:
+        specifier: file:../../colo
+        version: file:../../colo(@cloudflare/workers-types@4.20260124.0)
+      esbuild:
+        specifier: ^0.27.2
+        version: 0.27.2
       sql.js:
         specifier: ^1.13.0
         version: 1.13.0

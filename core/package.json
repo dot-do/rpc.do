@@ -5,10 +5,19 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./lite": {
+      "types": "./dist/lite.d.ts",
+      "import": "./dist/lite.js"
+    },
+    "./collections": {
+      "types": "./dist/collections.d.ts",
+      "import": "./dist/collections.js"
     }
   },
   "files": [
@@ -40,17 +49,24 @@
     "directory": "core"
   },
   "dependencies": {
-    "capnweb": "^0.4.0",
-    "colo.do": "file:../../colo"
+    "capnweb": "^0.4.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
+    "colo.do": "file:../../colo",
+    "esbuild": "^0.27.2",
     "sql.js": "^1.13.0",
     "tsup": "^8.0.0",
     "typescript": "^5.5.2",
     "vitest": "^2.1.8"
   },
   "peerDependencies": {
-    "@cloudflare/workers-types": "^4.0.0"
+    "@cloudflare/workers-types": "^4.0.0",
+    "colo.do": "^0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "colo.do": {
+      "optional": true
+    }
   }
 }

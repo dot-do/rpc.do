@@ -1,10 +1,16 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: {
+    'index': 'src/index.ts',
+    'lite': 'src/lite.ts',
+    'collections': 'src/collections.ts',
+  },
   format: ['esm'],
   dts: true,
   clean: true,
   sourcemap: true,
-  external: ['capnweb', '@cloudflare/workers-types', 'cloudflare:workers'],
+  treeshake: true,
+  minify: true,
+  external: ['capnweb', 'colo.do', '@cloudflare/workers-types', 'cloudflare:workers'],
 })

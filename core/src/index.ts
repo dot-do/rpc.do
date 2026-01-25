@@ -38,7 +38,7 @@ import {
   TransportRegistry,
 } from './transports/hibernatable-ws.js'
 
-// Colo awareness
+// Colo awareness (using tiny entry point for minimal bundle)
 import {
   getColo,
   coloDistance,
@@ -46,7 +46,7 @@ import {
   nearestColo,
   sortByDistance,
   type ColoInfo,
-} from 'colo.do'
+} from 'colo.do/tiny'
 
 // Collections
 import {
@@ -61,23 +61,17 @@ import {
 export { RpcTarget, RpcSession, type RpcTransport, type RpcSessionOptions }
 export { HibernatableWebSocketTransport, TransportRegistry }
 
-// Re-export colo.do for convenience
+// Re-export colo.do/tiny for convenience (minimal bundle)
 export {
   getColo,
   getAllColos,
-  getColosByRegion,
-  getDOColos,
   coloDistance,
   estimateLatency,
   nearestColo,
   sortByDistance,
-  createInColo,
-  createReplicas,
-  targetColo,
-  getShard,
   type ColoInfo,
   type ColoRegion,
-} from 'colo.do'
+} from 'colo.do/tiny'
 
 // ============================================================================
 // Cloudflare DO Base (declared for type safety without runtime import)
