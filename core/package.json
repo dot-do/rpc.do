@@ -40,7 +40,8 @@
     "directory": "core"
   },
   "dependencies": {
-    "capnweb": "^0.4.0"
+    "capnweb": "^0.4.0",
+    "colo.do": "file:../../colo"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",

@@ -38,9 +38,37 @@ import {
   TransportRegistry,
 } from './transports/hibernatable-ws.js'
 
+// Colo awareness
+import {
+  getColo,
+  coloDistance,
+  estimateLatency,
+  nearestColo,
+  sortByDistance,
+  type ColoInfo,
+} from 'colo.do'
+
 // Re-export capnweb types for convenience
 export { RpcTarget, RpcSession, type RpcTransport, type RpcSessionOptions }
 export { HibernatableWebSocketTransport, TransportRegistry }
+
+// Re-export colo.do for convenience
+export {
+  getColo,
+  getAllColos,
+  getColosByRegion,
+  getDOColos,
+  coloDistance,
+  estimateLatency,
+  nearestColo,
+  sortByDistance,
+  createInColo,
+  createReplicas,
+  targetColo,
+  getShard,
+  type ColoInfo,
+  type ColoRegion,
+} from 'colo.do'
 
 // ============================================================================
 // Cloudflare DO Base (declared for type safety without runtime import)
@@ -63,6 +91,22 @@ declare class DurableObject {
 // ============================================================================
 
 /**
+ * Colo (colocation) context for location-aware DOs
+ */
+export interface ColoContext {
+  /** The colo where this DO instance is running */
+  colo: string
+  /** Full colo information (city, country, coordinates, etc.) */
+  info?: ColoInfo
+  /** The colo of the worker that made this request (if known) */
+  workerColo?: string
+  /** Estimated latency from worker to DO in milliseconds */
+  latencyMs?: number
+  /** Distance from worker to DO in kilometers */
+  distanceKm?: number
+}
+
+/**
  * Server-side context available inside DO RPC methods
  */
 export interface RpcContext {
@@ -76,6 +120,8 @@ export interface RpcContext {
   request?: Request
   /** Auth context from middleware */
   auth?: { token?: string; user?: any; [key: string]: any }
+  /** Colo (location) context */
+  colo: ColoContext
 }
 
 // ============================================================================
@@ -176,6 +222,9 @@ class RpcInterface extends RpcTarget {
  * - $ context for storage/sql access
  * - Schema reflection
  */
+/** Header used to pass worker colo to DO */
+const WORKER_COLO_HEADER = 'X-Worker-Colo'
+
 export class DurableRPC extends DurableObject {
   /** Transport registry for managing WebSocket transports */
   private _transportRegistry = new TransportRegistry()
@@ -186,15 +235,43 @@ export class DurableRPC extends DurableObject {
   /** RPC interface wrapper for capnweb */
   private _rpcInterface?: RpcInterface
 
-  /** Context accessor for storage, sql, state */
+  /** Cached colo for this DO instance */
+  private _colo: string | null = null
+
+  /** Context accessor for storage, sql, state, colo */
   get $(): RpcContext {
+    const workerColo = this._currentRequest?.headers.get(WORKER_COLO_HEADER) ?? undefined
+    const colo = this._colo ?? 'UNKNOWN'
+
     return {
       sql: this.ctx.storage.sql,
       storage: this.ctx.storage,
       state: this.ctx,
       request: this._currentRequest,
       auth: this._currentAuth,
+      colo: {
+        colo,
+        info: getColo(colo),
+        workerColo,
+        latencyMs: workerColo && this._colo ? estimateLatency(workerColo, this._colo) : undefined,
+        distanceKm: workerColo && this._colo ? coloDistance(workerColo, this._colo) : undefined,
+      },
     }
+  }
+
+  /**
+   * Get the colo where this DO is running
+   * Detected from first request, undefined before any requests
+   */
+  get colo(): string | undefined {
+    return this._colo ?? undefined
+  }
+
+  /**
+   * Get full colo information for this DO's location
+   */
+  get coloInfo(): ColoInfo | undefined {
+    return this._colo ? getColo(this._colo) : undefined
   }
 
   private _currentRequest?: Request
@@ -228,6 +305,12 @@ export class DurableRPC extends DurableObject {
    */
   async fetch(request: Request): Promise<Response> {
     this._currentRequest = request
+
+    // Detect colo from cf object (first request sets it)
+    if (!this._colo) {
+      const cf = (request as unknown as { cf?: IncomingRequestCfProperties }).cf
+      this._colo = cf?.colo ?? null
+    }
 
     // GET /__schema -> return API schema (like GraphQL introspection)
     if (request.method === 'GET') {
@@ -433,6 +516,54 @@ export class DurableRPC extends DurableObject {
   get connectionCount(): number {
     return this.ctx.getWebSockets().length
   }
+
+  // ==========================================================================
+  // Colo-aware helpers
+  // ==========================================================================
+
+  /**
+   * Get sorted list of colos by distance from this DO
+   *
+   * @param colos - Optional list of colos to sort (defaults to all DO-capable colos)
+   * @returns Sorted array of { colo, distance, latency } objects
+   */
+  getColosByDistance(colos?: string[]): Array<{ colo: string; distance: number; latency: number }> {
+    if (!this._colo) return []
+    return sortByDistance(this._colo, colos)
+  }
+
+  /**
+   * Find the nearest colo from a list of candidates
+   *
+   * @param candidates - List of candidate colo IATA codes
+   * @returns Nearest colo, or first candidate if this DO's colo is unknown
+   */
+  findNearestColo(candidates: string[]): string | undefined {
+    if (!this._colo) return candidates[0]
+    return nearestColo(this._colo, candidates)
+  }
+
+  /**
+   * Estimate latency to another colo from this DO's location
+   *
+   * @param targetColo - Target colo IATA code
+   * @returns Estimated round-trip latency in milliseconds
+   */
+  estimateLatencyTo(targetColo: string): number | undefined {
+    if (!this._colo) return undefined
+    return estimateLatency(this._colo, targetColo)
+  }
+
+  /**
+   * Get distance to another colo from this DO's location
+   *
+   * @param targetColo - Target colo IATA code
+   * @returns Distance in kilometers
+   */
+  distanceTo(targetColo: string): number | undefined {
+    if (!this._colo) return undefined
+    return coloDistance(this._colo, targetColo)
+  }
 }
 
 // ============================================================================
@@ -511,7 +642,18 @@ export function router<Env extends Record<string, any>>(options: RouterOptions<E
       const forwardUrl = new URL(request.url)
       forwardUrl.pathname = '/' + parts.slice(2).join('/')
 
-      const forwardRequest = new Request(forwardUrl.toString(), request)
+      // Pass worker colo to DO for location awareness
+      const cf = (request as unknown as { cf?: IncomingRequestCfProperties }).cf
+      const headers = new Headers(request.headers)
+      if (cf?.colo) {
+        headers.set(WORKER_COLO_HEADER, cf.colo)
+      }
+
+      const forwardRequest = new Request(forwardUrl.toString(), {
+        method: request.method,
+        headers,
+        body: request.body,
+      })
       return stub.fetch(forwardRequest)
     },
   }
@@ -575,10 +717,18 @@ const SKIP_PROPS = new Set([
   '_transportRegistry',
   '_sessions',
   '_rpcInterface',
+  '_colo',
   'handleWebSocketUpgrade',
   'handleHttpRpc',
   'getRpcInterface',
   'getRpcSessionOptions',
+  // Colo helpers (internal use)
+  'colo',
+  'coloInfo',
+  'getColosByDistance',
+  'findNearestColo',
+  'estimateLatencyTo',
+  'distanceTo',
 ])
 
 /**

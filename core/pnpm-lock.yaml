@@ -11,6 +11,9 @@ importers:
       capnweb:
         specifier: ^0.4.0
         version: 0.4.0
+      colo.do:
+        specifier: file:../../colo
+        version: file:../../colo(@cloudflare/workers-types@4.20260124.0)
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20241205.0
@@ -530,6 +533,14 @@ packages:
   chokidar@4.0.3:
     resolution: {integrity: sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==}
     engines: {node: '>= 14.16.0'}
+
+  colo.do@file:../../colo:
+    resolution: {directory: ../../colo, type: directory}
+    peerDependencies:
+      '@cloudflare/workers-types': '>=4.0.0'
+    peerDependenciesMeta:
+      '@cloudflare/workers-types':
+        optional: true
 
   commander@4.1.1:
     resolution: {integrity: sha512-NOKm8xhkzAjzFx8B2v5OAHT+u5pRQc2UCa2Vq9jYL/31o2wi9mxBA7LIFs3sV5VSC49z6pEhfbMULvShKj26WA==}
@@ -1151,6 +1162,10 @@ snapshots:
   chokidar@4.0.3:
     dependencies:
       readdirp: 4.1.2
+
+  colo.do@file:../../colo(@cloudflare/workers-types@4.20260124.0):
+    optionalDependencies:
+      '@cloudflare/workers-types': 4.20260124.0
 
   commander@4.1.1: {}
 
