@@ -68,7 +68,10 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "dependencies": {},
+  "dependencies": {
+    "glob": "^13.0.0",
+    "ts-morph": "^27.0.2"
+  },
   "optionalDependencies": {
     "capnweb": "^0.4.0"
   },

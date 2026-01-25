@@ -2,8 +2,9 @@
  * rpc.do CLI - Generate typed RPC clients from Durable Object schemas
  *
  * Usage:
- *   npx rpc.do generate                    # Uses do.config.ts
- *   npx rpc.do generate --url <schema-url> # Fetches runtime schema
+ *   npx rpc.do generate                        # Uses do.config.ts
+ *   npx rpc.do generate --url <schema-url>     # Fetches runtime schema (weak types)
+ *   npx rpc.do generate --source ./MyDO.ts     # Extracts full types from source
  *
  * Like Prisma's generate workflow:
  *   1. Define your DOs (extending DurableRPC)
@@ -12,11 +13,13 @@
  *   4. Import typed clients
  */
 
-import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs'
+import { writeFileSync, mkdirSync, existsSync, readFileSync, accessSync, constants } from 'node:fs'
 import { resolve, dirname, join, basename } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createInterface } from 'node:readline'
 import { createHash } from 'node:crypto'
+import { watch as fsWatch } from 'node:fs'
+import { extractTypes, generateDTS, generateIndex, type ExtractedSchema } from './extract.js'
 
 // ============================================================================
 // Types (mirrors @dotdo/rpc schema types)
@@ -43,6 +46,7 @@ interface RpcDoConfig {
   durableObjects: string | string[]
   output?: string
   schemaUrl?: string
+  source?: string
 }
 
 // ============================================================================
@@ -77,23 +81,134 @@ async function main() {
   // Parse flags
   const urlIndex = args.indexOf('--url')
   const url = urlIndex !== -1 ? args[urlIndex + 1] : undefined
+  const sourceIndex = args.indexOf('--source')
+  const source = sourceIndex !== -1 ? args[sourceIndex + 1] : undefined
   const outIndex = args.indexOf('--output')
   const outputArg = outIndex !== -1 ? args[outIndex + 1] : undefined
 
-  // Load config if no --url provided
-  let config: RpcDoConfig | undefined
-  if (!url) {
-    config = await loadConfig()
-  }
-
-  const schemaUrl = url || config?.schemaUrl
-  if (!schemaUrl) {
-    console.error('Error: No schema URL provided.')
-    console.error('Either:')
-    console.error('  - Pass --url <schema-endpoint>')
-    console.error('  - Set schemaUrl in do.config.ts')
+  // Check for mutually exclusive flags
+  if (url && source) {
+    console.error('Error: Cannot use both --source and --url together.')
+    console.error('Use --source for full types from TypeScript source, OR --url for runtime schema.')
     process.exit(1)
   }
+
+  // Load config
+  const config = await loadConfig()
+
+  // Determine mode: source-based or URL-based
+  const sourceFile = source || config?.source
+  const schemaUrl = url || config?.schemaUrl
+
+  if (sourceFile) {
+    // Source-based generation (full types)
+    await generateFromSource(sourceFile, outputArg || config?.output)
+  } else if (schemaUrl) {
+    // URL-based generation (runtime schema, weak types)
+    await generateFromUrl(schemaUrl, outputArg || config?.output)
+  } else {
+    console.error('Error: No source file or schema URL provided.')
+    console.error('Either:')
+    console.error('  - Pass --source <file.ts> for full types from source')
+    console.error('  - Pass --url <schema-endpoint> for runtime schema')
+    console.error('  - Set source or schemaUrl in do.config.ts')
+    process.exit(1)
+  }
+}
+
+// ============================================================================
+// Source-based Generation (Full Types)
+// ============================================================================
+
+async function generateFromSource(sourcePath: string, outputDir?: string): Promise<void> {
+  const output = outputDir || './.do'
+  const resolvedOutput = resolve(process.cwd(), output)
+
+  console.log(`Parsing source file: ${sourcePath}`)
+
+  try {
+    // Check if file exists
+    if (!sourcePath.includes('*') && !existsSync(resolve(process.cwd(), sourcePath))) {
+      console.error(`Error: Source file not found: ${sourcePath}`)
+      process.exit(1)
+    }
+
+    // Check file extension
+    if (!sourcePath.includes('*') && !sourcePath.endsWith('.ts')) {
+      console.error(`Error: Source must be a TypeScript file (.ts): ${sourcePath}`)
+      process.exit(1)
+    }
+
+    // Extract types
+    const schemas = await extractTypes(sourcePath)
+
+    if (schemas.length === 0) {
+      console.error('Error: No valid Durable Object classes found.')
+      process.exit(1)
+    }
+
+    // Ensure output directory exists and is writable
+    try {
+      mkdirSync(resolvedOutput, { recursive: true })
+      // Test write access
+      const testFile = join(resolvedOutput, '.write-test')
+      writeFileSync(testFile, '')
+      const fs = await import('node:fs')
+      fs.unlinkSync(testFile)
+    } catch (err: any) {
+      if (err.code === 'EACCES') {
+        console.error(`Error: permission denied - cannot write to output directory: ${resolvedOutput}`)
+      } else if (err.code === 'ENOENT') {
+        console.error(`Error: cannot write - directory does not exist: ${resolvedOutput}`)
+      } else {
+        console.error(`Error: cannot write to output directory: ${err.message}`)
+      }
+      process.exit(1)
+    }
+
+    // Generate .d.ts files for each schema
+    for (const schema of schemas) {
+      const dtsContent = generateDTS(schema)
+      const dtsPath = join(resolvedOutput, `${schema.className}.d.ts`)
+      writeFileSync(dtsPath, dtsContent)
+      console.log(`Generated: ${dtsPath}`)
+    }
+
+    // Generate index.ts entrypoint
+    const indexContent = generateIndex(schemas)
+    const indexPath = join(resolvedOutput, 'index.ts')
+    writeFileSync(indexPath, indexContent)
+    console.log(`Generated: ${indexPath}`)
+
+    console.log(`\nDone! Generated types for ${schemas.length} Durable Object(s).`)
+    console.log(`Import your typed client:`)
+    console.log(`  import type { ${schemas.map((s) => s.className + 'API').join(', ')} } from '${output}'`)
+  } catch (err: any) {
+    // Handle specific error types
+    if (err.message.includes('not found') || err.message.includes('ENOENT')) {
+      console.error(`Error: ${err.message}`)
+    } else if (err.message.includes('syntax error')) {
+      console.error(`Error: TypeScript syntax error in source file.`)
+      console.error(err.message)
+    } else if (err.message.includes('No class extending')) {
+      console.error(`Error: No valid Durable Object class found.`)
+      console.error('Ensure your class extends DurableObject, DurableRPC, or DigitalObject.')
+    } else if (err.message.includes('empty')) {
+      console.error(`Error: ${err.message}`)
+    } else {
+      console.error(`Error: ${err.message}`)
+    }
+    process.exit(1)
+  }
+}
+
+// ============================================================================
+// URL-based Generation (Runtime Schema)
+// ============================================================================
+
+async function generateFromUrl(schemaUrl: string, outputDir?: string): Promise<void> {
+  const output = outputDir || './generated/rpc'
+  const resolvedOutput = resolve(process.cwd(), output)
 
   // Fetch schema
   console.log(`Fetching schema from ${schemaUrl}...`)
@@ -101,18 +216,16 @@ async function main() {
   console.log(`Found ${schema.methods.length} methods, ${schema.namespaces.length} namespaces`)
 
   // Generate types
-  const output = outputArg || config?.output || './generated/rpc'
-  const outputDir = resolve(process.cwd(), output)
   const code = generateClient(schema)
 
   // Write output
-  mkdirSync(outputDir, { recursive: true })
-  const outputPath = join(outputDir, 'client.d.ts')
+  mkdirSync(resolvedOutput, { recursive: true })
+  const outputPath = join(resolvedOutput, 'client.d.ts')
   writeFileSync(outputPath, code)
   console.log(`Generated typed client: ${outputPath}`)
 
   // Also write a JS stub that re-exports RPC with the type
-  const jsPath = join(outputDir, 'index.ts')
+  const jsPath = join(resolvedOutput, 'index.ts')
   writeFileSync(jsPath, generateEntrypoint())
   console.log(`Generated entrypoint: ${jsPath}`)
 
@@ -167,7 +280,7 @@ async function fetchSchema(url: string): Promise<RpcSchema> {
     process.exit(1)
   }
 
-  const schema = await response.json() as RpcSchema
+  const schema = (await response.json()) as RpcSchema
   if (!schema.version || !schema.methods || !schema.namespaces) {
     console.error('Invalid schema response. Ensure the DO extends DurableRPC.')
     process.exit(1)
@@ -177,16 +290,11 @@ async function fetchSchema(url: string): Promise<RpcSchema> {
 }
 
 // ============================================================================
-// Code Generation
+// Code Generation (URL-based, weak types)
 // ============================================================================
 
 function generateClient(schema: RpcSchema): string {
-  const lines: string[] = [
-    '// Generated by `npx rpc.do generate`',
-    '// Do not edit manually',
-    '',
-    'export interface GeneratedAPI {',
-  ]
+  const lines: string[] = ['// Generated by `npx rpc.do generate`', '// Do not edit manually', '', 'export interface GeneratedAPI {']
 
   // Top-level methods
   for (const method of schema.methods) {
@@ -461,13 +569,17 @@ export interface Env {
 export class RpcDurableObject extends DurableRPC {
   constructor(state: DurableObjectState, env: Env) {
     super(state, env)
-${options.includeExamples ? `
+${
+  options.includeExamples
+    ? `
     // Register example methods
-    this.register(exampleMethods)` : `
+    this.register(exampleMethods)`
+    : `
     // Register your RPC methods here
     // this.register({
     //   hello: (name: string) => \`Hello, \${name}!\`,
-    // })`}
+    // })`
+}
   }
 }
 
@@ -539,33 +651,109 @@ async function watchCommand(args: string[]): Promise<void> {
   // Parse flags
   const urlIndex = args.indexOf('--url')
   const url = urlIndex !== -1 ? args[urlIndex + 1] : undefined
+  const sourceIndex = args.indexOf('--source')
+  const source = sourceIndex !== -1 ? args[sourceIndex + 1] : undefined
   const outIndex = args.indexOf('--output')
   const outputArg = outIndex !== -1 ? args[outIndex + 1] : undefined
   const intervalIndex = args.indexOf('--interval')
   const intervalArg = intervalIndex !== -1 ? parseInt(args[intervalIndex + 1], 10) : 5000
 
-  // Load config if no --url provided
-  let config: RpcDoConfig | undefined
-  if (!url) {
-    config = await loadConfig()
-  }
-
-  const schemaUrl = url || config?.schemaUrl
-  if (!schemaUrl) {
-    console.error('Error: No schema URL provided.')
-    console.error('Either:')
-    console.error('  - Pass --url <schema-endpoint>')
-    console.error('  - Set schemaUrl in do.config.ts')
+  // Check for mutually exclusive flags
+  if (url && source) {
+    console.error('Error: Cannot use both --source and --url together.')
     process.exit(1)
   }
 
-  const output = outputArg || config?.output || './generated/rpc'
+  // Load config
+  const config = await loadConfig()
+
+  const sourceFile = source || config?.source
+  const schemaUrl = url || config?.schemaUrl
+
+  if (sourceFile) {
+    await watchSource(sourceFile, outputArg || config?.output || './.do')
+  } else if (schemaUrl) {
+    await watchUrl(schemaUrl, outputArg || config?.output || './generated/rpc', intervalArg)
+  } else {
+    console.error('Error: No source file or schema URL provided.')
+    process.exit(1)
+  }
+}
+
+/**
+ * Watch source files for changes (--source mode)
+ */
+async function watchSource(sourcePath: string, output: string): Promise<void> {
+  const resolvedOutput = resolve(process.cwd(), output)
+  const resolvedSource = resolve(process.cwd(), sourcePath)
+  const sourceDir = dirname(resolvedSource)
+
+  console.log(`[rpc.do] Watching ${sourcePath} for changes...`)
+
+  // Initial generation
+  try {
+    const schemas = await extractTypes(sourcePath)
+    await writeSourceGeneratedFiles(schemas, resolvedOutput)
+    console.log('[rpc.do] Initial generation complete')
+  } catch (err: any) {
+    console.error(`[rpc.do] Error in initial generation: ${err.message}`)
+    // Continue watching anyway
+  }
+
+  console.log('[rpc.do] Watching for changes... (Ctrl+C to stop)')
+
+  // Watch for file changes
+  const watcher = fsWatch(sourceDir, { recursive: true }, async (eventType, filename) => {
+    if (!filename?.endsWith('.ts') || filename.endsWith('.d.ts')) return
+
+    console.log(`[rpc.do] File changed: ${filename}, regenerating...`)
+
+    try {
+      const schemas = await extractTypes(sourcePath)
+      await writeSourceGeneratedFiles(schemas, resolvedOutput)
+      console.log('[rpc.do] Updated types')
+    } catch (err: any) {
+      console.error(`[rpc.do] Error: ${err.message}`)
+    }
+  })
+
+  // Graceful shutdown
+  const shutdown = () => {
+    console.log('\n[rpc.do] Stopping watch mode...')
+    watcher.close()
+    console.log('[rpc.do] Goodbye!')
+    process.exit(0)
+  }
+
+  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', shutdown)
+}
+
+/**
+ * Write generated files from source extraction
+ */
+async function writeSourceGeneratedFiles(schemas: ExtractedSchema[], outputDir: string): Promise<void> {
+  mkdirSync(outputDir, { recursive: true })
+
+  for (const schema of schemas) {
+    const dtsContent = generateDTS(schema)
+    const dtsPath = join(outputDir, `${schema.className}.d.ts`)
+    writeFileSync(dtsPath, dtsContent)
+  }
+
+  const indexContent = generateIndex(schemas)
+  const indexPath = join(outputDir, 'index.ts')
+  writeFileSync(indexPath, indexContent)
+}
+
+/**
+ * Watch URL for schema changes (--url mode)
+ */
+async function watchUrl(schemaUrl: string, output: string, interval: number): Promise<void> {
   const outputDir = resolve(process.cwd(), output)
 
   // Normalize schema URL
-  const normalizedSchemaUrl = schemaUrl.endsWith('/__schema')
-    ? schemaUrl
-    : `${schemaUrl.replace(/\/$/, '')}/__schema`
+  const normalizedSchemaUrl = schemaUrl.endsWith('/__schema') ? schemaUrl : `${schemaUrl.replace(/\/$/, '')}/__schema`
 
   console.log(`[rpc.do] Watching ${normalizedSchemaUrl}`)
 
@@ -574,7 +762,7 @@ async function watchCommand(args: string[]): Promise<void> {
   try {
     const schema = await fetchSchemaForWatch(normalizedSchemaUrl)
     previousHash = hashSchema(schema)
-    await writeGeneratedFiles(schema, outputDir)
+    await writeUrlGeneratedFiles(schema, outputDir)
     console.log('[rpc.do] Initial generation complete')
   } catch (err: any) {
     console.error(`[rpc.do] Failed to fetch initial schema: ${err.message}`)
@@ -593,7 +781,7 @@ async function watchCommand(args: string[]): Promise<void> {
 
       if (currentHash !== previousHash) {
         console.log('[rpc.do] Schema changed, regenerating...')
-        await writeGeneratedFiles(schema, outputDir)
+        await writeUrlGeneratedFiles(schema, outputDir)
         previousHash = currentHash
         console.log('[rpc.do] Updated client types')
       }
@@ -603,7 +791,7 @@ async function watchCommand(args: string[]): Promise<void> {
     }
   }
 
-  intervalId = setInterval(poll, intervalArg)
+  intervalId = setInterval(poll, interval)
 
   // Graceful shutdown
   const shutdown = () => {
@@ -628,7 +816,7 @@ async function fetchSchemaForWatch(schemaUrl: string): Promise<RpcSchema> {
     throw new Error(`${response.status} ${response.statusText}`)
   }
 
-  const schema = await response.json() as RpcSchema
+  const schema = (await response.json()) as RpcSchema
   if (!schema.version || !schema.methods || !schema.namespaces) {
     throw new Error('Invalid schema response')
   }
@@ -645,9 +833,9 @@ function hashSchema(schema: RpcSchema): string {
 }
 
 /**
- * Write generated files to output directory
+ * Write generated files for URL-based generation
  */
-async function writeGeneratedFiles(schema: RpcSchema, outputDir: string): Promise<void> {
+async function writeUrlGeneratedFiles(schema: RpcSchema, outputDir: string): Promise<void> {
   mkdirSync(outputDir, { recursive: true })
 
   const code = generateClient(schema)
@@ -672,7 +860,7 @@ Usage:
 Commands:
   init [project-name]              Create a new rpc.do project
   generate [options]               Generate typed client once
-  watch [options]                  Watch for schema changes and regenerate
+  watch [options]                  Watch for changes and regenerate
 
 Init Command:
   npx rpc.do init [project-name]
@@ -691,16 +879,26 @@ Init Command:
     - Transport preference (http/capnweb/both)
 
 Generate Options:
-  --url <url>       Schema endpoint URL (e.g. https://my-do.workers.dev)
-  --output <dir>    Output directory (default: ./generated/rpc)
+  --source <file>   TypeScript source file to extract types from (full types)
+                    Supports glob patterns: --source "./do/*.ts"
+                    (mutually exclusive with --url)
+  --url <url>       Schema endpoint URL for runtime schema (weak types)
+                    (mutually exclusive with --source)
+  --output <dir>    Output directory
+                    Default: ./.do (source) or ./generated/rpc (url)
 
 Watch Options:
-  --url <url>       Schema endpoint URL (e.g. https://my-do.workers.dev)
-  --output <dir>    Output directory (default: ./generated/rpc)
-  --interval <ms>   Polling interval in milliseconds (default: 5000)
+  --source <file>   Watch source file(s) for changes (full types)
+  --url <url>       Poll schema endpoint for changes (weak types)
+  --output <dir>    Output directory
+  --interval <ms>   Polling interval for --url mode (default: 5000)
 
 General Options:
   --help, -h        Show this help
+
+Note: --source and --url are mutually exclusive. Use --source for full
+TypeScript type extraction from source files, OR use --url for runtime
+schema fetching with weaker types.
 
 Config:
   Create a do.config.ts in your project root:
@@ -709,17 +907,21 @@ Config:
 
     export default defineConfig({
       durableObjects: './src/do/*.ts',
-      output: './generated/rpc',
-      schemaUrl: 'https://my-do.workers.dev',
+      output: './.do',
+      source: './src/do/MyDO.ts',  // For full types
+      // OR
+      schemaUrl: 'https://my-do.workers.dev',  // For runtime schema
     })
 
-Workflow:
-  1. Run: npx rpc.do init my-project
-  2. cd my-project && npm install && npm run dev
-  3. Deploy your Worker
-  4. Run: npx rpc.do generate --url https://your-worker.workers.dev
-     Or:  npx rpc.do watch --url https://your-worker.workers.dev
-  5. Import: import { createClient } from './generated/rpc'
+Workflow (Source-based, recommended):
+  1. Create your DO: src/do/MyDO.ts
+  2. Run: npx rpc.do generate --source ./src/do/MyDO.ts
+  3. Import: import type { MyDOAPI } from './.do'
+
+Workflow (URL-based):
+  1. Deploy your Worker
+  2. Run: npx rpc.do generate --url https://your-worker.workers.dev
+  3. Import: import { createClient } from './generated/rpc'
 `)
 }
 
