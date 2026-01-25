@@ -18,6 +18,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^4.20241205.0
         version: 4.20260124.0
+      sql.js:
+        specifier: ^1.13.0
+        version: 1.13.0
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(postcss@8.5.6)(typescript@5.9.3)
@@ -712,6 +715,9 @@ packages:
     resolution: {integrity: sha512-i5uvt8C3ikiWeNZSVZNWcfZPItFQOsYTUAOkcUPGd8DqDy1uOUikjt5dG+uRlwyvR108Fb9DOd4GvXfT0N2/uQ==}
     engines: {node: '>= 12'}
 
+  sql.js@1.13.0:
+    resolution: {integrity: sha512-RJbVP1HRDlUUXahJ7VMTcu9Rm1Nzw+EBpoPr94vnbD4LwR715F3CcxE2G2k45PewcaZ57pjetYa+LoSJLAASgA==}
+
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
 
@@ -1164,6 +1170,8 @@ snapshots:
       readdirp: 4.1.2
 
   colo.do@file:../../colo(@cloudflare/workers-types@4.20260124.0):
+    dependencies:
+      capnweb: 0.4.0
     optionalDependencies:
       '@cloudflare/workers-types': 4.20260124.0
 
@@ -1358,6 +1366,8 @@ snapshots:
   source-map-js@1.2.1: {}
 
   source-map@0.7.6: {}
+
+  sql.js@1.13.0: {}
 
   stackback@0.0.2: {}
 
