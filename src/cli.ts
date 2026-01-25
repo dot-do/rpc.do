@@ -1,16 +1,18 @@
 /**
  * rpc.do CLI - Generate typed RPC clients from Durable Object schemas
  *
- * Usage:
- *   npx rpc.do generate                        # Uses do.config.ts
- *   npx rpc.do generate --url <schema-url>     # Fetches runtime schema (weak types)
- *   npx rpc.do generate --source ./MyDO.ts     # Extracts full types from source
+ * Zero-config usage (recommended):
+ *   npx rpc.do                                 # Auto-detects DOs from wrangler config
  *
- * Like Prisma's generate workflow:
- *   1. Define your DOs (extending DurableRPC)
- *   2. Configure do.config.ts
- *   3. Run `npx rpc.do generate`
- *   4. Import typed clients
+ * Explicit usage:
+ *   npx rpc.do generate --source ./MyDO.ts     # Extracts full types from source
+ *   npx rpc.do generate --url <schema-url>     # Fetches runtime schema (weak types)
+ *
+ * Zero-config workflow:
+ *   1. Define your DOs (extending DurableRPC/DigitalObject)
+ *   2. Configure wrangler.toml with durable_objects bindings
+ *   3. Run `npx rpc.do`
+ *   4. Import typed clients from .do/
  */
 
 import { writeFileSync, mkdirSync, existsSync, readFileSync, accessSync, constants } from 'node:fs'
@@ -20,6 +22,7 @@ import { createInterface } from 'node:readline'
 import { createHash } from 'node:crypto'
 import { watch as fsWatch } from 'node:fs'
 import { extractTypes, generateDTS, generateIndex, type ExtractedSchema } from './extract.js'
+import { runZeroConfig, detectFromWrangler } from './detect.js'
 
 // ============================================================================
 // Types (mirrors @dotdo/rpc schema types)
@@ -57,7 +60,7 @@ async function main() {
   const args = process.argv.slice(2)
   const command = args[0]
 
-  if (!command || command === '--help' || command === '-h') {
+  if (command === '--help' || command === '-h') {
     printHelp()
     return
   }
@@ -69,6 +72,12 @@ async function main() {
 
   if (command === 'watch') {
     await watchCommand(args.slice(1))
+    return
+  }
+
+  // Zero-config: just run `npx rpc.do` with no args
+  if (!command) {
+    await runZeroConfigCommand()
     return
   }
 
@@ -96,7 +105,7 @@ async function main() {
   // Load config
   const config = await loadConfig()
 
-  // Determine mode: source-based or URL-based
+  // Determine mode: source-based, URL-based, or zero-config
   const sourceFile = source || config?.source
   const schemaUrl = url || config?.schemaUrl
 
@@ -107,11 +116,76 @@ async function main() {
     // URL-based generation (runtime schema, weak types)
     await generateFromUrl(schemaUrl, outputArg || config?.output)
   } else {
-    console.error('Error: No source file or schema URL provided.')
-    console.error('Either:')
-    console.error('  - Pass --source <file.ts> for full types from source')
-    console.error('  - Pass --url <schema-endpoint> for runtime schema')
-    console.error('  - Set source or schemaUrl in do.config.ts')
+    // No explicit source/url - try zero-config
+    await runZeroConfigCommand(outputArg || config?.output)
+  }
+}
+
+// ============================================================================
+// Zero-Config Generation
+// ============================================================================
+
+async function runZeroConfigCommand(outputDir?: string): Promise<void> {
+  const cwd = process.cwd()
+  const output = outputDir || '.do'
+
+  console.log('rpc.do - Zero-config type generation\n')
+
+  try {
+    // Check for wrangler config
+    const bindings = await detectFromWrangler(cwd)
+    if (bindings.length > 0) {
+      console.log(`Found wrangler config with ${bindings.length} Durable Object(s):`)
+      for (const b of bindings) {
+        console.log(`  - ${b.className} (binding: ${b.name})`)
+      }
+      console.log('')
+    } else {
+      console.log('No wrangler config found, scanning for DO patterns...\n')
+    }
+
+    // Run zero-config detection and generation
+    const result = await runZeroConfig(cwd, { outputDir: output })
+
+    if (result.detected.length === 0) {
+      console.error('No Durable Objects found.')
+      console.error('\nEnsure your project has:')
+      console.error('  1. wrangler.toml or wrangler.jsonc with durable_objects bindings')
+      console.error('  2. OR TypeScript files with classes extending DurableObject/DurableRPC/DigitalObject')
+      console.error('  3. OR DO() factory calls')
+      process.exit(1)
+    }
+
+    // Print results
+    console.log(`Detected ${result.detected.length} Durable Object(s):`)
+    for (const d of result.detected) {
+      console.log(`  - ${d.className} (extends ${d.baseClass})`)
+      console.log(`    Source: ${d.filePath}`)
+    }
+    console.log('')
+
+    if (result.generated.length > 0) {
+      console.log(`Generated ${result.generated.length} file(s):`)
+      for (const f of result.generated) {
+        console.log(`  - ${f}`)
+      }
+      console.log('')
+    }
+
+    if (result.warnings.length > 0) {
+      console.log('Warnings:')
+      for (const w of result.warnings) {
+        console.log(`  ⚠ ${w}`)
+      }
+      console.log('')
+    }
+
+    // Import hint
+    const apiNames = result.detected.map((d) => `${d.className}API`).join(', ')
+    console.log('Done! Import your typed client:')
+    console.log(`  import type { ${apiNames} } from './${output}'`)
+  } catch (err: any) {
+    console.error(`Error: ${err.message}`)
     process.exit(1)
   }
 }
@@ -852,76 +926,66 @@ async function writeUrlGeneratedFiles(schema: RpcSchema, outputDir: string): Pro
 
 function printHelp() {
   console.log(`
-rpc.do - Generate typed RPC clients from Durable Object schemas
+rpc.do - Zero-config type generation for Durable Objects
 
-Usage:
-  npx rpc.do <command> [options]
+QUICK START (Zero-config):
+  npx rpc.do
 
-Commands:
-  init [project-name]              Create a new rpc.do project
-  generate [options]               Generate typed client once
-  watch [options]                  Watch for changes and regenerate
+  That's it! Reads your wrangler.toml, finds your DOs, generates types to .do/
 
-Init Command:
-  npx rpc.do init [project-name]
+HOW IT WORKS:
+  1. Reads wrangler.toml or wrangler.jsonc
+  2. Finds durable_objects bindings → class names
+  3. Locates source files with those classes
+  4. Extracts full TypeScript types
+  5. Generates .do/*.d.ts with typed interfaces
 
-  Creates a new project with:
-    - src/index.ts          Worker entrypoint
-    - src/rpc/example.ts    Example RPC methods
-    - wrangler.toml         Cloudflare config
-    - package.json          Dependencies
-    - tsconfig.json         TypeScript config
-    - do.config.ts          rpc.do config
+USAGE:
+  npx rpc.do                       Zero-config (recommended)
+  npx rpc.do generate              Same as above
+  npx rpc.do generate --source X   Explicit source file(s)
+  npx rpc.do generate --url X      Runtime schema (weak types)
+  npx rpc.do watch                 Watch mode
+  npx rpc.do init [name]           Create new project
 
-  Interactive prompts:
-    - Project name (if not provided)
-    - Include examples? (y/n)
-    - Transport preference (http/capnweb/both)
+EXAMPLE:
+  # wrangler.toml
+  [durable_objects]
+  bindings = [{ name = "CHAT", class_name = "ChatDO" }]
 
-Generate Options:
-  --source <file>   TypeScript source file to extract types from (full types)
-                    Supports glob patterns: --source "./do/*.ts"
-                    (mutually exclusive with --url)
-  --url <url>       Schema endpoint URL for runtime schema (weak types)
-                    (mutually exclusive with --source)
-  --output <dir>    Output directory
-                    Default: ./.do (source) or ./generated/rpc (url)
+  # src/ChatDO.ts
+  export class ChatDO extends DigitalObject {
+    async sendMessage(text: string): Promise<Message> { ... }
+    users = {
+      get: async (id: string): Promise<User | null> => { ... },
+      list: async (): Promise<User[]> => { ... },
+    }
+  }
 
-Watch Options:
-  --source <file>   Watch source file(s) for changes (full types)
-  --url <url>       Poll schema endpoint for changes (weak types)
-  --output <dir>    Output directory
-  --interval <ms>   Polling interval for --url mode (default: 5000)
+  # Run
+  $ npx rpc.do
+  Found wrangler config with 1 Durable Object(s):
+    - ChatDO (binding: CHAT)
 
-General Options:
-  --help, -h        Show this help
+  Generated 2 file(s):
+    - .do/ChatDO.d.ts
+    - .do/index.ts
 
-Note: --source and --url are mutually exclusive. Use --source for full
-TypeScript type extraction from source files, OR use --url for runtime
-schema fetching with weaker types.
+  # Import
+  import type { ChatDOAPI } from './.do'
 
-Config:
-  Create a do.config.ts in your project root:
+EXPLICIT OPTIONS:
+  --source <file>   TypeScript source (supports globs: "./do/*.ts")
+  --url <url>       Schema endpoint for runtime types
+  --output <dir>    Output directory (default: .do)
 
-    import { defineConfig } from 'rpc.do'
+WATCH MODE:
+  npx rpc.do watch                 Auto-regenerate on file changes
+  npx rpc.do watch --source X      Watch specific files
+  npx rpc.do watch --url X         Poll endpoint for changes
 
-    export default defineConfig({
-      durableObjects: './src/do/*.ts',
-      output: './.do',
-      source: './src/do/MyDO.ts',  // For full types
-      // OR
-      schemaUrl: 'https://my-do.workers.dev',  // For runtime schema
-    })
-
-Workflow (Source-based, recommended):
-  1. Create your DO: src/do/MyDO.ts
-  2. Run: npx rpc.do generate --source ./src/do/MyDO.ts
-  3. Import: import type { MyDOAPI } from './.do'
-
-Workflow (URL-based):
-  1. Deploy your Worker
-  2. Run: npx rpc.do generate --url https://your-worker.workers.dev
-  3. Import: import { createClient } from './generated/rpc'
+INIT:
+  npx rpc.do init [project-name]   Create new project with examples
 `)
 }
 
