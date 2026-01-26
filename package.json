@@ -1,6 +1,6 @@
 {
   "name": "rpc.do",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "description": "Lightweight transport-agnostic RPC client proxy",
   "type": "module",
   "sideEffects": false,
@@ -25,6 +25,10 @@
     "./errors": {
       "types": "./dist/errors.d.ts",
       "import": "./dist/errors.js"
+    },
+    "./extract": {
+      "types": "./dist/extract.d.ts",
+      "import": "./dist/extract.js"
     }
   },
   "files": [
@@ -71,7 +75,6 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@dotdo/types": "^0.1.1",
     "glob": "^13.0.0",
     "ts-morph": "^27.0.2"
   },
@@ -79,9 +82,13 @@
     "capnweb": "^0.4.0"
   },
   "peerDependencies": {
+    "@dotdo/types": ">=0.1.0",
     "oauth.do": "^0.2.0"
   },
   "peerDependenciesMeta": {
+    "@dotdo/types": {
+      "optional": true
+    },
     "oauth.do": {
       "optional": true
     }

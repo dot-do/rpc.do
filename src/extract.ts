@@ -750,7 +750,7 @@ function extractNamespaceFromType(name: string, type: Type, annotatedTypeName?: 
         return {
           name: param.getName(),
           type: getTypeText(paramDecl?.getType() || param.getTypeAtLocation(paramDeclarations![0]!), undefined),
-          optional: paramDecl?.hasQuestionToken?.() ?? false,
+          optional: (paramDecl && 'hasQuestionToken' in paramDecl) ? (paramDecl as any).hasQuestionToken() : false,
         }
       })
 

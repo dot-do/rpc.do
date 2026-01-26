@@ -13,6 +13,13 @@ export default defineConfig([
     dts: true,
     external: ['capnweb', 'oauth.do', 'cloudflare:workers'],
   },
+  // Type extraction utilities (Node.js only, uses ts-morph)
+  {
+    entry: ['src/extract.ts'],
+    format: ['esm'],
+    dts: true,
+    external: ['capnweb', 'oauth.do', 'cloudflare:workers', 'ts-morph', 'glob'],
+  },
   // CLI (Node.js only)
   {
     entry: ['src/cli.ts'],
