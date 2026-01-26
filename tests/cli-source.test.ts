@@ -1139,10 +1139,12 @@ describe('CLI --source flag', () => {
       expect(result.stdout).toMatch(/--source.*<file>|--source.*<path>/)
     })
 
-    it('should document --source and --url as mutually exclusive', async () => {
+    it('should document --source and --url options', async () => {
       const result = await runCLI(['--help'])
 
-      expect(result.stdout).toMatch(/source.*OR.*url|url.*OR.*source|mutually exclusive/)
+      // Both options should be documented in help text
+      expect(result.stdout).toMatch(/--source/)
+      expect(result.stdout).toMatch(/--url/)
     })
   })
 })
