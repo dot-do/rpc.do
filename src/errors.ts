@@ -2,15 +2,28 @@
  * rpc.do Error Classes
  *
  * Provides typed error classes for connection, protocol, and RPC errors.
+ * Some types are re-exported from @dotdo/types for convenience.
  */
+
+import type {
+  RPCError as RPCErrorType,
+  RPCErrorCode,
+  RPCStringErrorCode,
+  ConnectionErrorCode as BaseConnectionErrorCode,
+  ConnectionError as ConnectionErrorInterface,
+  AuthenticationError as AuthenticationErrorInterface,
+} from '@dotdo/types/rpc'
+
+// Re-export types from @dotdo/types
+export type { RPCErrorType, RPCErrorCode, RPCStringErrorCode }
 
 /**
  * Error codes for connection-related errors
+ * Extended from @dotdo/types with additional rpc.do-specific codes
  */
 export type ConnectionErrorCode =
+  | BaseConnectionErrorCode
   | 'CONNECTION_TIMEOUT'
-  | 'CONNECTION_FAILED'
-  | 'CONNECTION_LOST'
   | 'AUTH_FAILED'
   | 'RECONNECT_FAILED'
   | 'HEARTBEAT_TIMEOUT'

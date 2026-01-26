@@ -6,6 +6,11 @@
  * - $.storage.get('key') → this.storage.get('key')
  * - $.collection('users').find({ active: true }) → this.collection('users').find({ active: true })
  *
+ * Note: Some types are also available from '@dotdo/types/rpc' for cross-package compatibility:
+ * - SqlQueryResult, SqlQuery - SQL query types
+ * - RemoteStorage, RemoteCollection - Storage interfaces
+ * - DOClient, DOClientOptions - Client types
+ *
  * @example
  * ```typescript
  * import { RPC } from 'rpc.do'
@@ -32,6 +37,14 @@
  */
 
 import type { Transport, TransportFactory, RPCProxy } from './index'
+import type {
+  SqlQueryResult as TypesSqlQueryResult,
+  SqlQuery as TypesSqlQuery,
+  RemoteStorage as TypesRemoteStorage,
+  RemoteCollection as TypesRemoteCollection,
+  DOClient as TypesDOClient,
+  DOClientOptions as TypesDOClientOptions,
+} from '@dotdo/types/rpc'
 
 // ============================================================================
 // Types
@@ -39,6 +52,11 @@ import type { Transport, TransportFactory, RPCProxy } from './index'
 
 /**
  * SQL query result
+ *
+ * Note: rpc.do uses a slightly different shape than @dotdo/types SqlQueryResult.
+ * This interface uses `results` and `meta`, while @dotdo/types uses `rows` and separate fields.
+ *
+ * @see TypesSqlQueryResult from '@dotdo/types/rpc' for the standard interface
  */
 export interface SqlQueryResult<T = Record<string, unknown>> {
   results: T[]
@@ -50,6 +68,9 @@ export interface SqlQueryResult<T = Record<string, unknown>> {
 
 /**
  * SQL query builder (returned by $.sql`...`)
+ *
+ * This is rpc.do's fluent query builder interface.
+ * For the simpler parameterized query type, see SqlQuery from '@dotdo/types/rpc'.
  */
 export interface SqlQuery<T = Record<string, unknown>> {
   /** Execute and return all rows */
@@ -64,6 +85,11 @@ export interface SqlQuery<T = Record<string, unknown>> {
 
 /**
  * Remote storage interface
+ *
+ * rpc.do's storage interface with batch operations.
+ * For the simpler interface with transaction support, see RemoteStorage from '@dotdo/types/rpc'.
+ *
+ * @see TypesRemoteStorage from '@dotdo/types/rpc'
  */
 export interface RemoteStorage {
   get<T = unknown>(key: string): Promise<T | undefined>
@@ -119,6 +145,11 @@ export interface QueryOptions {
 
 /**
  * Remote collection interface (MongoDB-style document store)
+ *
+ * Extended version of RemoteCollection from '@dotdo/types/rpc' with
+ * additional MongoDB-style query methods like `find`, `has`, and `clear`.
+ *
+ * @see TypesRemoteCollection from '@dotdo/types/rpc' for the base interface
  */
 export interface RemoteCollection<T extends Record<string, unknown> = Record<string, unknown>> {
   /** Get a document by ID */
@@ -195,6 +226,12 @@ export interface RpcSchema {
 
 /**
  * DO Client type - combines remote sql/storage/collections with custom methods
+ *
+ * This extends the DOClient interface from '@dotdo/types/rpc' with
+ * rpc.do-specific features like tagged template SQL, collections manager,
+ * and schema introspection.
+ *
+ * @see TypesDOClient from '@dotdo/types/rpc' for the base interface
  */
 export type DOClient<T = unknown> = {
   /** Tagged template SQL query */

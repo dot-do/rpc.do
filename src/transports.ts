@@ -3,6 +3,7 @@
  */
 
 import type { Transport } from './index'
+import type { ServerMessage as TypesServerMessage } from '@dotdo/types/rpc'
 import { ConnectionError, RPCError } from './errors'
 
 // ============================================================================
@@ -19,10 +20,15 @@ export function isFunction(value: unknown): value is (...args: unknown[]) => unk
 /**
  * Server message type - discriminated union for result vs error responses
  * This allows TypeScript to narrow types based on presence of result vs error
+ *
+ * Note: This is a simplified version for WebSocket responses.
+ * For the full discriminated union with type tags, use `ServerMessage` from '@dotdo/types/rpc'.
+ *
+ * @see TypesServerMessage from '@dotdo/types/rpc' for the full discriminated union
  */
 export type ServerMessage =
   | { id?: number; result: unknown; error?: undefined }
-  | { id?: number; result?: undefined; error: { message: string; code?: string; data?: unknown } }
+  | { id?: number; result?: undefined; error: { message: string; code?: string | number; data?: unknown } }
 
 /**
  * Type guard for WebSocket server messages

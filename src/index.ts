@@ -10,14 +10,116 @@ import { http, capnweb } from './transports'
 import { createDOClient } from './do-client'
 
 // ============================================================================
-// Transport Types
+// Re-exports from @dotdo/types
 // ============================================================================
 
+/**
+ * Re-export RPC types from @dotdo/types for promise pipelining support.
+ *
+ * These types enable CapnWeb-style promise pipelining where you can chain
+ * method calls on not-yet-resolved promises.
+ *
+ * @example Promise Pipelining
+ * ```typescript
+ * import type { RpcPromise, RpcArrayMethods } from 'rpc.do'
+ *
+ * // Without pipelining - 3 round trips:
+ * const user = await db.users.get('123')
+ * const posts = await user.posts.list()
+ * const comments = await posts[0].comments.list()
+ *
+ * // WITH pipelining - 1 round trip:
+ * const comments = await db.users.get('123').posts.list()[0].comments.list()
+ * ```
+ *
+ * Note: The local `Transport` type in rpc.do differs from `@dotdo/types/rpc`
+ * Transport interface. rpc.do uses a minimal `{call, close?}` shape for
+ * capnweb integration, while @dotdo/types has a full lifecycle interface.
+ */
+export type {
+  // Promise pipelining types (CapnWeb pattern)
+  RpcPromise,
+  RpcPipelined,
+  RpcArrayMethods,
+  RpcMapCallback,
+  RpcArrayPromise,
+  RpcPromiseEnhanced,
+  RpcStream,
+  RpcAsyncIterable,
+  UnwrapRpcPromise,
+  MaybeRpcPromise,
+  DeepUnwrapRpcPromise,
+  IsRpcPromise,
+
+  // JSON-RPC 2.0 message types
+  RPCRequest,
+  RPCResponse,
+  RPCNotification,
+  RPCBatchRequest,
+  RPCBatchResponse,
+  RPCMetadata,
+  RPCError as RPCErrorType,
+  RPCErrorCode,
+  RPCStringErrorCode,
+
+  // Transport types from @dotdo/types
+  MinimalTransport,
+  TransportFactory as TypesTransportFactory,
+
+  // Connection error types
+  ConnectionError as ConnectionErrorInterface,
+  ConnectionErrorCode as ConnectionErrorCodeType,
+  AuthenticationError as AuthenticationErrorInterface,
+  ServerMessage as TypesServerMessage,
+
+  // DO Client types
+  DOClient as DOClientInterface,
+  DOClientOptions as DOClientOptionsType,
+  RemoteStorage as RemoteStorageInterface,
+  RemoteCollection as RemoteCollectionInterface,
+  SqlQueryResult as SqlQueryResultType,
+  SqlQuery as SqlQueryType,
+
+  // Proxy types
+  TypedDOStubProxy,
+  RPCMiddleware,
+  RPCClient,
+  RPCServer,
+  RPCClientConfig,
+  RPCServerConfig,
+  RPCMethodHandler,
+  RPCHandlerContext,
+  CapnWebConfig,
+  ProxyOptions,
+
+  // Magic Map types
+  MagicMap,
+  MutableMagicMap,
+} from '@dotdo/types/rpc'
+
+// ============================================================================
+// Transport Types (rpc.do-specific - compatible with @dotdo/types MinimalTransport)
+// ============================================================================
+
+/**
+ * Transport interface for rpc.do.
+ *
+ * This is compatible with MinimalTransport from `@dotdo/types/rpc`.
+ * For the full transport lifecycle interface with connect/disconnect/events,
+ * see `ManagedTransport` from `@dotdo/types/rpc`.
+ *
+ * @see MinimalTransport from '@dotdo/types/rpc'
+ */
 export type Transport = {
   call(method: string, args: unknown[]): Promise<unknown>
   close?(): void
 }
 
+/**
+ * Factory function for creating transports (lazy initialization).
+ *
+ * @see TransportFactory from '@dotdo/types/rpc'
+ */
 export type TransportFactory = () => Transport | Promise<Transport>
 
 // ============================================================================
@@ -58,9 +160,17 @@ export type RPCProxy<T> = {
 }
 
 /**
- * Explicit promise type for RPC returns
+ * Simple promise type for RPC returns.
+ *
+ * @deprecated Use `RpcPromise<T>` from @dotdo/types for promise pipelining support.
+ *
  * @example
+ * // Old (simple promise):
  * const result: RPCPromise<{ text: string }> = rpc.ai.generate({ prompt: 'hello' })
+ *
+ * // New (with pipelining):
+ * import type { RpcPromise } from 'rpc.do'
+ * const result: RpcPromise<{ text: string }> = rpc.ai.generate({ prompt: 'hello' })
  */
 export type RPCPromise<T> = Promise<T>
 
