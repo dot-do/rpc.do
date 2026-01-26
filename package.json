@@ -79,7 +79,7 @@
     "ts-morph": "^27.0.2"
   },
   "optionalDependencies": {
-    "capnweb": "^0.4.0"
+    "@dotdo/capnweb": "^0.4.0"
   },
   "peerDependencies": {
     "@dotdo/types": ">=0.1.0",

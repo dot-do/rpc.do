@@ -26,7 +26,7 @@
  * @example
  * ```typescript
  * import { ReconnectingWebSocketTransport } from 'rpc.do/transports/reconnecting-ws'
- * import { RpcSession } from 'capnweb'
+ * import { RpcSession } from '@dotdo/capnweb'
  * import { oauthProvider } from 'rpc.do/auth'
  *
  * const transport = new ReconnectingWebSocketTransport('wss://api.example.com/rpc', {
@@ -40,7 +40,7 @@
  * ```
  */
 
-import type { RpcTransport } from 'capnweb'
+import type { RpcTransport } from '@dotdo/capnweb'
 import { ConnectionError } from '../errors.js'
 import type { AuthProvider } from '../auth.js'
 
@@ -636,7 +636,7 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
  * @example
  * ```typescript
  * import { reconnectingWs } from 'rpc.do/transports/reconnecting-ws'
- * import { RpcSession } from 'capnweb'
+ * import { RpcSession } from '@dotdo/capnweb'
  * import { oauthProvider } from 'rpc.do/auth'
  *
  * const transport = reconnectingWs('wss://api.example.com/rpc', {
@@ -715,9 +715,9 @@ export async function createRpcSession<T = unknown>(
   // Create transport
   const transport = new ReconnectingWebSocketTransport(url, transportOptions)
 
-  // Dynamic import capnweb
+  // Dynamic import capnweb (using @dotdo/capnweb fork)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { RpcSession } = await import('capnweb') as any
+  const { RpcSession } = await import('@dotdo/capnweb') as any
 
   // Create session with optional local target for bidirectional RPC
   const session = new RpcSession(transport, localMain)

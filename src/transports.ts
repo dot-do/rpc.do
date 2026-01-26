@@ -110,7 +110,7 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
       if (!session) {
         // Dynamic import capnweb (optional dependency)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const capnwebModule: Record<string, unknown> = await import('capnweb')
+        const capnwebModule: Record<string, unknown> = await import('@dotdo/capnweb')
 
         const createSession = capnwebModule.newHttpBatchRpcSession as ((url: string) => unknown) | undefined
         if (!createSession) throw new RPCError('capnweb.newHttpBatchRpcSession not found', 'MODULE_ERROR')
@@ -330,7 +330,7 @@ export function capnweb(
         // Dynamic import capnweb (optional dependency)
         // capnweb types are not available at compile time, so we use Record<string, unknown>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const capnwebModule: Record<string, unknown> = await import('capnweb')
+        const capnwebModule: Record<string, unknown> = await import('@dotdo/capnweb')
 
         if (useWebSocket) {
           const wsUrl = url.replace(/^http/, 'ws')
@@ -385,7 +385,7 @@ function createReconnectingCapnwebTransport(
       if (!session) {
         // Dynamic imports
         const [capnwebModule, { ReconnectingWebSocketTransport }] = await Promise.all([
-          import('capnweb'),
+          import('@dotdo/capnweb'),
           import('./transports/reconnecting-ws.js')
         ])
 
