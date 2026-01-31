@@ -144,6 +144,7 @@ interface User {
   active: boolean
   role?: string
   metadata?: Record<string, unknown>
+  [key: string]: unknown
 }
 
 interface Product {
@@ -152,6 +153,7 @@ interface Product {
   category: string
   inStock: boolean
   tags?: string[]
+  [key: string]: unknown
 }
 
 // ============================================================================
@@ -161,7 +163,7 @@ interface Product {
 // We dynamically import createCollection and Collections to reset module state
 let createCollection: typeof import('./collections').createCollection
 let Collections: typeof import('./collections').Collections
-type Collection<T> = import('./collections').Collection<T>
+type Collection<T extends Record<string, unknown>> = import('./collections').Collection<T>
 type Filter<T> = import('./collections').Filter<T>
 
 let mockSql: MockSqlStorage
@@ -414,7 +416,7 @@ describe('Filter Operations', () => {
     it('should find documents with numeric equality', () => {
       const results = products.find({ price: { $eq: 599 } })
       expect(results.length).toBe(1)
-      expect(results[0].name).toBe('Phone')
+      expect(results[0]!.name).toBe('Phone')
     })
   })
 
@@ -442,7 +444,7 @@ describe('Filter Operations', () => {
     it('should not include equal values', () => {
       const results = products.find({ price: { $gt: 599 } })
       expect(results.length).toBe(1)
-      expect(results[0].price).toBe(999)
+      expect(results[0]!.price).toBe(999)
     })
   })
 
@@ -483,7 +485,7 @@ describe('Filter Operations', () => {
     it('should include equal values', () => {
       const results = products.find({ price: { $lte: 149 } })
       expect(results.length).toBe(1)
-      expect(results[0].price).toBe(149)
+      expect(results[0]!.price).toBe(149)
     })
   })
 
@@ -526,7 +528,7 @@ describe('Filter Operations', () => {
 
       const results = users.find({ role: { $exists: true } })
       expect(results.length).toBe(1)
-      expect(results[0].name).toBe('Alice')
+      expect(results[0]!.name).toBe('Alice')
     })
 
     it('should find documents where field does not exist', () => {
@@ -536,7 +538,7 @@ describe('Filter Operations', () => {
 
       const results = users.find({ role: { $exists: false } })
       expect(results.length).toBe(1)
-      expect(results[0].name).toBe('Bob')
+      expect(results[0]!.name).toBe('Bob')
     })
   })
 
@@ -631,7 +633,7 @@ describe('Filter Operations', () => {
       // So we test what's currently supported
       const results = users.find({ 'metadata.level': 5 } as any)
       expect(results.length).toBe(1)
-      expect(results[0].name).toBe('Alice')
+      expect(results[0]!.name).toBe('Alice')
     })
   })
 
@@ -643,7 +645,7 @@ describe('Filter Operations', () => {
 
       const results = users.find({ metadata: { role: 'admin', level: 5 } } as any)
       expect(results.length).toBe(1)
-      expect(results[0].name).toBe('Alice')
+      expect(results[0]!.name).toBe('Alice')
     })
   })
 
@@ -662,7 +664,7 @@ describe('Filter Operations', () => {
     it('should match numeric values', () => {
       const results = products.find({ price: 599 })
       expect(results.length).toBe(1)
-      expect(results[0].name).toBe('Phone')
+      expect(results[0]!.name).toBe('Phone')
     })
   })
 })
@@ -712,7 +714,7 @@ describe('Query Options', () => {
       // Note: SQLite requires LIMIT when using OFFSET, so we use a high limit
       const results = products.find({}, { sort: 'name', offset: 2, limit: 100 })
       expect(results.length).toBe(3)
-      expect(results[0].name).toBe('Delta')
+      expect(results[0]!.name).toBe('Delta')
     })
 
     it('should return empty array if offset is greater than count', () => {
@@ -768,7 +770,7 @@ describe('Query Options', () => {
 
       const results = products.find({ category: 'a' }, { sort: '-price', limit: 1 })
       expect(results.length).toBe(1)
-      expect(results[0].name).toBe('Alpha')
+      expect(results[0]!.name).toBe('Alpha')
     })
   })
 })
@@ -1196,13 +1198,12 @@ describe('Edge Cases', () => {
       expect(users.has('user-kanji-:Japanese_castle:')).toBe(true)
     })
 
-    it('should handle empty string ID', () => {
+    it('should reject empty string ID', () => {
       const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
 
-      users.put('', { name: 'Empty ID', email: 'empty@test.com', age: 30, active: true })
-
-      expect(users.has('')).toBe(true)
-      expect(users.get('')?.name).toBe('Empty ID')
+      expect(() => {
+        users.put('', { name: 'Empty ID', email: 'empty@test.com', age: 30, active: true })
+      }).toThrow('Document ID must be a non-empty string')
     })
   })
 
@@ -1379,14 +1380,14 @@ describe('Error Cases', () => {
 
       const gtZero = users.find({ score: { $gt: 0 } })
       expect(gtZero.length).toBe(1)
-      expect(gtZero[0]['name']).toBe('Bob')
+      expect(gtZero[0]!['name']).toBe('Bob')
 
       const gteZero = users.find({ score: { $gte: 0 } })
       expect(gteZero.length).toBe(2)
 
       const ltZero = users.find({ score: { $lt: 0 } })
       expect(ltZero.length).toBe(1)
-      expect(ltZero[0]['name']).toBe('Charlie')
+      expect(ltZero[0]!['name']).toBe('Charlie')
     })
 
     it('should handle negative numbers', () => {
@@ -1412,6 +1413,563 @@ describe('Error Cases', () => {
 
       const highRating = users.find({ rating: { $gte: 4.0 } })
       expect(highRating.length).toBe(2)
+    })
+  })
+})
+
+// ============================================================================
+// Security and Validation Tests
+// ============================================================================
+
+describe('Security and Validation', () => {
+  describe('SQL injection prevention - field names', () => {
+    it('should reject field names with SQL injection attempts', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice', age: 30 })
+
+      // Attempt SQL injection via field name
+      expect(() => {
+        users.find({ "name'); DROP TABLE _collections; --": 'test' } as any)
+      }).toThrow('Invalid field name')
+    })
+
+    it('should reject field names with quotes', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice', age: 30 })
+
+      expect(() => {
+        users.find({ "field'test": 'value' } as any)
+      }).toThrow('Invalid field name')
+    })
+
+    it('should reject field names with parentheses', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice', age: 30 })
+
+      expect(() => {
+        users.find({ "field()": 'value' } as any)
+      }).toThrow('Invalid field name')
+    })
+
+    it('should reject field names with spaces', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice', age: 30 })
+
+      expect(() => {
+        users.find({ "field name": 'value' } as any)
+      }).toThrow('Invalid field name')
+    })
+
+    it('should allow valid field names with underscores', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { first_name: 'Alice', last_name: 'Smith' })
+
+      const results = users.find({ first_name: 'Alice' })
+      expect(results.length).toBe(1)
+    })
+
+    it('should allow nested field names with dots', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice', metadata: { level: 5 } })
+
+      const results = users.find({ 'metadata.level': 5 } as any)
+      expect(results.length).toBe(1)
+    })
+
+    it('should allow alphanumeric field names', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { field123: 'value', Field456: 'value2' })
+
+      const results = users.find({ field123: 'value' })
+      expect(results.length).toBe(1)
+    })
+  })
+
+  describe('SQL injection prevention - sort field', () => {
+    it('should reject sort field with SQL injection attempts', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice', age: 30 })
+
+      expect(() => {
+        users.find({}, { sort: "name'); DROP TABLE _collections; --" })
+      }).toThrow('Invalid field name')
+    })
+
+    it('should reject sort field with quotes', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice', age: 30 })
+
+      expect(() => {
+        users.find({}, { sort: "field'test" })
+      }).toThrow('Invalid field name')
+    })
+
+    it('should allow valid sort field with descending prefix', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice', age: 30 })
+      users.put('u2', { name: 'Bob', age: 25 })
+
+      const results = users.find({}, { sort: '-age' })
+      expect(results[0]!['name']).toBe('Alice')
+      expect(results[1]!['name']).toBe('Bob')
+    })
+  })
+
+  describe('Input validation - put()', () => {
+    it('should reject null document', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+
+      expect(() => {
+        users.put('u1', null as any)
+      }).toThrow('Document must be a non-null object')
+    })
+
+    it('should reject array as document', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+
+      expect(() => {
+        users.put('u1', ['item1', 'item2'] as any)
+      }).toThrow('Document must be a non-null object')
+    })
+
+    it('should reject primitive values as document', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+
+      expect(() => {
+        users.put('u1', 'string' as any)
+      }).toThrow('Document must be a non-null object')
+
+      expect(() => {
+        users.put('u1', 123 as any)
+      }).toThrow('Document must be a non-null object')
+
+      expect(() => {
+        users.put('u1', true as any)
+      }).toThrow('Document must be a non-null object')
+    })
+
+    it('should reject non-string ID', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+
+      expect(() => {
+        users.put(123 as any, { name: 'Alice' })
+      }).toThrow('Document ID must be a non-empty string')
+
+      expect(() => {
+        users.put(null as any, { name: 'Alice' })
+      }).toThrow('Document ID must be a non-empty string')
+
+      expect(() => {
+        users.put(undefined as any, { name: 'Alice' })
+      }).toThrow('Document ID must be a non-empty string')
+    })
+
+    it('should accept valid document and ID', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+
+      // Should not throw
+      users.put('u1', { name: 'Alice' })
+      expect(users.get('u1')).toEqual({ name: 'Alice' })
+    })
+  })
+
+  describe('Query options validation', () => {
+    it('should reject offset without limit', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice' })
+      users.put('u2', { name: 'Bob' })
+
+      expect(() => {
+        users.find({}, { offset: 1 })
+      }).toThrow('offset requires limit to be specified')
+    })
+
+    it('should allow offset with limit', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice' })
+      users.put('u2', { name: 'Bob' })
+      users.put('u3', { name: 'Charlie' })
+
+      const results = users.find({}, { sort: 'name', offset: 1, limit: 10 })
+      expect(results.length).toBe(2)
+    })
+
+    it('should allow limit without offset', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice' })
+      users.put('u2', { name: 'Bob' })
+
+      const results = users.find({}, { limit: 1 })
+      expect(results.length).toBe(1)
+    })
+
+    it('should reject offset without limit in list()', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice' })
+
+      expect(() => {
+        users.list({ offset: 1 })
+      }).toThrow('offset requires limit to be specified')
+    })
+  })
+
+  describe('SQL injection via filter operators', () => {
+    it('should handle $eq with SQL injection values safely via parameterization', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice', role: 'admin' })
+
+      // The value itself is safe because it's parameterized
+      const results = users.find({ name: { $eq: "'; DROP TABLE _collections; --" } })
+      expect(results.length).toBe(0)
+
+      // Verify table still exists
+      expect(users.get('u1')).not.toBeNull()
+    })
+
+    it('should handle $regex with malicious patterns safely', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice', role: 'admin' })
+
+      // The pattern is parameterized, so SQL injection isn't possible
+      const results = users.find({ name: { $regex: ".*'; DROP TABLE --" } })
+      expect(results.length).toBe(0)
+
+      // Verify table still exists
+      expect(users.get('u1')).not.toBeNull()
+    })
+
+    it('should handle $in with SQL injection values safely', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      users.put('u1', { name: 'Alice' })
+
+      const results = users.find({ name: { $in: ["'; DROP TABLE _collections; --", 'test'] } })
+      expect(results.length).toBe(0)
+
+      // Verify table still exists
+      expect(users.get('u1')).not.toBeNull()
+    })
+  })
+})
+
+// ============================================================================
+// Concurrency Tests
+// ============================================================================
+
+describe('Concurrency Tests', () => {
+  describe('Rapid concurrent put() with same ID', () => {
+    it('should handle multiple rapid puts to the same ID', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+
+      // Simulate rapid concurrent puts to the same ID
+      const iterations = 100
+      for (let i = 0; i < iterations; i++) {
+        users.put('user1', { index: i, name: `Version ${i}` })
+      }
+
+      // The last write should win
+      const result = users.get('user1')
+      expect(result).not.toBeNull()
+      expect(result!['index']).toBe(iterations - 1)
+      expect(result!['name']).toBe(`Version ${iterations - 1}`)
+    })
+
+    it('should handle alternating puts between two documents', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+
+      const iterations = 50
+      for (let i = 0; i < iterations; i++) {
+        users.put('user1', { value: i * 2 })
+        users.put('user2', { value: i * 2 + 1 })
+      }
+
+      expect(users.get('user1')!['value']).toBe((iterations - 1) * 2)
+      expect(users.get('user2')!['value']).toBe((iterations - 1) * 2 + 1)
+      expect(users.count()).toBe(2)
+    })
+
+    it('should maintain data integrity under rapid put/delete cycles', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+
+      // Create, update, delete pattern
+      for (let i = 0; i < 50; i++) {
+        users.put(`temp${i}`, { value: i })
+        users.put(`temp${i}`, { value: i * 2 }) // Update
+        users.delete(`temp${i}`) // Delete
+      }
+
+      // All should be deleted
+      expect(users.count()).toBe(0)
+    })
+
+    it('should handle interleaved operations on multiple collections', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const products = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'products')
+      const orders = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'orders')
+
+      for (let i = 0; i < 30; i++) {
+        users.put(`u${i}`, { type: 'user', index: i })
+        products.put(`p${i}`, { type: 'product', index: i })
+        orders.put(`o${i}`, { type: 'order', index: i })
+      }
+
+      expect(users.count()).toBe(30)
+      expect(products.count()).toBe(30)
+      expect(orders.count()).toBe(30)
+
+      // Verify data integrity
+      for (let i = 0; i < 30; i++) {
+        expect(users.get(`u${i}`)!['type']).toBe('user')
+        expect(products.get(`p${i}`)!['type']).toBe('product')
+        expect(orders.get(`o${i}`)!['type']).toBe('order')
+      }
+    })
+  })
+
+  describe('Version increment consistency', () => {
+    it('should not lose updates when rapidly updating the same document', () => {
+      const counters = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'counters')
+
+      // Initialize counter
+      counters.put('counter1', { value: 0 })
+
+      // Simulate 100 increments
+      for (let i = 0; i < 100; i++) {
+        const current = counters.get('counter1')
+        const newValue = (current!['value'] as number) + 1
+        counters.put('counter1', { value: newValue })
+      }
+
+      // Should have exactly 100 increments
+      const final = counters.get('counter1')
+      expect(final!['value']).toBe(100)
+    })
+
+    it('should maintain consistent state through update cycles', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+
+      users.put('user1', { version: 1, data: 'initial' })
+
+      // Update 50 times, incrementing version each time
+      for (let i = 2; i <= 51; i++) {
+        const current = users.get('user1')
+        expect(current!['version']).toBe(i - 1) // Verify we read the previous version
+        users.put('user1', { version: i, data: `update-${i}` })
+      }
+
+      const final = users.get('user1')
+      expect(final!['version']).toBe(51)
+      expect(final!['data']).toBe('update-51')
+    })
+
+    it('should handle batch updates without data loss', () => {
+      const items = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'items')
+
+      // Create 100 items
+      for (let i = 0; i < 100; i++) {
+        items.put(`item${i}`, { created: true, updated: false })
+      }
+
+      // Update all items
+      for (let i = 0; i < 100; i++) {
+        items.put(`item${i}`, { created: true, updated: true, updateIndex: i })
+      }
+
+      // Verify all updates were applied
+      for (let i = 0; i < 100; i++) {
+        const item = items.get(`item${i}`)
+        expect(item!['updated']).toBe(true)
+        expect(item!['updateIndex']).toBe(i)
+      }
+
+      expect(items.count()).toBe(100)
+    })
+  })
+
+  describe('Relationship modification during traversal', () => {
+    it('should handle modification while listing documents', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+
+      // Create initial set
+      for (let i = 0; i < 20; i++) {
+        users.put(`user${i}`, { index: i })
+      }
+
+      // Get list (snapshot)
+      const initialList = users.list()
+      expect(initialList.length).toBe(20)
+
+      // Modify during "traversal" (simulated)
+      for (const user of initialList) {
+        const index = user['index'] as number
+        // Add a new document while iterating
+        users.put(`new${index}`, { derived: true, from: index })
+        // Update the original
+        users.put(`user${index}`, { index, modified: true })
+      }
+
+      // Should have original 20 + 20 new ones
+      expect(users.count()).toBe(40)
+
+      // Verify originals were modified
+      for (let i = 0; i < 20; i++) {
+        expect(users.get(`user${i}`)!['modified']).toBe(true)
+      }
+
+      // Verify new ones were created
+      for (let i = 0; i < 20; i++) {
+        expect(users.get(`new${i}`)!['derived']).toBe(true)
+      }
+    })
+
+    it('should handle deletion while traversing', () => {
+      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+
+      // Create items
+      for (let i = 0; i < 30; i++) {
+        users.put(`user${i}`, { index: i, keep: i % 2 === 0 })
+      }
+
+      // Get list then delete odd-indexed items
+      const list = users.list()
+      for (const user of list) {
+        const index = user['index'] as number
+        if (index % 2 !== 0) {
+          users.delete(`user${index}`)
+        }
+      }
+
+      // Should have 15 items remaining (even indices)
+      expect(users.count()).toBe(15)
+
+      // Verify only even-indexed items remain
+      for (let i = 0; i < 30; i++) {
+        if (i % 2 === 0) {
+          expect(users.has(`user${i}`)).toBe(true)
+        } else {
+          expect(users.has(`user${i}`)).toBe(false)
+        }
+      }
+    })
+
+    it('should handle find while modifying matching documents', () => {
+      const products = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'products')
+
+      // Create products with different categories
+      for (let i = 0; i < 20; i++) {
+        products.put(`product${i}`, {
+          category: i % 2 === 0 ? 'electronics' : 'furniture',
+          price: 100 + i * 10,
+        })
+      }
+
+      // Find electronics and update them
+      const electronics = products.find({ category: 'electronics' })
+      expect(electronics.length).toBe(10)
+
+      for (let i = 0; i < electronics.length; i++) {
+        // Find the ID (it's product0, product2, product4, etc.)
+        const id = `product${i * 2}`
+        const current = products.get(id)
+        products.put(id, {
+          ...current,
+          onSale: true,
+          salePrice: (current!['price'] as number) * 0.9,
+        })
+      }
+
+      // Verify updates
+      const updatedElectronics = products.find({ category: 'electronics' })
+      expect(updatedElectronics.every((p) => p['onSale'] === true)).toBe(true)
+    })
+
+    it('should maintain consistency when updating based on filter results', () => {
+      const orders = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'orders')
+
+      // Create orders with different statuses
+      for (let i = 0; i < 30; i++) {
+        orders.put(`order${i}`, {
+          status: i % 3 === 0 ? 'pending' : i % 3 === 1 ? 'processing' : 'completed',
+          amount: 100 + i,
+        })
+      }
+
+      // Find pending orders and process them
+      const pending = orders.find({ status: 'pending' })
+      const pendingCount = pending.length
+      expect(pendingCount).toBe(10)
+
+      for (let i = 0; i < pending.length; i++) {
+        const id = `order${i * 3}` // pending orders are at 0, 3, 6, ...
+        orders.put(id, {
+          status: 'processing',
+          amount: pending[i]!['amount'],
+          processedAt: Date.now(),
+        })
+      }
+
+      // Verify no more pending
+      expect(orders.find({ status: 'pending' }).length).toBe(0)
+
+      // Verify processing count increased
+      const processing = orders.find({ status: 'processing' })
+      expect(processing.length).toBe(20) // original 10 + 10 moved from pending
+    })
+  })
+
+  describe('Stress tests', () => {
+    it('should handle 1000 rapid operations without data corruption', () => {
+      const data = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'data')
+
+      // Mix of operations
+      for (let i = 0; i < 1000; i++) {
+        const op = i % 4
+        const id = `item${i % 100}` // Reuse IDs to test updates
+
+        switch (op) {
+          case 0:
+            data.put(id, { value: i, op: 'put' })
+            break
+          case 1:
+            data.get(id)
+            break
+          case 2:
+            if (i > 100) data.delete(`item${(i - 100) % 100}`)
+            break
+          case 3:
+            data.find({ value: { $gt: i - 10 } }, { limit: 5 })
+            break
+        }
+      }
+
+      // Should still be functional
+      expect(data.count()).toBeGreaterThanOrEqual(0)
+      expect(() => data.list()).not.toThrow()
+    })
+
+    it('should maintain count consistency under heavy load', () => {
+      const items = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'items')
+
+      let expectedCount = 0
+
+      // Perform many operations tracking expected count
+      for (let i = 0; i < 500; i++) {
+        if (i % 3 === 0) {
+          // Add new item
+          items.put(`item${i}`, { value: i })
+          expectedCount++
+        } else if (i % 3 === 1 && expectedCount > 0) {
+          // Try to delete (may or may not exist)
+          const deleted = items.delete(`item${i - 1}`)
+          if (deleted) expectedCount--
+        } else {
+          // Update existing if exists
+          if (items.has(`item${i - 2}`)) {
+            items.put(`item${i - 2}`, { value: i, updated: true })
+          }
+        }
+      }
+
+      expect(items.count()).toBe(expectedCount)
     })
   })
 })

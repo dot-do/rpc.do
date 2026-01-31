@@ -16,6 +16,14 @@
  * ```
  */
 
+// Re-export function types from @dotdo/do/types for RPC consumers
+export type {
+  Fn,
+  AsyncFn,
+  RpcFn,
+  RpcPromise,
+} from '@dotdo/do/types'
+
 import {
   RpcSession,
   RpcTarget,
@@ -25,6 +33,7 @@ import {
   type RpcTransport,
   type RpcSessionOptions,
 } from '@dotdo/capnweb/server'
+import { RpcInterface, SKIP_PROPS_BASE } from './rpc-interface.js'
 
 // Re-export capnweb types
 export { RpcTarget, RpcSession, type RpcTransport, type RpcSessionOptions }
@@ -36,83 +45,13 @@ export { HibernatableWebSocketTransport, TransportRegistry }
 
 declare class DurableObject {
   protected ctx: DurableObjectState
-  protected env: any
-  constructor(ctx: DurableObjectState, env: any)
+  protected env: Record<string, unknown>
+  constructor(ctx: DurableObjectState, env: Record<string, unknown>)
   fetch?(request: Request): Response | Promise<Response>
   alarm?(): void | Promise<void>
   webSocketMessage?(ws: WebSocket, message: string | ArrayBuffer): void | Promise<void>
   webSocketClose?(ws: WebSocket, code: number, reason: string, wasClean: boolean): void | Promise<void>
   webSocketError?(ws: WebSocket, error: unknown): void | Promise<void>
-}
-
-// ============================================================================
-// RPC Interface Wrapper
-// ============================================================================
-
-/** Properties to skip during introspection */
-const SKIP_PROPS = new Set([
-  'fetch', 'alarm', 'webSocketMessage', 'webSocketClose', 'webSocketError',
-  'constructor', 'getSchema', 'broadcast', 'connectionCount',
-  'sql', 'storage', 'state', 'ctx', 'env',
-  '_currentRequest', '_transportRegistry', '_sessions', '_rpcInterface',
-  'handleWebSocketUpgrade', 'handleHttpRpc', 'getRpcInterface', 'getRpcSessionOptions',
-])
-
-class RpcInterface extends RpcTarget {
-  constructor(private durableRpc: DurableRPC) {
-    super()
-    this.exposeInterface()
-  }
-
-  private exposeInterface(): void {
-    const instance = this.durableRpc
-    const seen = new Set<string>()
-
-    const collectProps = (obj: any) => {
-      if (!obj || obj === Object.prototype) return
-      for (const key of Object.getOwnPropertyNames(obj)) {
-        if (!seen.has(key) && !SKIP_PROPS.has(key) && !key.startsWith('_')) {
-          seen.add(key)
-          let value: any
-          try { value = (instance as any)[key] } catch { continue }
-
-          if (typeof value === 'function') {
-            Object.defineProperty(this, key, {
-              value: value.bind(instance),
-              enumerable: true,
-              configurable: true,
-            })
-          } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-            const hasMethodKeys = Object.keys(value).some(k => typeof value[k] === 'function')
-            if (hasMethodKeys) {
-              const namespace: Record<string, Function> = {}
-              for (const nsKey of Object.keys(value)) {
-                if (typeof value[nsKey] === 'function') {
-                  namespace[nsKey] = value[nsKey].bind(value)
-                }
-              }
-              Object.defineProperty(this, key, {
-                value: namespace,
-                enumerable: true,
-                configurable: true,
-              })
-            }
-          }
-        }
-      }
-    }
-
-    collectProps(instance)
-    let proto = Object.getPrototypeOf(instance)
-    while (proto && proto !== DurableRPC.prototype && proto !== DurableObject.prototype) {
-      collectProps(proto)
-      proto = Object.getPrototypeOf(proto)
-    }
-  }
-
-  __schema(): LiteRpcSchema {
-    return this.durableRpc.getSchema()
-  }
 }
 
 // ============================================================================
@@ -147,7 +86,7 @@ export interface LiteRpcSchema {
 export class DurableRPC extends DurableObject {
   private _transportRegistry = new TransportRegistry()
   private _sessions = new Map<WebSocket, RpcSession>()
-  private _rpcInterface?: RpcInterface
+  private _rpcInterface?: RpcInterface<DurableRPC>
   protected _currentRequest?: Request
 
   /** SQLite storage */
@@ -165,9 +104,13 @@ export class DurableRPC extends DurableObject {
     return this.ctx
   }
 
-  private getRpcInterface(): RpcInterface {
+  private getRpcInterface(): RpcInterface<DurableRPC> {
     if (!this._rpcInterface) {
-      this._rpcInterface = new RpcInterface(this)
+      this._rpcInterface = new RpcInterface({
+        instance: this,
+        skipProps: SKIP_PROPS_BASE,
+        basePrototype: DurableRPC.prototype,
+      })
     }
     return this._rpcInterface
   }
@@ -181,7 +124,7 @@ export class DurableRPC extends DurableObject {
     }
   }
 
-  async fetch(request: Request): Promise<Response> {
+  override async fetch(request: Request): Promise<Response> {
     this._currentRequest = request
 
     if (request.method === 'GET') {
@@ -200,7 +143,8 @@ export class DurableRPC extends DurableObject {
 
   private handleWebSocketUpgrade(request: Request): Response {
     const pair = new WebSocketPair()
-    const [client, server] = Object.values(pair)
+    const client = pair[0]
+    const server = pair[1]
 
     this.ctx.acceptWebSocket(server)
     const transport = new HibernatableWebSocketTransport(server)
@@ -217,7 +161,7 @@ export class DurableRPC extends DurableObject {
     return new Response(null, { status: 101, webSocket: client })
   }
 
-  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+  override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     if (typeof message !== 'string') return
 
     let transport: HibernatableWebSocketTransport | undefined
@@ -226,7 +170,9 @@ export class DurableRPC extends DurableObject {
       if (attachment?.transportId) {
         transport = this._transportRegistry.get(attachment.transportId)
       }
-    } catch {}
+    } catch (error) {
+      console.debug('[DurableRPC] Failed to deserialize WebSocket attachment:', error)
+    }
 
     if (!transport) {
       transport = new HibernatableWebSocketTransport(ws)
@@ -239,7 +185,7 @@ export class DurableRPC extends DurableObject {
     transport.enqueueMessage(message)
   }
 
-  async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+  override async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
     try {
       const attachment = ws.deserializeAttachment() as { transportId?: string } | null
       if (attachment?.transportId) {
@@ -253,7 +199,7 @@ export class DurableRPC extends DurableObject {
     this._sessions.delete(ws)
   }
 
-  async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
+  override async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
     const err = error instanceof Error ? error : new Error(String(error))
     try {
       const attachment = ws.deserializeAttachment() as { transportId?: string } | null
@@ -274,8 +220,9 @@ export class DurableRPC extends DurableObject {
     }
     try {
       return await newHttpBatchRpcResponse(request, this.getRpcInterface(), this.getRpcSessionOptions())
-    } catch (error: any) {
-      return Response.json({ error: error.message || 'RPC error' }, { status: 500 })
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'RPC error'
+      return Response.json({ error: message }, { status: 500 })
     }
   }
 
@@ -287,7 +234,7 @@ export class DurableRPC extends DurableObject {
     const collectProps = (obj: any) => {
       if (!obj || obj === Object.prototype) return
       for (const key of Object.getOwnPropertyNames(obj)) {
-        if (!seen.has(key) && !SKIP_PROPS.has(key) && !key.startsWith('_')) {
+        if (!seen.has(key) && !SKIP_PROPS_BASE.has(key) && !key.startsWith('_')) {
           seen.add(key)
           let value: any
           try { value = (this as any)[key] } catch { continue }
@@ -319,7 +266,7 @@ export class DurableRPC extends DurableObject {
     return { version: 1, methods, namespaces }
   }
 
-  broadcast(message: any, exclude?: WebSocket): void {
+  broadcast(message: unknown, exclude?: WebSocket): void {
     const sockets = this.ctx.getWebSockets()
     const data = typeof message === 'string' ? message : JSON.stringify(message)
     for (const ws of sockets) {

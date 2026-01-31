@@ -1,6 +1,6 @@
 {
   "name": "@dotdo/rpc",
-  "version": "0.1.0",
+  "version": "0.2.4",
   "description": "Durable Object RPC server with capnweb, hibernation, and $ context",
   "type": "module",
   "main": "./dist/index.js",
@@ -30,7 +30,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsup",
@@ -57,12 +58,14 @@
     "directory": "core"
   },
   "dependencies": {
-    "@dotdo/capnweb": "file:../../dotdo-capnweb"
+    "@dotdo/capnweb": "^0.4.0",
+    "@dotdo/collections": "^0.1.0",
+    "@dotdo/do": "^0.1.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
-    "@dotdo/events": "file:../../events/core",
-    "colo.do": "file:../../colo",
+    "@dotdo/events": "^0.1.0",
+    "@dotdo/types": "^0.1.0",
     "esbuild": "^0.27.2",
     "sql.js": "^1.13.0",
     "tsup": "^8.0.0",
@@ -71,11 +74,15 @@
   },
   "peerDependencies": {
     "@cloudflare/workers-types": "^4.0.0",
-    "@dotdo/events": "^0.1.0",
-    "colo.do": "^0.1.0"
+    "@dotdo/events": ">=0.1.0",
+    "@dotdo/types": ">=0.1.0",
+    "colo.do": ">=0.1.0"
   },
   "peerDependenciesMeta": {
     "@dotdo/events": {
+      "optional": true
+    },
+    "@dotdo/types": {
       "optional": true
     },
     "colo.do": {

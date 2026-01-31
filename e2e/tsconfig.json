@@ -3,13 +3,28 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers"]
+    "types": [
+      "@cloudflare/workers-types",
+      "@cloudflare/vitest-pool-workers"
+    ],
+    "paths": {
+      ".do/*": [
+        ".do/*"
+      ]
+    }
   },
-  "include": ["src/**/*", "tests/**/*"],
-  "exclude": ["node_modules"]
+  "include": [
+    "src/**/*",
+    "tests/**/*"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

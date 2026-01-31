@@ -366,8 +366,9 @@ export {
 // Note: auth() is available via 'rpc.do/auth' for server-side usage
 // It's not exported from main index to avoid oauth.do dependency in browser contexts
 
-// Note: expose() is available via 'rpc.do/expose' for Cloudflare Workers environments
-// It's not exported from main index to avoid cloudflare:workers dependency in non-Workers contexts
+// Server: capnweb server utilities via 'rpc.do/server' (RpcTarget, createTarget, createHandler)
+// Expose: SDK-to-RpcTarget wrapper via 'rpc.do/expose' (WorkerEntrypoint with capnweb pipelining)
+// Both are separate entry points to avoid cloudflare:workers / capnweb/server deps in browser contexts
 
 // ============================================================================
 // Default RPC Client (without auth - browser-safe)

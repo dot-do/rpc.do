@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       '@dotdo/types':
-        specifier: ^0.1.1
+        specifier: '>=0.1.0'
         version: 0.1.1(typescript@5.9.3)
       glob:
         specifier: ^13.0.0
@@ -21,9 +21,9 @@ importers:
         specifier: ^27.0.2
         version: 27.0.2
     optionalDependencies:
-      capnweb:
+      '@dotdo/capnweb':
         specifier: ^0.4.0
-        version: 0.4.0
+        version: 0.4.0(@dotdo/types@0.1.1(typescript@5.9.3))
     devDependencies:
       '@changesets/cli':
         specifier: ^2.29.8
@@ -222,6 +222,14 @@ packages:
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
+
+  '@dotdo/capnweb@0.4.0':
+    resolution: {integrity: sha512-0EF06g63tc7i5x9y95ObQ1wjG22lCISx2IyGQqsxb1jKysYcYLmgsY9lFuXXO1hzI4UXw8K86At4fFZ5wXZdDQ==}
+    peerDependencies:
+      '@dotdo/types': '>=0.1.0'
+    peerDependenciesMeta:
+      '@dotdo/types':
+        optional: true
 
   '@dotdo/types@0.1.1':
     resolution: {integrity: sha512-7khQZk/+aJpzudoFojJiYt01QVjXmBkzwbOZFVgBn2ZPtH8l2/GonQViFsk8tuczthcxV1yzRSp1atI0Vc5XKw==}
@@ -1388,9 +1396,6 @@ packages:
   cac@6.7.14:
     resolution: {integrity: sha512-b6Ilus+c3RrdDk+JhLKUAQfzzgLEPy6wcXqS7f/xe1EETvsDP6GORG7SFuOs6cID5YkqchW/LXZbX5bc8j7ZcQ==}
     engines: {node: '>=8'}
-
-  capnweb@0.4.0:
-    resolution: {integrity: sha512-OgqPQcxnrAIqjrkAuwI4N9MP/mzseM5w9oLWb/oU63KveBJl1c8p41etLSVQUlYFiAYZu+h6/LJxKaDJd93xFw==}
 
   chai@5.3.3:
     resolution: {integrity: sha512-4zNhdJD/iOjSH0A05ea+Ke6MU5mmpQcbQsSOkgdaUMJ9zTlDTD/GYlwohmIE2u0gaxHYiVHEn1Fw9mZ/ktJWgw==}
@@ -2589,6 +2594,11 @@ snapshots:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
 
+  '@dotdo/capnweb@0.4.0(@dotdo/types@0.1.1(typescript@5.9.3))':
+    optionalDependencies:
+      '@dotdo/types': 0.1.1(typescript@5.9.3)
+    optional: true
+
   '@dotdo/types@0.1.1(typescript@5.9.3)':
     optionalDependencies:
       typescript: 5.9.3
@@ -3338,9 +3348,6 @@ snapshots:
       load-tsconfig: 0.2.5
 
   cac@6.7.14: {}
-
-  capnweb@0.4.0:
-    optional: true
 
   chai@5.3.3:
     dependencies:

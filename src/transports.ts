@@ -348,7 +348,8 @@ export function capnweb(
       const parts = method.split('.')
       let target: unknown = session
       for (const part of parts) {
-        if (typeof target !== 'object' || target === null) {
+        // Allow both objects and functions (capnweb returns proxy functions that are traversable)
+        if ((typeof target !== 'object' && typeof target !== 'function') || target === null) {
           throw new RPCError(`Invalid path: ${part}`, 'INVALID_PATH')
         }
         target = (target as Record<string, unknown>)[part]
@@ -361,7 +362,7 @@ export function capnweb(
       return target(...args)
     },
     close() {
-      if (session && typeof session === 'object' && session !== null) {
+      if (session && (typeof session === 'object' || typeof session === 'function') && session !== null) {
         const disposable = session as { [Symbol.dispose]?: () => void }
         disposable[Symbol.dispose]?.()
       }
@@ -420,7 +421,8 @@ function createReconnectingCapnwebTransport(
       const parts = method.split('.')
       let target: unknown = session
       for (const part of parts) {
-        if (typeof target !== 'object' || target === null) {
+        // Allow both objects and functions (capnweb returns proxy functions that are traversable)
+        if ((typeof target !== 'object' && typeof target !== 'function') || target === null) {
           throw new RPCError(`Invalid path: ${part}`, 'INVALID_PATH')
         }
         target = (target as Record<string, unknown>)[part]

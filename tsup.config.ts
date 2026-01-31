@@ -8,10 +8,12 @@ export default defineConfig([
       'src/transports.ts',
       'src/auth.ts',
       'src/errors.ts',
+      'src/server.ts',
+      'src/expose.ts',
     ],
     format: ['esm'],
     dts: true,
-    external: ['capnweb', 'oauth.do', 'cloudflare:workers'],
+    external: ['capnweb', '@dotdo/capnweb', '@dotdo/capnweb/server', 'oauth.do', 'cloudflare:workers'],
   },
   // Type extraction utilities (Node.js only, uses ts-morph)
   {

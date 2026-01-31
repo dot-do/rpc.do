@@ -1,194 +1,207 @@
 /**
- * rpc.do server - Lightweight RPC request handler
+ * rpc.do/server - Capnweb server utilities with convenience wrappers
  *
- * Works with any router/framework - just provides the handler logic
+ * Re-exports capnweb/server and adds helpers for common patterns.
+ *
+ * @example
+ * // Wrap any object/SDK as an RpcTarget and serve it
+ * import { createTarget, createHandler } from 'rpc.do/server'
+ * import esbuild from 'esbuild'
+ *
+ * const target = createTarget(esbuild)
+ * export default { fetch: createHandler(target) }
+ *
+ * @example
+ * // Use newWorkersRpcResponse directly
+ * import { newWorkersRpcResponse, RpcTarget } from 'rpc.do/server'
+ *
+ * class MyTarget extends RpcTarget {
+ *   greet(name: string) { return `Hello, ${name}!` }
+ * }
+ *
+ * export default {
+ *   fetch(req: Request) {
+ *     return newWorkersRpcResponse(req, new MyTarget())
+ *   }
+ * }
  */
 
-export type RpcContext = {
-  token?: string
-  user?: Record<string, unknown>
-  [key: string]: unknown
-}
+// Re-export everything from capnweb/server
+export {
+  RpcTarget,
+  RpcSession,
+  RpcStub,
+  newWorkersRpcResponse,
+  newHttpBatchRpcResponse,
+  HibernatableWebSocketTransport,
+  TransportRegistry,
+  serialize,
+  deserialize,
+} from '@dotdo/capnweb/server'
 
-export type RpcDispatcher = (
-  method: string,
-  args: unknown[],
-  ctx: RpcContext
-) => Promise<unknown>
+export type {
+  RpcCompatible,
+  RpcSessionOptions,
+  RpcTransport,
+} from '@dotdo/capnweb/server'
 
-export type AuthMiddleware = (
-  request: Request
-) => Promise<{ authorized: boolean; error?: string; context?: RpcContext }>
+import { RpcTarget, newWorkersRpcResponse } from '@dotdo/capnweb/server'
 
-export interface RpcServerOptions {
-  dispatch: RpcDispatcher
-  auth?: AuthMiddleware
+// ============================================================================
+// Convenience wrappers
+// ============================================================================
+
+/** Properties to skip when wrapping a plain object as an RpcTarget */
+const DEFAULT_SKIP = new Set([
+  'constructor',
+  'toString',
+  'valueOf',
+  'toJSON',
+  'then',
+  'catch',
+  'finally',
+])
+
+/**
+ * Wrap a plain object/SDK as an RpcTarget, recursively converting namespace
+ * objects into sub-RpcTargets so the entire API is callable over capnweb RPC.
+ *
+ * @param obj - The object whose methods should be exposed
+ * @param opts - Optional configuration
+ * @param opts.skip - Property names to exclude from RPC exposure
+ *
+ * @example
+ * import esbuild from 'esbuild'
+ * import { createTarget, createHandler } from 'rpc.do/server'
+ *
+ * const target = createTarget(esbuild)
+ * export default { fetch: createHandler(target) }
+ *
+ * @example
+ * // With env
+ * const target = createTarget(new Stripe(env.STRIPE_SECRET_KEY))
+ *
+ * @example
+ * // Skip specific methods
+ * const target = createTarget(sdk, { skip: ['internal', 'debug'] })
+ */
+export function createTarget(obj: object, opts?: { skip?: string[] }): RpcTarget {
+  const skip = opts?.skip
+    ? new Set([...DEFAULT_SKIP, ...opts.skip])
+    : DEFAULT_SKIP
+
+  return wrapAsTarget(obj, skip, new WeakSet())
 }
 
 /**
- * Create an RPC request handler
+ * Check if an object has functions at any nesting level.
+ * Used to determine if an object should be wrapped as a namespace.
  */
-export function createRpcHandler(options: RpcServerOptions) {
-  const { dispatch, auth } = options
-
-  return async function handleRpc(request: Request): Promise<Response> {
-    // Handle WebSocket upgrade
-    if (request.headers.get('Upgrade') === 'websocket') {
-      return handleWebSocket(request, dispatch, auth)
+function hasNestedFunctions(obj: Record<string, unknown>, maxDepth = 5): boolean {
+  if (maxDepth <= 0) return false
+  for (const key of Object.keys(obj)) {
+    const value = obj[key]
+    if (typeof value === 'function') return true
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      if (hasNestedFunctions(value as Record<string, unknown>, maxDepth - 1)) return true
     }
+  }
+  return false
+}
 
-    // Authenticate
-    let ctx: RpcContext = {}
-    if (auth) {
-      const result = await auth(request)
-      if (!result.authorized) {
-        return Response.json(
-          { error: result.error || 'Unauthorized' },
-          { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
-        )
+/**
+ * Recursively wrap an object as an RpcTarget.
+ *
+ * Creates a dynamic class that extends RpcTarget with methods defined on
+ * the prototype (not instance properties). This is required because capnweb
+ * only allows prototype methods to be called over RPC for security.
+ *
+ * Namespace objects with function properties become getters returning sub-RpcTargets.
+ */
+function wrapAsTarget(obj: object, skip: Set<string>, seen: WeakSet<object>): RpcTarget {
+  // Prevent infinite recursion on circular references
+  if (seen.has(obj)) {
+    return new RpcTarget()
+  }
+  seen.add(obj)
+
+  // Collect all methods and namespaces to expose
+  const methods: Record<string, Function> = {}
+  const namespaces: Record<string, RpcTarget> = {}
+  const visited = new Set<string>()
+
+  const collect = (source: object) => {
+    for (const key of Object.getOwnPropertyNames(source)) {
+      if (visited.has(key) || skip.has(key) || key.startsWith('_')) continue
+      visited.add(key)
+
+      let value: unknown
+      try {
+        value = (obj as Record<string, unknown>)[key]
+      } catch {
+        continue
       }
-      ctx = result.context || {}
-    }
 
-    // Parse request
-    if (request.method !== 'POST') {
-      return Response.json({ error: 'Method not allowed' }, { status: 405 })
-    }
-
-    let body: unknown
-    try {
-      body = await request.json()
-    } catch {
-      return Response.json({ error: 'Invalid JSON' }, { status: 400 })
-    }
-
-    // Validate request body structure
-    const validationError = validateRpcRequestBody(body)
-    if (validationError) {
-      return Response.json({ error: validationError }, { status: 400 })
-    }
-
-    // After validation, we know body has the required shape
-    const { path, args } = body as { path: string; args?: unknown[] }
-
-    try {
-      const result = await dispatch(path, args || [], ctx)
-      return Response.json(result)
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'RPC error'
-      return Response.json(
-        { error: errorMessage },
-        { status: 500 }
-      )
-    }
-  }
-}
-
-/**
- * Validates RPC request body and returns error message if invalid
- * Returns null if the body is valid
- */
-function validateRpcRequestBody(body: unknown): string | null {
-  if (typeof body !== 'object' || body === null) {
-    return 'Invalid request body'
-  }
-
-  const bodyObj = body as Record<string, unknown>
-
-  if (!('path' in bodyObj)) {
-    return 'Missing path'
-  }
-
-  if (typeof bodyObj.path !== 'string') {
-    return 'Invalid path: must be a string'
-  }
-
-  return null
-}
-
-/**
- * Type guard for WebSocket RPC message
- */
-function isWebSocketRpcMessage(data: unknown): data is { id?: unknown; path: string; args?: unknown[] } {
-  return (
-    typeof data === 'object' &&
-    data !== null &&
-    'path' in data &&
-    typeof (data as Record<string, unknown>).path === 'string'
-  )
-}
-
-/**
- * Handle WebSocket RPC connections
- */
-async function handleWebSocket(
-  request: Request,
-  dispatch: RpcDispatcher,
-  auth?: AuthMiddleware
-): Promise<Response> {
-  // Authenticate
-  let ctx: RpcContext = {}
-  if (auth) {
-    const result = await auth(request)
-    if (!result.authorized) {
-      return new Response('Unauthorized', { status: 401 })
-    }
-    ctx = result.context || {}
-  }
-
-  const pair = new WebSocketPair()
-  const [client, server] = Object.values(pair)
-
-  server.accept()
-
-  server.addEventListener('message', async (event: MessageEvent) => {
-    try {
-      const data: unknown = JSON.parse(event.data as string)
-      if (!isWebSocketRpcMessage(data)) {
-        server.send(JSON.stringify({ error: 'Invalid message format' }))
-        return
+      if (typeof value === 'function') {
+        // Bind method to original object
+        methods[key] = (value as Function).bind(obj)
+      } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+        // Check if it's a namespace (object with function properties or nested namespaces)
+        const valueObj = value as Record<string, unknown>
+        const hasCallableContent = hasNestedFunctions(valueObj)
+        if (hasCallableContent) {
+          // Recursively wrap namespace as a sub-RpcTarget
+          namespaces[key] = wrapAsTarget(valueObj, skip, seen)
+        }
       }
-      const { id, path, args } = data
-      const result = await dispatch(path, args || [], ctx)
-      server.send(JSON.stringify({ id, result }))
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'RPC error'
-      server.send(JSON.stringify({ error: errorMessage }))
     }
-  })
-
-  return new Response(null, { status: 101, webSocket: client })
-}
-
-/**
- * Bearer token auth middleware
- */
-export function bearerAuth(
-  validateToken: (token: string) => Promise<RpcContext | null>
-): AuthMiddleware {
-  return async (request: Request) => {
-    const header = request.headers.get('Authorization')
-    const url = new URL(request.url)
-    const queryToken = url.searchParams.get('token')
-
-    const token = header?.match(/^Bearer\s+(.+)$/i)?.[1] || queryToken
-
-    if (!token) {
-      return { authorized: false, error: 'Missing token' }
-    }
-
-    const context = await validateToken(token)
-    if (!context) {
-      return { authorized: false, error: 'Invalid token' }
-    }
-
-    return { authorized: true, context: { ...context, token } }
   }
+
+  collect(obj)
+  let proto = Object.getPrototypeOf(obj)
+  while (proto && proto !== Object.prototype) {
+    collect(proto)
+    proto = Object.getPrototypeOf(proto)
+  }
+
+  // Create a dynamic class with methods on the prototype
+  // This is required because capnweb only exposes prototype methods over RPC
+  class DynamicTarget extends RpcTarget {}
+
+  // Define methods on the prototype
+  for (const [key, fn] of Object.entries(methods)) {
+    Object.defineProperty(DynamicTarget.prototype, key, {
+      value: fn,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    })
+  }
+
+  // Define namespace getters on the prototype
+  for (const [key, subTarget] of Object.entries(namespaces)) {
+    Object.defineProperty(DynamicTarget.prototype, key, {
+      get() { return subTarget },
+      enumerable: true,
+      configurable: true,
+    })
+  }
+
+  return new DynamicTarget()
 }
 
 /**
- * No-auth middleware (for internal/trusted traffic)
+ * Create a fetch handler from an RpcTarget.
+ *
+ * Returns a function suitable as a Worker's `fetch` handler that speaks
+ * capnweb protocol (HTTP batch + WebSocket upgrade).
+ *
+ * @example
+ * import { createTarget, createHandler } from 'rpc.do/server'
+ *
+ * const handler = createHandler(createTarget(myService))
+ * export default { fetch: handler }
  */
-export function noAuth(): AuthMiddleware {
-  return async () => ({ authorized: true })
+export function createHandler(target: RpcTarget): (req: Request) => Promise<Response> {
+  return (req) => newWorkersRpcResponse(req, target)
 }

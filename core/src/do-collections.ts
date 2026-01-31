@@ -25,7 +25,7 @@
  * ```
  */
 
-import { createCollection, type Collection, type Filter, type QueryOptions } from './collections.js'
+import { createCollection, type Collection, type Filter, type QueryOptions } from '@dotdo/collections'
 
 // ============================================================================
 // Semantic Matching
@@ -156,11 +156,17 @@ export interface Relationship {
 // ============================================================================
 
 let counter = 0
-const epoch = 1704067200000 // 2024-01-01
+
+/**
+ * Custom epoch for ID generation (2024-01-01T00:00:00.000Z).
+ * Using a custom epoch reduces ID length by omitting the leading digits
+ * that would be the same for all IDs generated in this era.
+ */
+const EPOCH_2024 = 1704067200000
 
 /** Generate a short, sortable ID */
 function generateId(prefix?: string): string {
-  const now = Date.now() - epoch
+  const now = Date.now() - EPOCH_2024
   const c = (counter++ % 1000).toString().padStart(3, '0')
   const r = Math.random().toString(36).slice(2, 6)
   const id = `${now.toString(36)}${c}${r}`
@@ -205,7 +211,7 @@ export class DOCollections {
     this._things = createCollection<Thing>(sql, '_things')
     this._actions = createCollection<Action>(sql, '_actions')
     this._rels = createCollection<Relationship>(sql, '_rels')
-    this._matcher = options?.semanticMatcher
+    if (options?.semanticMatcher) this._matcher = options.semanticMatcher
     this._threshold = options?.defaultThreshold ?? 0.8
   }
 
@@ -218,10 +224,10 @@ export class DOCollections {
     define: (name: string, opts?: { description?: string; schema?: Record<string, unknown> }): Noun => {
       const noun: Noun = {
         name,
-        description: opts?.description,
-        schema: opts?.schema,
         $createdAt: Date.now(),
       }
+      if (opts?.description !== undefined) noun.description = opts.description
+      if (opts?.schema !== undefined) noun.schema = opts.schema
       this._nouns.put(name, noun)
       return noun
     },
@@ -250,12 +256,12 @@ export class DOCollections {
     }): Verb => {
       const verb: Verb = {
         name,
-        description: opts?.description,
-        cascade: opts?.cascade,
-        from: opts?.from,
-        to: opts?.to,
         $createdAt: Date.now(),
       }
+      if (opts?.description !== undefined) verb.description = opts.description
+      if (opts?.cascade !== undefined) verb.cascade = opts.cascade
+      if (opts?.from !== undefined) verb.from = opts.from
+      if (opts?.to !== undefined) verb.to = opts.to
       this._verbs.put(name, verb)
       return verb
     },
@@ -276,7 +282,7 @@ export class DOCollections {
 
   things = {
     /** Create a new thing */
-    create: <T = Record<string, unknown>>(type: string, data: T, id?: string): Thing<T> => {
+    create: <T extends Record<string, unknown> = Record<string, unknown>>(type: string, data: T, id?: string): Thing<T> => {
       const $id = id || generateId(type.toLowerCase())
       const now = Date.now()
       const thing: Thing<T> = {
@@ -293,12 +299,12 @@ export class DOCollections {
     },
 
     /** Get a thing by ID */
-    get: <T = Record<string, unknown>>(id: string): Thing<T> | null => {
+    get: <T extends Record<string, unknown> = Record<string, unknown>>(id: string): Thing<T> | null => {
       return this._things.get(id) as Thing<T> | null
     },
 
     /** Update a thing (increments version) */
-    update: <T = Record<string, unknown>>(id: string, data: Partial<T>): Thing<T> | null => {
+    update: <T extends Record<string, unknown> = Record<string, unknown>>(id: string, data: Partial<T>): Thing<T> | null => {
       const existing = this._things.get(id)
       if (!existing) return null
 
@@ -326,7 +332,7 @@ export class DOCollections {
     },
 
     /** Find things by type and optional filter */
-    find: <T = Record<string, unknown>>(type?: string, filter?: Filter<T>, options?: QueryOptions): Thing<T>[] => {
+    find: <T extends Record<string, unknown> = Record<string, unknown>>(type?: string, filter?: Filter<T>, options?: QueryOptions): Thing<T>[] => {
       const baseFilter: Filter<Thing> = type ? { $type: type } as Filter<Thing> : {}
       // Merge data filters
       const fullFilter = filter
@@ -399,9 +405,9 @@ export class DOCollections {
       verb,
       to,
       cascade: opts?.cascade || '->',
-      data: opts?.data,
       $createdAt: Date.now(),
     }
+    if (opts?.data !== undefined) rel.data = opts.data
     this._rels.put($id, rel)
     this._logAction(verb, from, to, opts?.data)
     return rel
@@ -422,7 +428,7 @@ export class DOCollections {
    * @param createData - Data to use if creating new thing
    * @returns The target thing (found or created) and the relationship
    */
-  async fuzzyRelate<T = Record<string, unknown>>(
+  async fuzzyRelate<T extends Record<string, unknown> = Record<string, unknown>>(
     from: string,
     verb: string,
     targetType: string,
@@ -440,12 +446,13 @@ export class DOCollections {
     let thing: Thing<T>
     let created = false
 
-    if (matches.length > 0 && matches[0].similarity >= threshold) {
+    const topMatch = matches[0]
+    if (topMatch && topMatch.similarity >= threshold) {
       // Found a close match
-      thing = matches[0].thing
+      thing = topMatch.thing
     } else {
       // Create new thing
-      thing = this.things.create<T>(targetType, createData ?? ({ text } as T))
+      thing = this.things.create<T>(targetType, createData ?? ({ text } as unknown as T))
       created = true
     }
 
@@ -488,7 +495,7 @@ export class DOCollections {
    * @param verb - Relationship type to follow
    * @returns Things connected via the relationship
    */
-  traverse<T = Record<string, unknown>>(from: string, verb: string): Thing<T>[] {
+  traverse<T extends Record<string, unknown> = Record<string, unknown>>(from: string, verb: string): Thing<T>[] {
     const rels = this.relationsFrom(from, verb)
     return rels
       .map(r => this.things.get<T>(r.to))
@@ -498,7 +505,7 @@ export class DOCollections {
   /**
    * Reverse traverse (incoming relationships)
    */
-  traverseBack<T = Record<string, unknown>>(to: string, verb: string): Thing<T>[] {
+  traverseBack<T extends Record<string, unknown> = Record<string, unknown>>(to: string, verb: string): Thing<T>[] {
     const rels = this.relationsTo(to, verb)
     return rels
       .map(r => this.things.get<T>(r.from))
@@ -513,12 +520,12 @@ export class DOCollections {
     const action: Action = {
       $id: generateId('act'),
       verb,
-      from,
-      to,
-      data,
       $at: Date.now(),
-      $by: by,
     }
+    if (from !== undefined) action.from = from
+    if (to !== undefined) action.to = to
+    if (data !== undefined) action.data = data
+    if (by !== undefined) action.$by = by
     this._actions.put(action.$id, action)
     return action
   }

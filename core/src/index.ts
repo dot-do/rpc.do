@@ -25,6 +25,22 @@
  * ```
  */
 
+// Re-export function types from @dotdo/do/types for RPC consumers
+export type {
+  Fn,
+  AsyncFn,
+  RpcFn,
+  RpcPromise,
+  FunctionTier,
+  TieredFunctionDef,
+  CodeFunction,
+  GenerativeFunction,
+  AgenticFunction,
+  HumanFunction,
+  SerializableFnCall,
+  FunctionEntry,
+} from '@dotdo/do/types'
+
 import {
   RpcSession,
   RpcTarget,
@@ -45,14 +61,17 @@ import {
   type ColoInfo,
 } from 'colo.do/tiny'
 
-// Collections
+// Collections (direct import from @dotdo/collections)
 import {
   createCollection,
   Collections,
   type Collection,
   type Filter,
   type QueryOptions,
-} from './collections.js'
+} from '@dotdo/collections'
+
+// Shared RPC interface
+import { RpcInterface, SKIP_PROPS_EXTENDED } from './rpc-interface.js'
 
 // Re-export capnweb types for convenience
 export { RpcTarget, RpcSession, type RpcTransport, type RpcSessionOptions }
@@ -77,8 +96,8 @@ export {
 
 declare class DurableObject {
   protected ctx: DurableObjectState
-  protected env: any
-  constructor(ctx: DurableObjectState, env: any)
+  protected env: Record<string, unknown>
+  constructor(ctx: DurableObjectState, env: Record<string, unknown>)
   fetch?(request: Request): Response | Promise<Response>
   alarm?(): void | Promise<void>
   webSocketMessage?(ws: WebSocket, message: string | ArrayBuffer): void | Promise<void>
@@ -120,7 +139,7 @@ export interface RpcContext {
   /** Current request (if available) */
   request?: Request
   /** Auth context from middleware */
-  auth?: { token?: string; user?: any; [key: string]: any }
+  auth?: { token?: string; user?: unknown; [key: string]: unknown }
   /** Colo (location) context */
   colo: ColoContext
 }
@@ -142,91 +161,6 @@ export interface SqlQueryResult<T = Record<string, unknown>> {
 export interface SerializedSqlQuery {
   strings: string[]
   values: unknown[]
-}
-
-// ============================================================================
-// RPC Interface Wrapper
-// ============================================================================
-
-/**
- * Wraps the DurableRPC instance as an RpcTarget for capnweb
- *
- * This is necessary because:
- * 1. DurableRPC extends DurableObject, not RpcTarget
- * 2. We need to control which methods are exposed over RPC
- * 3. We want to preserve the $ context access pattern
- */
-class RpcInterface extends RpcTarget {
-  constructor(private durableRpc: DurableRPC) {
-    super()
-
-    // Dynamically expose all public methods and namespaces from the DurableRPC instance
-    // Only prototype properties are exposed by RpcTarget, so we define getters
-    this.exposeInterface()
-  }
-
-  private exposeInterface(): void {
-    const instance = this.durableRpc
-    const seen = new Set<string>()
-
-    // Collect properties from instance and prototype chain
-    const collectProps = (obj: any) => {
-      if (!obj || obj === Object.prototype) return
-      for (const key of Object.getOwnPropertyNames(obj)) {
-        if (!seen.has(key) && !SKIP_PROPS.has(key) && !key.startsWith('_')) {
-          seen.add(key)
-
-          let value: any
-          try {
-            value = (instance as any)[key]
-          } catch {
-            continue
-          }
-
-          if (typeof value === 'function') {
-            // Bind method to the DurableRPC instance
-            Object.defineProperty(this, key, {
-              value: value.bind(instance),
-              enumerable: true,
-              configurable: true,
-            })
-          } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-            // Check if it's a namespace (object with function properties)
-            const hasMethodKeys = Object.keys(value).some(k => typeof value[k] === 'function')
-            if (hasMethodKeys) {
-              // Create a namespace object with bound methods
-              const namespace: Record<string, Function> = {}
-              for (const nsKey of Object.keys(value)) {
-                if (typeof value[nsKey] === 'function') {
-                  namespace[nsKey] = value[nsKey].bind(value)
-                }
-              }
-              Object.defineProperty(this, key, {
-                value: namespace,
-                enumerable: true,
-                configurable: true,
-              })
-            }
-          }
-        }
-      }
-    }
-
-    // Walk instance own props first, then prototype chain
-    collectProps(instance)
-    let proto = Object.getPrototypeOf(instance)
-    while (proto && proto !== DurableRPC.prototype && proto !== DurableObject.prototype) {
-      collectProps(proto)
-      proto = Object.getPrototypeOf(proto)
-    }
-  }
-
-  /**
-   * Schema reflection method - always available
-   */
-  __schema(): RpcSchema {
-    return this.durableRpc.getSchema()
-  }
 }
 
 // ============================================================================
@@ -253,7 +187,7 @@ export class DurableRPC extends DurableObject {
   private _sessions = new Map<WebSocket, RpcSession>()
 
   /** RPC interface wrapper for capnweb */
-  private _rpcInterface?: RpcInterface
+  private _rpcInterface?: RpcInterface<DurableRPC>
 
   /** Cached colo for this DO instance */
   private _colo: string | null = null
@@ -351,21 +285,25 @@ export class DurableRPC extends DurableObject {
   get $(): RpcContext {
     const workerColo = this._currentRequest?.headers.get(WORKER_COLO_HEADER) ?? undefined
     const colo = this._colo ?? 'UNKNOWN'
+    const info = getColo(colo)
+    const latencyMs = workerColo && this._colo ? estimateLatency(workerColo, this._colo) : undefined
+    const distanceKm = workerColo && this._colo ? coloDistance(workerColo, this._colo) : undefined
 
-    return {
+    const coloContext: ColoContext = { colo }
+    if (info) coloContext.info = info
+    if (workerColo) coloContext.workerColo = workerColo
+    if (latencyMs !== undefined) coloContext.latencyMs = latencyMs
+    if (distanceKm !== undefined) coloContext.distanceKm = distanceKm
+
+    const rpcContext: RpcContext = {
       sql: this.ctx.storage.sql,
       storage: this.ctx.storage,
       state: this.ctx,
-      request: this._currentRequest,
-      auth: this._currentAuth,
-      colo: {
-        colo,
-        info: getColo(colo),
-        workerColo,
-        latencyMs: workerColo && this._colo ? estimateLatency(workerColo, this._colo) : undefined,
-        distanceKm: workerColo && this._colo ? coloDistance(workerColo, this._colo) : undefined,
-      },
+      colo: coloContext,
     }
+    if (this._currentRequest) rpcContext.request = this._currentRequest
+    if (this._currentAuth) rpcContext.auth = this._currentAuth
+    return rpcContext
   }
 
   // ==========================================================================
@@ -548,14 +486,18 @@ export class DurableRPC extends DurableObject {
   }
 
   private _currentRequest?: Request
-  private _currentAuth?: Record<string, any>
+  private _currentAuth?: Record<string, unknown>
 
   /**
    * Get or create the RPC interface wrapper
    */
-  private getRpcInterface(): RpcInterface {
+  private getRpcInterface(): RpcInterface<DurableRPC> {
     if (!this._rpcInterface) {
-      this._rpcInterface = new RpcInterface(this)
+      this._rpcInterface = new RpcInterface({
+        instance: this,
+        skipProps: SKIP_PROPS_EXTENDED,
+        basePrototype: DurableRPC.prototype,
+      })
     }
     return this._rpcInterface
   }
@@ -576,7 +518,7 @@ export class DurableRPC extends DurableObject {
   /**
    * Handle incoming fetch requests (HTTP + WebSocket upgrade)
    */
-  async fetch(request: Request): Promise<Response> {
+  override async fetch(request: Request): Promise<Response> {
     this._currentRequest = request
 
     // Detect colo from cf object (first request sets it)
@@ -608,7 +550,8 @@ export class DurableRPC extends DurableObject {
 
   private handleWebSocketUpgrade(request: Request): Response {
     const pair = new WebSocketPair()
-    const [client, server] = Object.values(pair)
+    const client = pair[0]
+    const server = pair[1]
 
     // Use hibernation API
     this.ctx.acceptWebSocket(server)
@@ -637,7 +580,7 @@ export class DurableRPC extends DurableObject {
    * Called when a hibernated WebSocket receives a message
    * (Part of the Hibernation API)
    */
-  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+  override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     if (typeof message !== 'string') {
       // Binary messages not supported by capnweb text protocol
       return
@@ -651,8 +594,8 @@ export class DurableRPC extends DurableObject {
       if (attachment?.transportId) {
         transport = this._transportRegistry.get(attachment.transportId)
       }
-    } catch {
-      // Attachment parsing failed
+    } catch (error) {
+      console.debug('[DurableRPC] Failed to deserialize WebSocket attachment:', error)
     }
 
     // If transport not found, we need to recreate it (DO woke from hibernation)
@@ -679,7 +622,7 @@ export class DurableRPC extends DurableObject {
   /**
    * Called when a hibernated WebSocket is closed
    */
-  async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+  override async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
     // Get transport and clean up
     try {
       const attachment = ws.deserializeAttachment() as { transportId?: string } | null
@@ -701,7 +644,7 @@ export class DurableRPC extends DurableObject {
   /**
    * Called when a hibernated WebSocket encounters an error
    */
-  async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
+  override async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
     const err = error instanceof Error ? error : new Error(String(error))
 
     try {
@@ -738,9 +681,10 @@ export class DurableRPC extends DurableObject {
         this.getRpcSessionOptions()
       )
       return response
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'RPC error'
       return Response.json(
-        { error: error.message || 'RPC error' },
+        { error: message },
         { status: 500 }
       )
     }
@@ -768,7 +712,7 @@ export class DurableRPC extends DurableObject {
    * Note: This sends raw messages, not capnweb RPC calls.
    * For RPC notifications, use the client's stub methods.
    */
-  broadcast(message: any, exclude?: WebSocket): void {
+  broadcast(message: unknown, exclude?: WebSocket): void {
     const sockets = this.ctx.getWebSockets()
     const data = typeof message === 'string' ? message : JSON.stringify(message)
 
@@ -870,7 +814,7 @@ export interface RouterOptions<Env> {
  * })
  * ```
  */
-export function router<Env extends Record<string, any>>(options: RouterOptions<Env> = {}) {
+export function router<Env extends Record<string, unknown>>(options: RouterOptions<Env> = {}) {
   return {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
       // Auth check
@@ -885,12 +829,12 @@ export function router<Env extends Record<string, any>>(options: RouterOptions<E
       const url = new URL(request.url)
       const parts = url.pathname.split('/').filter(Boolean)
 
-      if (parts.length < 1) {
+      const namespace = parts[0]
+      if (!namespace) {
         return new Response('Missing namespace', { status: 400 })
       }
 
-      const namespace = parts[0]
-      const id = parts[1] || request.headers.get('X-DO-Id') || 'default'
+      const id = parts[1] ?? request.headers.get('X-DO-Id') ?? 'default'
 
       // Resolve the DO binding
       const bindingName = options.bindings?.[namespace] || namespace
@@ -1014,69 +958,6 @@ export interface RpcSchema {
   colo?: string
 }
 
-/** Properties to skip during introspection */
-const SKIP_PROPS = new Set([
-  // DurableObject lifecycle
-  'fetch',
-  'alarm',
-  'webSocketMessage',
-  'webSocketClose',
-  'webSocketError',
-  // DurableRPC internals
-  'constructor',
-  'getSchema',
-  'broadcast',
-  'connectionCount',
-  '$',
-  'sql',
-  'storage',
-  'state',
-  '_currentRequest',
-  '_currentAuth',
-  '_transportRegistry',
-  '_sessions',
-  '_rpcInterface',
-  '_colo',
-  'handleWebSocketUpgrade',
-  'handleHttpRpc',
-  'getRpcInterface',
-  'getRpcSessionOptions',
-  // Colo helpers (internal use)
-  'colo',
-  'coloInfo',
-  'getColosByDistance',
-  'findNearestColo',
-  'estimateLatencyTo',
-  'distanceTo',
-  // RPC internal methods (exposed but not in schema)
-  '__sql',
-  '__sqlFirst',
-  '__sqlRun',
-  '__storageGet',
-  '__storageGetMultiple',
-  '__storagePut',
-  '__storagePutMultiple',
-  '__storageDelete',
-  '__storageDeleteMultiple',
-  '__storageList',
-  '__dbSchema',
-  '__storageKeys',
-  // Collection methods
-  '__collectionGet',
-  '__collectionPut',
-  '__collectionDelete',
-  '__collectionHas',
-  '__collectionFind',
-  '__collectionCount',
-  '__collectionList',
-  '__collectionKeys',
-  '__collectionClear',
-  '__collectionNames',
-  '__collectionStats',
-  'collection',
-  '_collections',
-])
-
 /**
  * Introspect SQLite database schema
  */
@@ -1101,13 +982,16 @@ function introspectDatabase(sql: SqlStorage): DatabaseSchema {
       }>(`PRAGMA table_info('${tableName}')`).toArray()
 
       for (const col of columnRows) {
-        columns.push({
+        const columnSchema: ColumnSchema = {
           name: col.name,
           type: col.type,
           nullable: col.notnull === 0,
           primaryKey: col.pk > 0,
-          defaultValue: col.dflt_value ?? undefined,
-        })
+        }
+        if (col.dflt_value !== null) {
+          columnSchema.defaultValue = col.dflt_value
+        }
+        columns.push(columnSchema)
       }
 
       // Get indexes
@@ -1132,8 +1016,9 @@ function introspectDatabase(sql: SqlStorage): DatabaseSchema {
 
       tables.push({ name: tableName, columns, indexes })
     }
-  } catch {
+  } catch (error) {
     // SQLite may not be initialized yet
+    console.debug('[DurableRPC] SQLite introspection skipped - not initialized:', error)
   }
 
   return { tables }
@@ -1153,7 +1038,7 @@ function introspect(instance: DurableRPC): RpcSchema {
   const collectProps = (obj: any) => {
     if (!obj || obj === Object.prototype) return
     for (const key of Object.getOwnPropertyNames(obj)) {
-      if (!seen.has(key) && !SKIP_PROPS.has(key) && !key.startsWith('_')) {
+      if (!seen.has(key) && !SKIP_PROPS_EXTENDED.has(key) && !key.startsWith('_')) {
         seen.add(key)
 
         let value: any
@@ -1204,13 +1089,14 @@ function introspect(instance: DurableRPC): RpcSchema {
     // SQL not available
   }
 
-  return {
+  const schema: RpcSchema = {
     version: 1,
     methods,
     namespaces,
-    database,
-    colo: instance.colo,
   }
+  if (database) schema.database = database
+  if (instance.colo) schema.colo = instance.colo
+  return schema
 }
 
 // ============================================================================

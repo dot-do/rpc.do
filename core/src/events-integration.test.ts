@@ -35,10 +35,8 @@ class MockEventEmitter {
     private env: Record<string, unknown>,
     options: { cdc?: boolean; trackPrevious?: boolean; endpoint?: string } = {}
   ) {
-    this.identity = {
-      id: ctx.id.toString(),
-      name: ctx.id.name,
-    }
+    this.identity = { id: ctx.id.toString() }
+    if (ctx.id.name !== undefined) this.identity.name = ctx.id.name
     this.options = {
       cdc: options.cdc ?? false,
       trackPrevious: options.trackPrevious ?? false,
@@ -261,12 +259,14 @@ interface User {
   name: string
   email: string
   active: boolean
+  [key: string]: unknown
 }
 
 interface Order {
   userId: string
   total: number
   status: 'pending' | 'paid' | 'shipped'
+  [key: string]: unknown
 }
 
 // =============================================================================
@@ -305,10 +305,10 @@ describe('Events Integration', () => {
 
       const pending = events.pendingEvents
       expect(pending.length).toBe(1)
-      expect(pending[0].type).toBe('custom.event')
-      expect(pending[0].data).toBe(123)
-      expect((pending[0].do as any).id).toBe('test-do-id-123')
-      expect((pending[0].do as any).name).toBe('test-do')
+      expect(pending[0]!.type).toBe('custom.event')
+      expect(pending[0]!['data']).toBe(123)
+      expect((pending[0]!['do'] as any).id).toBe('test-do-id-123')
+      expect((pending[0]!['do'] as any).name).toBe('test-do')
     })
 
     it('should emit multiple events in batch', () => {
@@ -364,10 +364,10 @@ describe('Events Integration', () => {
 
       const pending = events.pendingEvents
       expect(pending.length).toBe(1)
-      expect(pending[0].type).toBe('collection.insert')
-      expect(pending[0].collection).toBe('users')
-      expect(pending[0].docId).toBe('user-123')
-      expect(pending[0].doc).toEqual({ name: 'Alice', email: 'alice@test.com' })
+      expect(pending[0]!.type).toBe('collection.insert')
+      expect(pending[0]!['collection']).toBe('users')
+      expect(pending[0]!['docId']).toBe('user-123')
+      expect(pending[0]!['doc']).toEqual({ name: 'Alice', email: 'alice@test.com' })
     })
 
     it('should emit update CDC event with previous doc when trackPrevious is enabled', () => {
@@ -381,9 +381,9 @@ describe('Events Integration', () => {
 
       const pending = events.pendingEvents
       expect(pending.length).toBe(1)
-      expect(pending[0].type).toBe('collection.update')
-      expect(pending[0].doc).toEqual({ name: 'Alice Updated', email: 'alice@test.com' })
-      expect(pending[0].prev).toEqual({ name: 'Alice', email: 'alice@test.com' })
+      expect(pending[0]!.type).toBe('collection.update')
+      expect(pending[0]!['doc']).toEqual({ name: 'Alice Updated', email: 'alice@test.com' })
+      expect(pending[0]!['prev']).toEqual({ name: 'Alice', email: 'alice@test.com' })
     })
 
     it('should emit delete CDC event', () => {
@@ -391,9 +391,9 @@ describe('Events Integration', () => {
 
       const pending = events.pendingEvents
       expect(pending.length).toBe(1)
-      expect(pending[0].type).toBe('collection.delete')
-      expect(pending[0].docId).toBe('user-123')
-      expect(pending[0].prev).toEqual({ name: 'Alice', email: 'alice@test.com' })
+      expect(pending[0]!.type).toBe('collection.delete')
+      expect(pending[0]!['docId']).toBe('user-123')
+      expect(pending[0]!['prev']).toEqual({ name: 'Alice', email: 'alice@test.com' })
     })
 
     it('should not emit CDC events when cdc is disabled', () => {
@@ -417,7 +417,7 @@ describe('Events Integration', () => {
 
       const pending = eventsNoPrev.pendingEvents
       expect(pending.length).toBe(1)
-      expect(pending[0].prev).toBeUndefined()
+      expect(pending[0]!['prev']).toBeUndefined()
     })
   })
 
@@ -436,9 +436,9 @@ describe('Events Integration', () => {
 
       const pending = events.pendingEvents
       expect(pending.length).toBe(1)
-      expect(pending[0].type).toBe('collection.insert')
-      expect(pending[0].collection).toBe('users')
-      expect(pending[0].docId).toBe('user-1')
+      expect(pending[0]!.type).toBe('collection.insert')
+      expect(pending[0]!['collection']).toBe('users')
+      expect(pending[0]!['docId']).toBe('user-1')
     })
 
     it('should emit update event on put for existing document', () => {
@@ -451,8 +451,8 @@ describe('Events Integration', () => {
 
       const pending = events.pendingEvents
       expect(pending.length).toBe(1)
-      expect(pending[0].type).toBe('collection.update')
-      expect(pending[0].prev).toEqual({ name: 'Alice', email: 'alice@test.com', active: true })
+      expect(pending[0]!.type).toBe('collection.update')
+      expect(pending[0]!['prev']).toEqual({ name: 'Alice', email: 'alice@test.com', active: true })
     })
 
     it('should emit delete event on delete', () => {
@@ -463,8 +463,8 @@ describe('Events Integration', () => {
 
       const pending = events.pendingEvents
       expect(pending.length).toBe(1)
-      expect(pending[0].type).toBe('collection.delete')
-      expect(pending[0].docId).toBe('user-1')
+      expect(pending[0]!.type).toBe('collection.delete')
+      expect(pending[0]!['docId']).toBe('user-1')
     })
 
     it('should not emit delete event for non-existent document', () => {
@@ -535,12 +535,12 @@ describe('Events Integration', () => {
       const pending = events.pendingEvents
       expect(pending.length).toBe(6)
 
-      expect(pending[0].type).toBe('collection.insert')
-      expect(pending[1].type).toBe('user.registered')
-      expect(pending[2].type).toBe('collection.update')
-      expect(pending[3].type).toBe('collection.update')
-      expect(pending[4].type).toBe('user.deactivated')
-      expect(pending[5].type).toBe('collection.delete')
+      expect(pending[0]!.type).toBe('collection.insert')
+      expect(pending[1]!.type).toBe('user.registered')
+      expect(pending[2]!.type).toBe('collection.update')
+      expect(pending[3]!.type).toBe('collection.update')
+      expect(pending[4]!.type).toBe('user.deactivated')
+      expect(pending[5]!.type).toBe('collection.delete')
     })
 
     it('should handle order workflow with multiple collections', () => {
@@ -565,8 +565,8 @@ describe('Events Integration', () => {
       expect(pending.length).toBe(5)
 
       // Verify collection isolation
-      const userEvents = pending.filter(e => e.collection === 'users')
-      const orderEvents = pending.filter(e => e.collection === 'orders')
+      const userEvents = pending.filter(e => e['collection'] === 'users')
+      const orderEvents = pending.filter(e => e['collection'] === 'orders')
       expect(userEvents.length).toBe(1)
       expect(orderEvents.length).toBe(2)
     })

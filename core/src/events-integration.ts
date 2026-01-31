@@ -107,13 +107,13 @@ export function createEventEmitter(
   durableRpc: DurableRpcContext,
   options: CreateEventEmitterOptions = {}
 ): EventEmitter {
-  return new EventEmitter(durableRpc.ctx, durableRpc.env, {
-    endpoint: options.endpoint,
-    batchSize: options.batchSize,
-    flushIntervalMs: options.flushIntervalMs,
-    cdc: options.cdc,
-    r2Bucket: options.r2Bucket,
-    trackPrevious: options.trackPrevious,
-    apiKey: options.apiKey,
-  })
+  const emitterOptions: EventEmitterOptions = {}
+  if (options.endpoint !== undefined) emitterOptions.endpoint = options.endpoint
+  if (options.batchSize !== undefined) emitterOptions.batchSize = options.batchSize
+  if (options.flushIntervalMs !== undefined) emitterOptions.flushIntervalMs = options.flushIntervalMs
+  if (options.cdc !== undefined) emitterOptions.cdc = options.cdc
+  if (options.r2Bucket !== undefined) emitterOptions.r2Bucket = options.r2Bucket
+  if (options.trackPrevious !== undefined) emitterOptions.trackPrevious = options.trackPrevious
+  if (options.apiKey !== undefined) emitterOptions.apiKey = options.apiKey
+  return new EventEmitter(durableRpc.ctx, durableRpc.env, emitterOptions)
 }

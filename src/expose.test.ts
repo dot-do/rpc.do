@@ -1,14 +1,15 @@
 /**
  * expose() Tests
  *
- * Tests for the SDK-to-RPC wrapper factory
+ * Tests for the SDK-to-RpcTarget wrapper factory.
+ * Uses real @dotdo/capnweb/server RpcTarget (only mocks cloudflare:workers).
  */
 
 import { describe, it, expect, vi } from 'vitest'
+import { RpcTarget } from '@dotdo/capnweb/server'
 import { expose } from './expose'
-import { RPCError } from './errors'
 
-// Mock WorkerEntrypoint since we're not in a Cloudflare environment
+// Mock WorkerEntrypoint since we're not in a Cloudflare Workers environment
 vi.mock('cloudflare:workers', () => ({
   WorkerEntrypoint: class MockWorkerEntrypoint<Env> {
     env: Env
@@ -26,13 +27,20 @@ describe('expose()', () => {
       expect(typeof Worker).toBe('function')
     })
 
-    it('should expose rpc method on instances', () => {
+    it('should expose getRpcTarget method on instances', () => {
       const Worker = expose(() => ({ test: () => 'ok' }))
       const instance = new (Worker as any)()
-      expect(typeof instance.rpc).toBe('function')
+      expect(typeof instance.getRpcTarget).toBe('function')
     })
 
-    it('should lazily initialize SDK', () => {
+    it('should return a real RpcTarget', () => {
+      const Worker = expose(() => ({ test: () => 'ok' }))
+      const instance = new (Worker as any)()
+      const target = instance.getRpcTarget()
+      expect(target).toBeInstanceOf(RpcTarget)
+    })
+
+    it('should lazily initialize SDK (not until getRpcTarget is called)', () => {
       let initialized = false
       const factory = () => {
         initialized = true
@@ -44,342 +52,187 @@ describe('expose()', () => {
 
       expect(initialized).toBe(false)
 
-      // Access sdk property to trigger initialization
-      const _ = instance.sdk
+      instance.getRpcTarget()
 
       expect(initialized).toBe(true)
     })
 
-    it('should navigate and call SDK methods via rpc()', async () => {
+    it('should expose SDK methods as properties on the RpcTarget', () => {
+      const sdk = {
+        greet: (name: string) => `Hello, ${name}!`,
+        add: (a: number, b: number) => a + b,
+      }
+
+      const Worker = expose(() => sdk)
+      const instance = new (Worker as any)()
+      const target = instance.getRpcTarget()
+
+      expect(typeof target.greet).toBe('function')
+      expect(typeof target.add).toBe('function')
+      expect(target.greet('world')).toBe('Hello, world!')
+      expect(target.add(2, 3)).toBe(5)
+    })
+
+    it('should expose nested namespace methods', () => {
       const sdk = {
         users: {
-          list: vi.fn(async () => [{ id: '1' }, { id: '2' }]),
-          get: vi.fn(async (id: string) => ({ id, name: 'Test' }))
+          list: vi.fn(() => [{ id: '1' }, { id: '2' }]),
+          get: vi.fn((id: string) => ({ id, name: 'Test' })),
         }
       }
 
       const Worker = expose(() => sdk)
       const instance = new (Worker as any)()
+      const target = instance.getRpcTarget()
 
-      const result = await instance.rpc('users.list')
-      expect(result).toEqual([{ id: '1' }, { id: '2' }])
-      expect(sdk.users.list).toHaveBeenCalled()
+      expect(target.users).toBeDefined()
+      expect(typeof target.users.list).toBe('function')
+      expect(typeof target.users.get).toBe('function')
+
+      expect(target.users.list()).toEqual([{ id: '1' }, { id: '2' }])
+      expect(target.users.get('123')).toEqual({ id: '123', name: 'Test' })
     })
 
-    it('should pass arguments to SDK methods', async () => {
+    it('should skip private properties (starting with _)', () => {
       const sdk = {
-        users: {
-          get: vi.fn(async (id: string) => ({ id, name: 'User ' + id }))
-        }
+        publicMethod: () => 'public',
+        _privateMethod: () => 'private',
       }
 
       const Worker = expose(() => sdk)
       const instance = new (Worker as any)()
+      const target = instance.getRpcTarget()
 
-      const result = await instance.rpc('users.get', '123')
-      expect(result).toEqual({ id: '123', name: 'User 123' })
-      expect(sdk.users.get).toHaveBeenCalledWith('123')
+      expect(typeof target.publicMethod).toBe('function')
+      expect(target._privateMethod).toBeUndefined()
     })
 
-    it('should handle deeply nested paths', async () => {
-      const sdk = {
-        api: {
-          v1: {
-            users: {
-              profile: {
-                get: vi.fn(async () => ({ avatar: 'url' }))
-              }
-            }
-          }
-        }
-      }
-
-      const Worker = expose(() => sdk)
+    it('should cache the RpcTarget on repeated calls', () => {
+      let factoryCallCount = 0
+      const Worker = expose(() => {
+        factoryCallCount++
+        return { test: () => 'ok' }
+      })
       const instance = new (Worker as any)()
 
-      const result = await instance.rpc('api.v1.users.profile.get')
-      expect(result).toEqual({ avatar: 'url' })
-    })
+      const target1 = instance.getRpcTarget()
+      const target2 = instance.getRpcTarget()
 
-    it('should handle async iterables (pagination)', async () => {
-      async function* mockPaginator() {
-        yield { id: '1' }
-        yield { id: '2' }
-        yield { id: '3' }
-      }
-
-      const sdk = {
-        items: {
-          list: () => mockPaginator()
-        }
-      }
-
-      const Worker = expose(() => sdk)
-      const instance = new (Worker as any)()
-
-      const result = await instance.rpc('items.list')
-      expect(result).toEqual([{ id: '1' }, { id: '2' }, { id: '3' }])
-    })
-
-    it('should throw on invalid path', async () => {
-      const sdk = {
-        users: {}
-      }
-
-      const Worker = expose(() => sdk)
-      const instance = new (Worker as any)()
-
-      await expect(instance.rpc('users.nonexistent.method')).rejects.toThrow(/Invalid path/)
-    })
-
-    it('should throw when path is not a function', async () => {
-      const sdk = {
-        config: {
-          version: '1.0.0'
-        }
-      }
-
-      const Worker = expose(() => sdk)
-      const instance = new (Worker as any)()
-
-      await expect(instance.rpc('config.version')).rejects.toThrow(/Not a function/)
-    })
-
-    it('should throw RPCError with INVALID_PATH code for invalid path', async () => {
-      const sdk = {
-        users: {}
-      }
-
-      const Worker = expose(() => sdk)
-      const instance = new (Worker as any)()
-
-      try {
-        await instance.rpc('users.nonexistent.method')
-        expect.fail('Should have thrown')
-      } catch (error) {
-        expect(error).toBeInstanceOf(RPCError)
-        expect((error as RPCError).code).toBe('INVALID_PATH')
-      }
-    })
-
-    it('should throw RPCError with NOT_A_FUNCTION code when path is not a function', async () => {
-      const sdk = {
-        config: {
-          version: '1.0.0'
-        }
-      }
-
-      const Worker = expose(() => sdk)
-      const instance = new (Worker as any)()
-
-      try {
-        await instance.rpc('config.version')
-        expect.fail('Should have thrown')
-      } catch (error) {
-        expect(error).toBeInstanceOf(RPCError)
-        expect((error as RPCError).code).toBe('NOT_A_FUNCTION')
-      }
+      expect(target1).toBe(target2)
+      expect(factoryCallCount).toBe(1)
     })
   })
 
   describe('SDK with custom methods', () => {
-    it('should support custom methods alongside SDK', async () => {
+    it('should add custom methods alongside SDK methods on the target', () => {
       const sdk = {
-        api: {
-          call: vi.fn(async () => ({ status: 'ok' }))
-        }
+        apiCall: vi.fn(() => ({ status: 'ok' }))
       }
 
       const Worker = expose({
         sdk: () => sdk,
         methods: {
-          customMethod: async function() {
+          customMethod() {
             return { custom: true }
           }
-        }
+        } as any
       })
 
       const instance = new (Worker as any)()
+      const target = instance.getRpcTarget()
 
-      // Custom method
-      const customResult = await instance.rpc('customMethod')
-      expect(customResult).toEqual({ custom: true })
+      expect(typeof target.customMethod).toBe('function')
+      expect(target.customMethod()).toEqual({ custom: true })
 
-      // SDK method still works
-      const sdkResult = await instance.rpc('api.call')
-      expect(sdkResult).toEqual({ status: 'ok' })
+      expect(typeof target.apiCall).toBe('function')
+      expect(target.apiCall()).toEqual({ status: 'ok' })
     })
 
-    it('should provide sdk and env in custom method context', async () => {
+    it('should provide sdk and env in custom method context', () => {
       const sdk = {
-        getData: vi.fn(async () => ({ data: 'from-sdk' }))
+        getData: vi.fn(() => ({ data: 'from-sdk' }))
       }
 
       const Worker = expose({
         sdk: () => sdk,
         methods: {
-          combined: async function() {
-            // @ts-ignore - this is bound at runtime
-            const sdkData = await this.sdk.getData()
+          combined(this: { sdk: typeof sdk }) {
+            const sdkData = this.sdk.getData()
             return { ...sdkData, enhanced: true }
           }
-        }
+        } as any
       })
 
       const instance = new (Worker as any)()
-      const result = await instance.rpc('combined')
+      const target = instance.getRpcTarget()
 
-      expect(result).toEqual({ data: 'from-sdk', enhanced: true })
+      expect(target.combined()).toEqual({ data: 'from-sdk', enhanced: true })
     })
   })
 
   describe('multi-SDK setup', () => {
-    it('should support multiple named SDKs', async () => {
+    it('should create sub-targets for each named SDK', () => {
       const cloudflare = {
         zones: {
-          list: vi.fn(async () => [{ name: 'example.com' }])
+          list: vi.fn(() => [{ name: 'example.com' }])
         }
       }
 
       const github = {
         repos: {
-          get: vi.fn(async () => ({ name: 'repo' }))
+          get: vi.fn(() => ({ name: 'repo' }))
         }
       }
 
       const Worker = expose({
         sdks: {
           cf: () => cloudflare,
-          gh: () => github
+          gh: () => github,
         }
       })
 
       const instance = new (Worker as any)()
+      const target = instance.getRpcTarget()
 
-      // Call cloudflare SDK
-      const cfResult = await instance.rpc('cf.zones.list')
-      expect(cfResult).toEqual([{ name: 'example.com' }])
+      expect(target.cf).toBeDefined()
+      expect(target.gh).toBeDefined()
+      expect(target.cf).toBeInstanceOf(RpcTarget)
+      expect(target.gh).toBeInstanceOf(RpcTarget)
 
-      // Call github SDK
-      const ghResult = await instance.rpc('gh.repos.get')
-      expect(ghResult).toEqual({ name: 'repo' })
+      expect(target.cf.zones).toBeDefined()
+      expect(typeof target.cf.zones.list).toBe('function')
+      expect(target.cf.zones.list()).toEqual([{ name: 'example.com' }])
+
+      expect(target.gh.repos).toBeDefined()
+      expect(typeof target.gh.repos.get).toBe('function')
+      expect(target.gh.repos.get()).toEqual({ name: 'repo' })
     })
 
-    it('should lazily initialize individual SDKs', async () => {
-      let cfInit = false
-      let ghInit = false
-
+    it('should add custom methods alongside SDK sub-targets', () => {
       const Worker = expose({
         sdks: {
-          cf: () => {
-            cfInit = true
-            return { test: () => 'cf' }
-          },
-          gh: () => {
-            ghInit = true
-            return { test: () => 'gh' }
+          api: () => ({ call: () => 'api-result' })
+        },
+        methods: {
+          healthCheck: function() {
+            return { ok: true }
           }
         }
       })
 
       const instance = new (Worker as any)()
+      const target = instance.getRpcTarget()
 
-      expect(cfInit).toBe(false)
-      expect(ghInit).toBe(false)
-
-      await instance.rpc('cf.test')
-      expect(cfInit).toBe(true)
-      expect(ghInit).toBe(false)
-
-      await instance.rpc('gh.test')
-      expect(ghInit).toBe(true)
-    })
-
-    it('should throw for unknown SDK in multi-SDK mode', async () => {
-      const Worker = expose({
-        sdks: {
-          known: () => ({ test: () => 'ok' })
-        }
-      })
-
-      const instance = new (Worker as any)()
-
-      await expect(instance.rpc('unknown.test')).rejects.toThrow(/Unknown SDK/)
-    })
-
-    it('should throw for path without SDK method in multi-SDK mode', async () => {
-      const Worker = expose({
-        sdks: {
-          cf: () => ({ test: () => 'ok' })
-        }
-      })
-
-      const instance = new (Worker as any)()
-
-      await expect(instance.rpc('cf')).rejects.toThrow(/Invalid path/)
-    })
-
-    it('should throw RPCError with UNKNOWN_SDK code for unknown SDK', async () => {
-      const Worker = expose({
-        sdks: {
-          known: () => ({ test: () => 'ok' })
-        }
-      })
-
-      const instance = new (Worker as any)()
-
-      try {
-        await instance.rpc('unknown.test')
-        expect.fail('Should have thrown')
-      } catch (error) {
-        expect(error).toBeInstanceOf(RPCError)
-        expect((error as RPCError).code).toBe('UNKNOWN_SDK')
-      }
-    })
-
-    it('should throw RPCError with INVALID_PATH code for path without SDK method', async () => {
-      const Worker = expose({
-        sdks: {
-          cf: () => ({ test: () => 'ok' })
-        }
-      })
-
-      const instance = new (Worker as any)()
-
-      try {
-        await instance.rpc('cf')
-        expect.fail('Should have thrown')
-      } catch (error) {
-        expect(error).toBeInstanceOf(RPCError)
-        expect((error as RPCError).code).toBe('INVALID_PATH')
-      }
+      expect(typeof target.healthCheck).toBe('function')
+      expect(target.healthCheck()).toEqual({ ok: true })
+      expect(target.api).toBeDefined()
     })
   })
 
-  describe('error handling', () => {
-    it('should propagate SDK method errors', async () => {
-      const sdk = {
-        fail: async () => {
-          throw new Error('SDK error')
-        }
-      }
-
-      const Worker = expose(() => sdk)
-      const instance = new (Worker as any)()
-
-      await expect(instance.rpc('fail')).rejects.toThrow('SDK error')
-    })
-
-    it('should handle synchronous methods', async () => {
-      const sdk = {
-        sync: () => ({ result: 'sync' })
-      }
-
-      const Worker = expose(() => sdk)
-      const instance = new (Worker as any)()
-
-      const result = await instance.rpc('sync')
-      expect(result).toEqual({ result: 'sync' })
+  describe('class name', () => {
+    it('should set class name to ExposedSDKWorker', () => {
+      const Worker = expose(() => ({ test: () => 'ok' }))
+      expect(Worker.name).toBe('ExposedSDKWorker')
     })
   })
 })
