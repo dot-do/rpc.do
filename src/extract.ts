@@ -122,9 +122,10 @@ export async function extractTypes(sourcePath: string): Promise<ExtractedSchema[
           results.push(schema)
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Re-throw with context
-      throw new Error(`Error extracting from ${filePath}: ${err.message}`)
+      const message = err instanceof Error ? err.message : String(err)
+      throw new Error(`Error extracting from ${filePath}: ${message}`)
     }
   }
 
@@ -172,9 +173,10 @@ async function extractFromFile(project: Project, filePath: string): Promise<Extr
   let sourceFile: SourceFile
   try {
     sourceFile = project.addSourceFileAtPath(filePath)
-  } catch (err: any) {
-    if (err.message.includes('Diagnostic')) {
-      throw new Error(`TypeScript syntax error in ${filePath}: ${err.message}`)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (message.includes('Diagnostic')) {
+      throw new Error(`TypeScript syntax error in ${filePath}: ${message}`)
     }
     throw err
   }

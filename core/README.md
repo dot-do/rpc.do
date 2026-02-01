@@ -35,9 +35,68 @@ Abstract core library for building RPC-enabled Cloudflare Durable Objects with c
 
 ## Installation
 
+### Basic Install
+
 ```bash
-pnpm add @dotdo/rpc
+npm install @dotdo/rpc
 ```
+
+This gives you:
+- `DurableRPC` base class for building RPC-enabled Durable Objects
+- WebSocket hibernation with capnweb
+- MongoDB-style collections on SQLite
+- Schema introspection
+
+### Peer Dependencies
+
+| Package | Required | What it enables |
+|---------|----------|-----------------|
+| `@cloudflare/workers-types` | **Yes** | TypeScript types for Cloudflare Workers APIs |
+| `colo.do` | No | Location awareness (`this.colo`, `this.coloInfo`, distance/latency APIs) |
+| `@dotdo/events` | No | Event streaming, CDC (Change Data Capture), analytics integration |
+| `@dotdo/types` | No | Full platform type definitions |
+
+### Install by Use Case
+
+**Basic Durable Object with RPC:**
+```bash
+npm install @dotdo/rpc
+npm install -D @cloudflare/workers-types
+```
+
+**With colo.do location awareness:**
+```bash
+npm install @dotdo/rpc colo.do
+npm install -D @cloudflare/workers-types
+```
+
+**With event streaming/CDC:**
+```bash
+npm install @dotdo/rpc @dotdo/events
+npm install -D @cloudflare/workers-types
+```
+
+**Full-featured setup (location + events + types):**
+```bash
+npm install @dotdo/rpc colo.do @dotdo/events @dotdo/types
+npm install -D @cloudflare/workers-types
+```
+
+**Minimal bundle (lite entry point):**
+```bash
+npm install @dotdo/rpc
+npm install -D @cloudflare/workers-types
+# Use @dotdo/rpc/lite - no colo.do or collections included
+```
+
+### Entry Point Summary
+
+| Entry Point | Peer Deps Needed | Bundle Size |
+|-------------|------------------|-------------|
+| `@dotdo/rpc` | `colo.do` (for location features) | Largest |
+| `@dotdo/rpc/lite` | None | Smallest |
+| `@dotdo/rpc/collections` | None | Medium |
+| `@dotdo/rpc/events` | `@dotdo/events` | Medium |
 
 ## Quick Start
 

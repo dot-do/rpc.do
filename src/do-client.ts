@@ -516,8 +516,16 @@ export function createDOClient<T = unknown>(
     return _transport
   }
 
+  /**
+   * Dynamic method proxy type - represents a chainable RPC method path
+   * that can be called as a function or accessed as a namespace.
+   */
+  type MethodProxy = ((...args: unknown[]) => Promise<unknown>) & {
+    [key: string]: MethodProxy
+  }
+
   // Create the proxy for custom RPC methods
-  const createMethodProxy = (path: string[]): any => {
+  const createMethodProxy = (path: string[]): MethodProxy => {
     return new Proxy(() => {}, {
       get(_, prop: string) {
         if (prop === 'then' || prop === 'catch' || prop === 'finally') {
@@ -525,13 +533,13 @@ export function createDOClient<T = unknown>(
         }
         return createMethodProxy([...path, prop])
       },
-      apply(_, __, args: any[]) {
+      apply(_, __, args: unknown[]) {
         return (async () => {
           const t = await getTransport()
           return t.call(path.join('.'), args)
         })()
       },
-    })
+    }) as MethodProxy
   }
 
   // The main client proxy

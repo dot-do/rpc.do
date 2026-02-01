@@ -7,6 +7,7 @@ export default defineConfig({
     'collections': 'src/collections.ts',
     'do-collections': 'src/do-collections.ts',
     'events-integration': 'src/events-integration.ts',
+    '__testutils__/index': 'src/__testutils__/index.ts',
   },
   format: ['esm'],
   dts: true,

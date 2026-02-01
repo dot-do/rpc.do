@@ -32,6 +32,10 @@ export interface TimingOptions {
   threshold?: number
   /** Callback for each timing measurement */
   onTiming?: (method: string, durationMs: number) => void
+  /** TTL in ms for timing entries - entries older than this are automatically cleaned up (default: 60000) */
+  ttl?: number
+  /** Interval in ms for cleanup check (default: 10000) */
+  cleanupInterval?: number
 }
 
 /**
@@ -79,6 +83,8 @@ export function timingMiddleware(options: TimingOptions = {}): RPCClientMiddlewa
     prefix = '[RPC Timing]',
     threshold = 0,
     onTiming,
+    ttl = 60000,
+    cleanupInterval = 10000,
   } = options
 
   // Map to store start times by a unique request key
@@ -94,8 +100,33 @@ export function timingMiddleware(options: TimingOptions = {}): RPCClientMiddlewa
   // Store the current request key in closure
   let currentRequestKey: string | null = null
 
+  // TTL-based cleanup to prevent memory leaks from dropped requests
+  let lastCleanup = performance.now()
+  const cleanupStaleEntries = (): void => {
+    const now = performance.now()
+    // Only run cleanup at the configured interval to avoid overhead
+    if (now - lastCleanup < cleanupInterval) {
+      return
+    }
+    lastCleanup = now
+
+    const staleThreshold = now - ttl
+    const entries = Array.from(timings.entries())
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i]
+      if (!entry) continue
+      const [key, ctx] = entry
+      if (ctx.startTime < staleThreshold) {
+        timings.delete(key)
+      }
+    }
+  }
+
   return {
     onRequest(method: string, _args: unknown[]): void {
+      // Clean up stale entries on each request to prevent unbounded growth
+      cleanupStaleEntries()
+
       currentRequestKey = getRequestKey(method)
       timings.set(currentRequestKey, {
         method,

@@ -348,6 +348,60 @@ describe('timingMiddleware', () => {
 
     expect(log.mock.calls[0][0]).toMatch(/\[PERF\] test took \d+\.\d+ms/)
   })
+
+  it('should support custom ttl and cleanupInterval options', async () => {
+    const log = vi.fn()
+    const onTiming = vi.fn()
+
+    const mockTransport: Transport = {
+      call: async () => ({ ok: true }),
+    }
+
+    // Create middleware with custom TTL options - just verify it works
+    const rpc = RPC(mockTransport, {
+      middleware: [
+        timingMiddleware({
+          log,
+          onTiming,
+          ttl: 1000, // 1 second TTL
+          cleanupInterval: 100, // 100ms cleanup interval
+        }),
+      ],
+    })
+
+    await rpc.test()
+
+    expect(onTiming).toHaveBeenCalledTimes(1)
+    expect(log).toHaveBeenCalledTimes(1)
+  })
+
+  it('should cleanup stale entries during subsequent requests', async () => {
+    const log = vi.fn()
+    const onTiming = vi.fn()
+
+    // Create middleware instance directly to test internal cleanup behavior
+    const middleware = timingMiddleware({
+      log,
+      onTiming,
+      ttl: 50, // Very short TTL for testing
+      cleanupInterval: 0, // Always run cleanup
+    })
+
+    // Call onRequest to add an entry
+    middleware.onRequest!('test.method', [])
+
+    // Wait for the entry to become stale
+    await new Promise((r) => setTimeout(r, 60))
+
+    // Make another request - this should trigger cleanup of the stale entry
+    middleware.onRequest!('test.another', [])
+
+    // Now call onResponse for the first method - should not find it
+    middleware.onResponse!('test.method', {})
+
+    // The onTiming should not be called for the stale entry
+    expect(onTiming).not.toHaveBeenCalled()
+  })
 })
 
 // ============================================================================

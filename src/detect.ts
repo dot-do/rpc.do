@@ -41,6 +41,262 @@ export interface ZeroConfigResult {
   warnings: string[]
 }
 
+// ============================================================================
+// Wrangler Config Types
+// ============================================================================
+
+/**
+ * Durable Object binding configuration
+ */
+export interface WranglerDurableObjectBinding {
+  /** The name of the binding used to refer to the Durable Object */
+  name: string
+  /** The exported class name of the Durable Object */
+  class_name: string
+  /** The script where the Durable Object is defined (if external) */
+  script_name?: string
+  /** The service environment of the script_name to bind to */
+  environment?: string
+}
+
+/**
+ * KV namespace binding configuration
+ */
+export interface WranglerKVNamespaceBinding {
+  /** The binding name used to refer to the KV Namespace */
+  binding: string
+  /** The ID of the KV namespace */
+  id?: string
+  /** The ID of the KV namespace used during wrangler dev */
+  preview_id?: string
+  /** Whether the KV namespace should be remote in local development */
+  remote?: boolean
+}
+
+/**
+ * R2 bucket binding configuration
+ */
+export interface WranglerR2BucketBinding {
+  /** The binding name used to refer to the R2 bucket */
+  binding: string
+  /** The name of this R2 bucket at the edge */
+  bucket_name?: string
+  /** The preview name of this R2 bucket at the edge */
+  preview_bucket_name?: string
+  /** The jurisdiction that the bucket exists in */
+  jurisdiction?: string
+  /** Whether the R2 bucket should be remote in local development */
+  remote?: boolean
+}
+
+/**
+ * D1 database binding configuration
+ */
+export interface WranglerD1DatabaseBinding {
+  /** The binding name used to refer to the D1 database */
+  binding: string
+  /** The name of this D1 database */
+  database_name?: string
+  /** The UUID of this D1 database */
+  database_id?: string
+  /** The UUID of this D1 database for Wrangler Dev */
+  preview_database_id?: string
+  /** The name of the migrations table (defaults to 'd1_migrations') */
+  migrations_table?: string
+  /** The path to the directory of migrations (defaults to './migrations') */
+  migrations_dir?: string
+  /** Whether the D1 database should be remote in local development */
+  remote?: boolean
+}
+
+/**
+ * Service binding (Worker-to-Worker) configuration
+ */
+export interface WranglerServiceBinding {
+  /** The binding name used to refer to the bound service */
+  binding: string
+  /** The name of the service */
+  service: string
+  /** @deprecated use service: <worker_name>-<environment_name> instead */
+  environment?: string
+  /** The entrypoint (named export) of the service to bind to */
+  entrypoint?: string
+}
+
+/**
+ * Queue producer binding configuration
+ */
+export interface WranglerQueueProducerBinding {
+  /** The binding name used to refer to the Queue */
+  binding: string
+  /** The name of this Queue */
+  queue: string
+  /** The number of seconds to wait before delivering a message */
+  delivery_delay?: number
+  /** Whether the Queue producer should be remote in local development */
+  remote?: boolean
+}
+
+/**
+ * Queue consumer configuration
+ */
+export interface WranglerQueueConsumer {
+  /** The name of the queue from which this consumer should consume */
+  queue: string
+  /** The consumer type (e.g., worker, http-pull, r2-bucket) */
+  type?: string
+  /** The maximum number of messages per batch */
+  max_batch_size?: number
+  /** The maximum number of seconds to wait to fill a batch */
+  max_batch_timeout?: number
+  /** The maximum number of retries for each message */
+  max_retries?: number
+  /** The queue to send messages that failed to be consumed */
+  dead_letter_queue?: string
+  /** The maximum number of concurrent consumer Worker invocations */
+  max_concurrency?: number | null
+  /** The number of milliseconds to wait for pulled messages to become visible again */
+  visibility_timeout_ms?: number
+  /** The number of seconds to wait before retrying a message */
+  retry_delay?: number
+}
+
+/**
+ * Vectorize index binding configuration
+ */
+export interface WranglerVectorizeBinding {
+  /** The binding name used to refer to the Vectorize index */
+  binding: string
+  /** The name of the index */
+  index_name: string
+  /** Whether the Vectorize index should be remote in local development */
+  remote?: boolean
+}
+
+/**
+ * Hyperdrive config binding
+ */
+export interface WranglerHyperdriveBinding {
+  /** The binding name used to refer to the project */
+  binding: string
+  /** The id of the database */
+  id: string
+  /** The local database connection string for wrangler dev */
+  localConnectionString?: string
+}
+
+/**
+ * Durable Object migration configuration
+ */
+export interface WranglerDurableObjectMigration {
+  /** A unique identifier for this migration */
+  tag: string
+  /** The new Durable Objects being defined */
+  new_classes?: string[]
+  /** The new SQLite Durable Objects being defined */
+  new_sqlite_classes?: string[]
+  /** The Durable Objects being renamed */
+  renamed_classes?: Array<{ from: string; to: string }>
+  /** The Durable Objects being removed */
+  deleted_classes?: string[]
+}
+
+/**
+ * Wrangler configuration file structure
+ *
+ * Represents the parsed contents of wrangler.toml or wrangler.jsonc.
+ * This interface covers the most commonly used configuration fields.
+ *
+ * @see https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+export interface WranglerConfig {
+  /** The name of your Worker */
+  name?: string
+
+  /** The entrypoint of your Worker */
+  main?: string
+
+  /** The compatibility date for your Worker */
+  compatibility_date?: string
+
+  /** Compatibility flags to enable or disable certain features */
+  compatibility_flags?: string[]
+
+  /** The account ID for deployments */
+  account_id?: string
+
+  /**
+   * Durable Objects configuration
+   */
+  durable_objects?: {
+    bindings?: WranglerDurableObjectBinding[]
+  }
+
+  /**
+   * KV Namespaces bindings
+   */
+  kv_namespaces?: WranglerKVNamespaceBinding[]
+
+  /**
+   * R2 bucket bindings
+   */
+  r2_buckets?: WranglerR2BucketBinding[]
+
+  /**
+   * D1 database bindings
+   */
+  d1_databases?: WranglerD1DatabaseBinding[]
+
+  /**
+   * Service bindings (Worker-to-Worker)
+   */
+  services?: WranglerServiceBinding[]
+
+  /**
+   * Queue configuration
+   */
+  queues?: {
+    producers?: WranglerQueueProducerBinding[]
+    consumers?: WranglerQueueConsumer[]
+  }
+
+  /**
+   * Vectorize index bindings
+   */
+  vectorize?: WranglerVectorizeBinding[]
+
+  /**
+   * Hyperdrive config bindings
+   */
+  hyperdrive?: WranglerHyperdriveBinding[]
+
+  /**
+   * Durable Object migrations
+   */
+  migrations?: WranglerDurableObjectMigration[]
+
+  /**
+   * Environment variables (plain text)
+   */
+  vars?: Record<string, string>
+
+  /**
+   * Named environments
+   */
+  env?: Record<string, Partial<WranglerConfig>>
+}
+
+/**
+ * TypeScript configuration file structure (subset used by this module)
+ */
+interface TsConfig {
+  compilerOptions?: {
+    paths?: Record<string, string[]>
+    [key: string]: unknown
+  }
+  [key: string]: unknown
+}
+
 // Valid base classes for DOs
 const DO_BASE_CLASSES = ['DurableObject', 'DurableRPC', 'DigitalObject']
 
@@ -81,10 +337,11 @@ function parseWranglerJsonc(filePath: string): WranglerBinding[] {
   const json = stripJsoncFeatures(content)
 
   try {
-    const config = JSON.parse(json)
+    const config = JSON.parse(json) as WranglerConfig
     return extractBindingsFromConfig(config)
-  } catch (err: any) {
-    throw new Error(`Invalid JSON in ${filePath}: ${err.message}`)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error(`Invalid JSON in ${filePath}: ${message}`)
   }
 }
 
@@ -176,9 +433,9 @@ function parseWranglerToml(filePath: string): WranglerBinding[] {
 /**
  * Extract bindings from parsed wrangler config
  */
-function extractBindingsFromConfig(config: any): WranglerBinding[] {
+function extractBindingsFromConfig(config: WranglerConfig): WranglerBinding[] {
   const durableObjects = config.durable_objects
-  if (!durableObjects || !durableObjects.bindings) {
+  if (!durableObjects?.bindings) {
     return []
   }
 
@@ -321,12 +578,13 @@ export async function updateTsConfig(
   }
 
   const content = readFileSync(tsconfigPath, 'utf-8')
-  let config: any
+  let config: TsConfig
 
   try {
-    config = JSON.parse(content)
-  } catch (err: any) {
-    throw new Error(`Invalid JSON in tsconfig.json: ${err.message}`)
+    config = JSON.parse(content) as TsConfig
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error(`Invalid JSON in tsconfig.json: ${message}`)
   }
 
   // Ensure compilerOptions exists
@@ -470,8 +728,9 @@ export async function runZeroConfig(dir: string, options: ZeroConfigOptions = {}
           writeFileSync(dtsPath, dtsContent)
           result.generated.push(dtsPath)
         }
-      } catch (err: any) {
-        result.warnings.push(`Failed to extract types from ${filePath}: ${err.message}`)
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        result.warnings.push(`Failed to extract types from ${filePath}: ${message}`)
       }
     }
 

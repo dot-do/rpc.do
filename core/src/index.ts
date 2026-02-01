@@ -142,6 +142,24 @@ export interface WebSocketAttachment {
   lastTransition: number
 }
 
+/**
+ * Type guard to check if a value is a valid WebSocketAttachment.
+ * Used for validating deserialized WebSocket attachments that survive hibernation.
+ *
+ * @param value - The value to check (typically from ws.deserializeAttachment())
+ * @returns True if the value is a valid WebSocketAttachment
+ */
+export function isWebSocketAttachment(value: unknown): value is WebSocketAttachment {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    typeof (value as WebSocketAttachment).transportId === 'string' &&
+    typeof (value as WebSocketAttachment).state === 'string' &&
+    typeof (value as WebSocketAttachment).connectedAt === 'number' &&
+    typeof (value as WebSocketAttachment).lastTransition === 'number'
+  )
+}
+
 // Re-export colo.do/tiny for convenience (minimal bundle)
 export {
   getColo,
@@ -322,8 +340,8 @@ export class DurableRPC extends DurableObject {
    */
   private getWebSocketAttachment(ws: WebSocket): WebSocketAttachment | null {
     try {
-      const attachment = ws.deserializeAttachment() as WebSocketAttachment | null
-      if (attachment && typeof attachment.state === 'string' && typeof attachment.transportId === 'string') {
+      const attachment = ws.deserializeAttachment()
+      if (isWebSocketAttachment(attachment)) {
         return attachment
       }
     } catch (error) {
@@ -453,6 +471,14 @@ export class DurableRPC extends DurableObject {
    * @internal
    */
   __sql(query: SerializedSqlQuery): SqlQueryResult {
+    // Validate parameter count: template strings should have one more element than values
+    // e.g., sql`SELECT * FROM users WHERE id = ${id}` has strings=["SELECT * FROM users WHERE id = ", ""], values=[id]
+    if (query.strings.length - 1 !== query.values.length) {
+      throw new Error(
+        `SQL parameter count mismatch: expected ${query.strings.length - 1} values but got ${query.values.length}. ` +
+        `This usually indicates incorrect SQL template tag usage.`
+      )
+    }
     const cursor = this.sql.exec(query.strings.join('?'), ...query.values)
     const results = cursor.toArray()
     return {
@@ -469,6 +495,13 @@ export class DurableRPC extends DurableObject {
    * @internal
    */
   __sqlFirst<T = Record<string, unknown>>(query: SerializedSqlQuery): T | null {
+    // Validate parameter count: template strings should have one more element than values
+    if (query.strings.length - 1 !== query.values.length) {
+      throw new Error(
+        `SQL parameter count mismatch: expected ${query.strings.length - 1} values but got ${query.values.length}. ` +
+        `This usually indicates incorrect SQL template tag usage.`
+      )
+    }
     const cursor = this.sql.exec(query.strings.join('?'), ...query.values)
     return cursor.one() as T | null
   }
@@ -478,6 +511,13 @@ export class DurableRPC extends DurableObject {
    * @internal
    */
   __sqlRun(query: SerializedSqlQuery): { rowsWritten: number } {
+    // Validate parameter count: template strings should have one more element than values
+    if (query.strings.length - 1 !== query.values.length) {
+      throw new Error(
+        `SQL parameter count mismatch: expected ${query.strings.length - 1} values but got ${query.values.length}. ` +
+        `This usually indicates incorrect SQL template tag usage.`
+      )
+    }
     const cursor = this.sql.exec(query.strings.join('?'), ...query.values)
     return { rowsWritten: cursor.rowsWritten }
   }

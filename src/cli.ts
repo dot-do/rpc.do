@@ -184,8 +184,9 @@ async function runZeroConfigCommand(outputDir?: string): Promise<void> {
     const apiNames = result.detected.map((d) => `${d.className}API`).join(', ')
     console.log('Done! Import your typed client:')
     console.log(`  import type { ${apiNames} } from './${output}'`)
-  } catch (err: any) {
-    console.error(`Error: ${err.message}`)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`Error: ${message}`)
     process.exit(1)
   }
 }
@@ -229,13 +230,15 @@ async function generateFromSource(sourcePath: string, outputDir?: string): Promi
       writeFileSync(testFile, '')
       const fs = await import('node:fs')
       fs.unlinkSync(testFile)
-    } catch (err: any) {
-      if (err.code === 'EACCES') {
+    } catch (err: unknown) {
+      const code = err instanceof Error && 'code' in err ? (err as NodeJS.ErrnoException).code : undefined
+      const message = err instanceof Error ? err.message : String(err)
+      if (code === 'EACCES') {
         console.error(`Error: permission denied - cannot write to output directory: ${resolvedOutput}`)
-      } else if (err.code === 'ENOENT') {
+      } else if (code === 'ENOENT') {
         console.error(`Error: cannot write - directory does not exist: ${resolvedOutput}`)
       } else {
-        console.error(`Error: cannot write to output directory: ${err.message}`)
+        console.error(`Error: cannot write to output directory: ${message}`)
       }
       process.exit(1)
     }
@@ -257,20 +260,21 @@ async function generateFromSource(sourcePath: string, outputDir?: string): Promi
     console.log(`\nDone! Generated types for ${schemas.length} Durable Object(s).`)
     console.log(`Import your typed client:`)
     console.log(`  import type { ${schemas.map((s) => s.className + 'API').join(', ')} } from '${output}'`)
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
     // Handle specific error types
-    if (err.message.includes('not found') || err.message.includes('ENOENT')) {
-      console.error(`Error: ${err.message}`)
-    } else if (err.message.includes('syntax error')) {
+    if (message.includes('not found') || message.includes('ENOENT')) {
+      console.error(`Error: ${message}`)
+    } else if (message.includes('syntax error')) {
       console.error(`Error: TypeScript syntax error in source file.`)
-      console.error(err.message)
-    } else if (err.message.includes('No class extending')) {
+      console.error(message)
+    } else if (message.includes('No class extending')) {
       console.error(`Error: No valid Durable Object class found.`)
       console.error('Ensure your class extends DurableObject, DurableRPC, or DigitalObject.')
-    } else if (err.message.includes('empty')) {
-      console.error(`Error: ${err.message}`)
+    } else if (message.includes('empty')) {
+      console.error(`Error: ${message}`)
     } else {
-      console.error(`Error: ${err.message}`)
+      console.error(`Error: ${message}`)
     }
     process.exit(1)
   }
@@ -329,8 +333,9 @@ async function loadConfig(): Promise<RpcDoConfig | undefined> {
       try {
         const mod = await import(pathToFileURL(configPath).href)
         return mod.default || mod
-      } catch (e: any) {
-        console.error(`Error loading ${candidate}: ${e.message}`)
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e)
+        console.error(`Error loading ${candidate}: ${message}`)
         console.error('Tip: Ensure your config file is valid JS/TS')
         process.exit(1)
       }
@@ -770,8 +775,9 @@ async function watchSource(sourcePath: string, output: string): Promise<void> {
     const schemas = await extractTypes(sourcePath)
     await writeSourceGeneratedFiles(schemas, resolvedOutput)
     console.log('[rpc.do] Initial generation complete')
-  } catch (err: any) {
-    console.error(`[rpc.do] Error in initial generation: ${err.message}`)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[rpc.do] Error in initial generation: ${message}`)
     // Continue watching anyway
   }
 
@@ -787,8 +793,9 @@ async function watchSource(sourcePath: string, output: string): Promise<void> {
       const schemas = await extractTypes(sourcePath)
       await writeSourceGeneratedFiles(schemas, resolvedOutput)
       console.log('[rpc.do] Updated types')
-    } catch (err: any) {
-      console.error(`[rpc.do] Error: ${err.message}`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[rpc.do] Error: ${message}`)
     }
   })
 
@@ -839,8 +846,9 @@ async function watchUrl(schemaUrl: string, output: string, interval: number): Pr
     previousHash = hashSchema(schema)
     await writeUrlGeneratedFiles(schema, outputDir)
     console.log('[rpc.do] Initial generation complete')
-  } catch (err: any) {
-    console.error(`[rpc.do] Failed to fetch initial schema: ${err.message}`)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[rpc.do] Failed to fetch initial schema: ${message}`)
     process.exit(1)
   }
 
@@ -860,8 +868,9 @@ async function watchUrl(schemaUrl: string, output: string, interval: number): Pr
         previousHash = currentHash
         console.log('[rpc.do] Updated client types')
       }
-    } catch (err: any) {
-      console.error(`[rpc.do] Error fetching schema: ${err.message}`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[rpc.do] Error fetching schema: ${message}`)
       // Continue watching, don't exit on transient errors
     }
   }

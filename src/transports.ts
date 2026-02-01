@@ -412,8 +412,8 @@ function createReconnectingCapnwebTransport(
           : undefined
 
         const reconnectTransport = new ReconnectingWebSocketTransport(wsUrl, {
-          auth: authProvider,
-          allowInsecureAuth: options?.allowInsecureAuth,
+          ...(authProvider ? { auth: authProvider } : {}),
+          ...(options?.allowInsecureAuth !== undefined ? { allowInsecureAuth: options.allowInsecureAuth } : {}),
           ...options?.reconnectOptions,
         })
 

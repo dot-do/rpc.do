@@ -123,10 +123,53 @@ rpc.ai.models.gpt4.generate({ prompt: 'hello' })
 
 **Transport Abstraction** - Transports are simple functions: `(method: string, args: any[]) => Promise<any>`. This makes it trivial to implement custom transports or compose existing ones.
 
-## Install
+## Installation
+
+### Basic Install
 
 ```bash
-npm install rpc.do
+npm install rpc.do @dotdo/capnweb
+```
+
+This gives you:
+- HTTP and WebSocket transports
+- Service binding transport for Cloudflare Workers
+- Typed RPC proxy client
+
+### Peer Dependencies
+
+| Package | Required | What it enables |
+|---------|----------|-----------------|
+| `@dotdo/capnweb` | **Yes** | Core RPC protocol (capnproto-style batching, WebSocket transport) |
+| `oauth.do` | No | Built-in authentication with token caching and refresh |
+| `@dotdo/types` | No | Full platform type definitions for typed API access |
+
+### Install by Use Case
+
+**Basic HTTP RPC client:**
+```bash
+npm install rpc.do @dotdo/capnweb
+```
+
+**WebSocket with reconnection:**
+```bash
+npm install rpc.do @dotdo/capnweb
+# WebSocket transports are included - no extra dependencies needed
+```
+
+**With oauth.do authentication:**
+```bash
+npm install rpc.do @dotdo/capnweb oauth.do
+```
+
+**With platform types (for typed $.ai, $.db access):**
+```bash
+npm install rpc.do @dotdo/capnweb @dotdo/types
+```
+
+**Full-featured setup (authentication + types):**
+```bash
+npm install rpc.do @dotdo/capnweb oauth.do @dotdo/types
 ```
 
 ## Quick Start

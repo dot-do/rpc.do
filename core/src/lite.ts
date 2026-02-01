@@ -79,6 +79,24 @@ export interface WebSocketAttachment {
   lastTransition: number
 }
 
+/**
+ * Type guard to check if a value is a valid WebSocketAttachment.
+ * Used for validating deserialized WebSocket attachments that survive hibernation.
+ *
+ * @param value - The value to check (typically from ws.deserializeAttachment())
+ * @returns True if the value is a valid WebSocketAttachment
+ */
+export function isWebSocketAttachment(value: unknown): value is WebSocketAttachment {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    typeof (value as WebSocketAttachment).transportId === 'string' &&
+    typeof (value as WebSocketAttachment).state === 'string' &&
+    typeof (value as WebSocketAttachment).connectedAt === 'number' &&
+    typeof (value as WebSocketAttachment).lastTransition === 'number'
+  )
+}
+
 // ============================================================================
 // Cloudflare DO Base
 // ============================================================================
@@ -191,8 +209,8 @@ export class DurableRPC extends DurableObject {
    */
   private getWebSocketAttachment(ws: WebSocket): WebSocketAttachment | null {
     try {
-      const attachment = ws.deserializeAttachment() as WebSocketAttachment | null
-      if (attachment && typeof attachment.state === 'string' && typeof attachment.transportId === 'string') {
+      const attachment = ws.deserializeAttachment()
+      if (isWebSocketAttachment(attachment)) {
         return attachment
       }
     } catch (error) {

@@ -7,3 +7,13 @@
 
 // SQL Storage Mocks
 export { MockSqlStorage, SqlCursor, COLLECTIONS_SCHEMA } from './mocks/sql'
+
+// WebSocket Mocks
+export {
+  MockWebSocket,
+  MockWebSocketPair,
+  createMockWebSocket,
+  installMockWebSocket,
+  restoreMockWebSocket,
+  type MockWebSocketGlobal,
+} from './mocks/websocket'

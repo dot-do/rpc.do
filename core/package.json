@@ -28,6 +28,10 @@
     "./events": {
       "types": "./dist/events-integration.d.ts",
       "import": "./dist/events-integration.js"
+    },
+    "./__testutils__": {
+      "types": "./dist/__testutils__/index.d.ts",
+      "import": "./dist/__testutils__/index.js"
     }
   },
   "files": [
