@@ -189,6 +189,40 @@ export type RPCResult<T> = T extends (...args: any[]) => Promise<infer R> ? R : 
 export type RPCInput<T> = T extends (input: infer I) => any ? I : never
 
 // ============================================================================
+// Middleware Types
+// ============================================================================
+
+/**
+ * Middleware hook for RPC requests and responses.
+ *
+ * Middleware can intercept calls at three points:
+ * - `onRequest`: Before the RPC call is made
+ * - `onResponse`: After a successful response
+ * - `onError`: When an error occurs
+ *
+ * @example
+ * ```typescript
+ * const loggingMiddleware: RPCClientMiddleware = {
+ *   onRequest: (method, args) => console.log(`Calling ${method}`, args),
+ *   onResponse: (method, result) => console.log(`${method} returned`, result),
+ *   onError: (method, error) => console.error(`${method} failed`, error),
+ * }
+ *
+ * const $ = RPC('https://my-do.workers.dev', {
+ *   middleware: [loggingMiddleware]
+ * })
+ * ```
+ */
+export type RPCClientMiddleware = {
+  /** Called before the RPC call is made */
+  onRequest?: (method: string, args: unknown[]) => void | Promise<void>
+  /** Called after a successful response */
+  onResponse?: (method: string, result: unknown) => void | Promise<void>
+  /** Called when an error occurs */
+  onError?: (method: string, error: unknown) => void | Promise<void>
+}
+
+// ============================================================================
 // RPC Factory
 // ============================================================================
 
@@ -202,6 +236,8 @@ export interface RPCOptions {
   timeout?: number
   /** Enable WebSocket reconnection (default: true for ws/wss URLs) */
   reconnect?: boolean
+  /** Middleware chain for request/response hooks */
+  middleware?: RPCClientMiddleware[]
 }
 
 /**
@@ -246,22 +282,29 @@ export function RPC<T = any>(
     const isWebSocket = url.startsWith('ws://') || url.startsWith('wss://')
 
     if (isWebSocket) {
-      transport = capnweb(url, {
-        auth: options?.auth,
+      // Build options object, only adding defined values to satisfy exactOptionalPropertyTypes
+      const capnwebOpts: import('./transports').CapnwebTransportOptions = {
         reconnect: options?.reconnect ?? true,
-      })
+      }
+      if (options?.auth !== undefined) capnwebOpts.auth = options.auth
+      transport = capnweb(url, capnwebOpts)
     } else {
-      transport = http(url, {
-        auth: options?.auth,
-        timeout: options?.timeout,
-      })
+      // Build options object, only adding defined values to satisfy exactOptionalPropertyTypes
+      const httpOpts: import('./transports').HttpTransportOptions = {}
+      if (options?.auth !== undefined) httpOpts.auth = options.auth
+      if (options?.timeout !== undefined) httpOpts.timeout = options.timeout
+      transport = http(url, httpOpts)
     }
   } else {
     transport = urlOrTransport
   }
 
+  // Build options for DOClient, only adding defined values
+  const doClientOpts: import('./do-client').CreateDOClientOptions = {}
+  if (options?.middleware !== undefined) doClientOpts.middleware = options.middleware
+
   // Use DOClient which has sql, storage, collection built in
-  return createDOClient<T>(transport) as RPCProxy<T> & DOClientFeatures
+  return createDOClient<T>(transport, doClientOpts) as RPCProxy<T> & DOClientFeatures
 }
 
 /**
@@ -330,10 +373,11 @@ export interface RPCClientOptions {
  * await client.ai.generate({ prompt: 'hello' })
  */
 export function createRPCClient<T = unknown>(options: RPCClientOptions): RPCProxy<T> & DOClientFeatures {
-  return RPC<T>(options.baseUrl, {
-    auth: options.auth,
-    timeout: options.timeout,
-  })
+  // Build options, only adding defined values to satisfy exactOptionalPropertyTypes
+  const rpcOpts: RPCOptions = {}
+  if (options.auth !== undefined) rpcOpts.auth = options.auth
+  if (options.timeout !== undefined) rpcOpts.timeout = options.timeout
+  return RPC<T>(options.baseUrl, rpcOpts)
 }
 
 // Re-export transports (browser-safe)

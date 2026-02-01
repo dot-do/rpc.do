@@ -40,7 +40,8 @@ export function isServerMessage(data: unknown): data is ServerMessage {
   const msg = data as Record<string, unknown>
   // Must have either result or error (but not both as valid data)
   const hasResult = 'result' in msg
-  const hasError = 'error' in msg && typeof msg.error === 'object' && msg.error !== null
+  const errorVal = msg['error']
+  const hasError = 'error' in msg && typeof errorVal === 'object' && errorVal !== null
   return hasResult || hasError
 }
 
@@ -66,6 +67,12 @@ export interface HttpTransportOptions {
  * This transport uses capnweb's `newHttpBatchRpcSession()` for protocol compatibility
  * with DurableRPC servers. All rpc.do transports now use capnweb protocol.
  *
+ * NOTE: Authentication in capnweb uses "in-band authorization" - auth tokens are
+ * passed as RPC method parameters (e.g., `api.authenticate(token)`) rather than
+ * HTTP headers. The `auth` option is accepted for API consistency but is not
+ * directly used by the HTTP batch transport. For WebSocket with reconnection,
+ * use `capnweb()` transport with `reconnect: true` which supports first-message auth.
+ *
  * @param url - The RPC endpoint URL
  * @param authOrOptions - Either an auth token/provider string, or an options object
  *
@@ -74,7 +81,7 @@ export interface HttpTransportOptions {
  * const transport = http('https://api.example.com/rpc')
  *
  * @example
- * // With auth token
+ * // With auth token (for API consistency, but in-band auth is recommended)
  * const transport = http('https://api.example.com/rpc', 'my-token')
  *
  * @example
@@ -87,19 +94,13 @@ export interface HttpTransportOptions {
  */
 export function http(url: string, authOrOptions?: string | AuthProvider | HttpTransportOptions): Transport {
   // Normalize options - support both legacy (auth) and new (options) signatures
-  let auth: string | AuthProvider | undefined
   let timeout: number | undefined
 
   if (typeof authOrOptions === 'object' && authOrOptions !== null && !('call' in authOrOptions)) {
     // It's an options object
-    auth = authOrOptions.auth
     timeout = authOrOptions.timeout
-  } else {
-    // Legacy: authOrOptions is the auth token/provider directly
-    auth = authOrOptions as string | AuthProvider | undefined
   }
-
-  const getAuth = typeof auth === 'function' ? auth : () => auth
+  // Note: auth is accepted for API consistency but not used - see function docs
 
   // Note: capnweb is a dynamically imported external library with its own type system.
   // We use 'unknown' for the session and navigate it dynamically.
@@ -112,24 +113,16 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const capnwebModule: Record<string, unknown> = await import('@dotdo/capnweb')
 
-        const createSession = capnwebModule.newHttpBatchRpcSession as ((url: string) => unknown) | undefined
+        const createSession = capnwebModule['newHttpBatchRpcSession'] as ((url: string) => unknown) | undefined
         if (!createSession) throw new RPCError('capnweb.newHttpBatchRpcSession not found', 'MODULE_ERROR')
         session = createSession(url)
       }
 
-      // Get auth token for this call (for future use with capnweb auth)
-      const token = await getAuth()
-      // Note: capnweb handles auth internally via the session
-      // TODO: Pass auth token to capnweb session when supported
-      void token // Suppress unused variable warning for now
-
       // Set up timeout handling
       let timeoutId: ReturnType<typeof setTimeout> | undefined
-      let timeoutReject: ((error: Error) => void) | undefined
 
       const timeoutPromise = timeout !== undefined && timeout > 0
         ? new Promise<never>((_, reject) => {
-            timeoutReject = reject
             timeoutId = setTimeout(() => {
               reject(ConnectionError.requestTimeout(timeout))
             }, timeout)
@@ -189,11 +182,16 @@ export function binding(b: unknown): Transport {
         if (typeof target !== 'object' || target === null) {
           throw new RPCError(`Unknown namespace: ${parts.slice(0, i + 1).join('.')}`, 'UNKNOWN_NAMESPACE')
         }
-        target = (target as Record<string, unknown>)[parts[i]]
+        const partName = parts[i]
+        if (!partName) throw new RPCError(`Unknown namespace: ${parts.slice(0, i + 1).join('.')}`, 'UNKNOWN_NAMESPACE')
+        target = (target as Record<string, unknown>)[partName]
         if (!target) throw new RPCError(`Unknown namespace: ${parts.slice(0, i + 1).join('.')}`, 'UNKNOWN_NAMESPACE')
       }
 
       const methodName = parts[parts.length - 1]
+      if (!methodName) {
+        throw new RPCError(`Unknown method: ${method}`, 'UNKNOWN_METHOD')
+      }
       if (typeof target !== 'object' || target === null) {
         throw new RPCError(`Unknown method: ${method}`, 'UNKNOWN_METHOD')
       }
@@ -223,6 +221,9 @@ export interface CapnwebTransportOptions {
 
   /**
    * Authentication token or provider (from oauth.do, static, or custom)
+   *
+   * For WebSocket mode with reconnect: true, the token is sent via first-message auth.
+   * For HTTP batch mode, capnweb uses in-band auth (pass token to RPC methods).
    */
   auth?: string | AuthProvider
 
@@ -266,6 +267,11 @@ export interface CapnwebTransportOptions {
  * Uses capnweb's native protocol for compatibility with DurableRPC servers.
  * Supports both WebSocket and HTTP batch modes, with optional reconnection.
  *
+ * Authentication:
+ * - WebSocket + reconnect: Uses first-message auth (token sent after connection)
+ * - WebSocket (no reconnect): Standard capnweb WebSocket (use in-band auth)
+ * - HTTP batch: Uses in-band auth (pass token to RPC methods like `api.auth(token)`)
+ *
  * @example
  * ```typescript
  * import { capnweb } from 'rpc.do/transports'
@@ -275,9 +281,10 @@ export interface CapnwebTransportOptions {
  * // Simple usage
  * const rpc = RPC(capnweb('wss://api.example.com/rpc'))
  *
- * // With oauth.do authentication
+ * // With oauth.do authentication (WebSocket + reconnection)
  * const rpc = RPC(capnweb('wss://api.example.com/rpc', {
  *   auth: oauthProvider(),
+ *   reconnect: true, // Required for first-message auth
  * }))
  *
  * // With reconnection support
@@ -290,11 +297,11 @@ export interface CapnwebTransportOptions {
  *   }
  * }))
  *
- * // HTTP batch mode (for serverless/edge)
+ * // HTTP batch mode (use in-band auth)
  * const rpc = RPC(capnweb('https://api.example.com/rpc', {
  *   websocket: false,
- *   auth: oauthProvider(),
  * }))
+ * // Then: const authedApi = await rpc.authenticate(token)
  *
  * // Bidirectional RPC (server can call client)
  * const clientHandler = {
@@ -313,15 +320,15 @@ export function capnweb(
 ): Transport {
   const useWebSocket = options?.websocket ?? true
   const useReconnect = options?.reconnect ?? false
-  const getAuth = typeof options?.auth === 'function' ? options.auth : () => options?.auth
 
-  // For reconnecting WebSocket, use the new transport
+  // For reconnecting WebSocket, use the new transport (supports first-message auth)
   if (useWebSocket && useReconnect) {
     return createReconnectingCapnwebTransport(url, options)
   }
 
   // Note: capnweb is a dynamically imported external library with its own type system.
   // We use 'unknown' for the session and navigate it dynamically.
+  // For non-reconnecting mode, auth is handled via in-band RPC methods
   let session: unknown = null
 
   return {
@@ -334,11 +341,11 @@ export function capnweb(
 
         if (useWebSocket) {
           const wsUrl = url.replace(/^http/, 'ws')
-          const createSession = capnwebModule.newWebSocketRpcSession as ((url: string) => unknown) | undefined
+          const createSession = capnwebModule['newWebSocketRpcSession'] as ((url: string) => unknown) | undefined
           if (!createSession) throw new RPCError('capnweb.newWebSocketRpcSession not found', 'MODULE_ERROR')
           session = createSession(wsUrl)
         } else {
-          const createSession = capnwebModule.newHttpBatchRpcSession as ((url: string) => unknown) | undefined
+          const createSession = capnwebModule['newHttpBatchRpcSession'] as ((url: string) => unknown) | undefined
           if (!createSession) throw new RPCError('capnweb.newHttpBatchRpcSession not found', 'MODULE_ERROR')
           session = createSession(url)
         }
@@ -396,7 +403,7 @@ function createReconnectingCapnwebTransport(
           throw new RPCError('capnweb.RpcSession not found', 'MODULE_ERROR')
         }
 
-        // Create reconnecting transport
+        // Create reconnecting transport with first-message auth
         const wsUrl = url.replace(/^http/, 'ws')
         const authProvider: AuthProvider | undefined = typeof options?.auth === 'function'
           ? options.auth

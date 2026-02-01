@@ -1,6 +1,27 @@
 # @dotdo/rpc
 
-Durable Object RPC server with capnweb, WebSocket hibernation, and MongoDB-style collections.
+Abstract core library for building RPC-enabled Cloudflare Durable Objects with capnweb, WebSocket hibernation, and MongoDB-style collections.
+
+## Package Positioning
+
+**@dotdo/rpc** is the abstract foundation of the .do platform's RPC system. It provides the base classes and utilities for building your own RPC-enabled Durable Objects with full control over implementation.
+
+| Package | Description |
+|---------|-------------|
+| **@dotdo/types** | Core type definitions providing full access to the platform |
+| **@dotdo/rpc** | Abstract core library (this package) - build your own RPC Durable Objects |
+| **[rpc.do](https://npmjs.com/package/rpc.do)** | Managed implementation with platform integrations (oauth.do, cli.do, rpc.do service) |
+
+**Choose @dotdo/rpc when you need:**
+- Full control over your Durable Object implementation
+- Custom authentication, routing, or storage patterns
+- Self-hosted deployment without platform dependencies
+
+**Choose [rpc.do](../README.md) when you want:**
+- Batteries-included managed implementation
+- Built-in oauth.do authentication
+- Zero-config type generation via cli.do
+- Integration with the rpc.do managed service
 
 ## Features
 
@@ -59,6 +80,36 @@ export class UserService extends DurableRPC {
 ## Entry Points
 
 The package provides multiple entry points for different use cases:
+
+| Entry Point | Description | Bundle Impact |
+|-------------|-------------|---------------|
+| `@dotdo/rpc` | Full DurableRPC with collections, colo awareness | Largest - includes colo.do data |
+| `@dotdo/rpc/lite` | Minimal DurableRPC (no colo, no collections) | Smallest - core RPC only |
+| `@dotdo/rpc/collections` | MongoDB-style collections on SQLite | Medium - standalone usage |
+| `@dotdo/rpc/do-collections` | Digital Object semantics | Medium - requires collections |
+| `@dotdo/rpc/events` | Event/CDC integration | Medium - requires @dotdo/events |
+
+### Decision Tree: Which Entry Point?
+
+```
+Building a Durable Object?
+  |
+  +-> Need collections + colo awareness + all features?
+  |     -> Use `@dotdo/rpc` (full)
+  |
+  +-> Need smallest possible bundle?
+  |     -> Use `@dotdo/rpc/lite`
+  |     -> Add collections separately if needed
+  |
+  +-> Need standalone document store (no DO)?
+  |     -> Use `@dotdo/rpc/collections`
+  |
+  +-> Need semantic data modeling (Nouns/Verbs/Things)?
+  |     -> Use `@dotdo/rpc/do-collections`
+  |
+  +-> Need event streaming / CDC / analytics?
+        -> Use `@dotdo/rpc/events`
+```
 
 ### `@dotdo/rpc` (Full)
 
@@ -405,6 +456,79 @@ Digital Object semantics layer.
 | `fuzzyRelate(...)` | Semantic relationship (~> operator) |
 | `traverse(from, verb)` | Follow relationships |
 | `stats()` | Collection statistics |
+
+## Entry Points Reference
+
+### `@dotdo/rpc` - Full Package
+
+**Exports**: `DurableRPC`, `router`, `defineConfig`, `RpcTarget`, `RpcSession`, `HibernatableWebSocketTransport`, `TransportRegistry`, `getColo`, `coloDistance`, `estimateLatency`, `nearestColo`, `sortByDistance`, `getAllColos`, `createCollection`, `Collections`, plus all types.
+
+**Use When**: You need a production-ready DO with all features including colo awareness, collections, schema introspection, and worker routing.
+
+### `@dotdo/rpc/lite` - Minimal Package
+
+**Exports**: `DurableRPC`, `RpcTarget`, `RpcSession`, `HibernatableWebSocketTransport`, `TransportRegistry`
+
+**Use When**: Bundle size is critical and you only need basic RPC. Add collections separately if needed.
+
+**What's NOT included**:
+- `this.collection()` helper (use `@dotdo/rpc/collections` directly)
+- `this.colo`, `this.coloInfo`, colo methods (use `colo.do` directly)
+- `router()` helper (implement your own routing)
+
+### `@dotdo/rpc/collections` - Standalone Collections
+
+**Exports**: Everything from `@dotdo/collections` - `createCollection`, `Collections`, `Collection`, `Filter`, `FilterOperator`, `QueryOptions`
+
+**Use When**: You need MongoDB-style document storage on SQLite without the full DurableRPC base class.
+
+```typescript
+import { createCollection } from '@dotdo/rpc/collections'
+
+const users = createCollection<User>(sql, 'users')
+users.put('id', { name: 'Alice' })
+const results = users.find({ active: true })
+```
+
+### `@dotdo/rpc/do-collections` - Semantic Data Layer
+
+**Exports**: `DOCollections`, `Thing`, `Action`, `Noun`, `Verb`, `Relationship`, `CascadeOperator`, `SemanticMatcher`, `SemanticMatch`
+
+**Use When**: You need higher-level semantic modeling with typed entities, relationships, and audit trails.
+
+**Key Concepts**:
+- **Nouns**: Define entity types (User, Organization)
+- **Verbs**: Define relationship/action types (memberOf, created)
+- **Things**: Entity instances with `$id`, `$type`, `$version`
+- **Actions**: Event/audit log entries
+- **Relationships**: Graph edges with cascade operators (`->`, `~>`, `<-`, `<~`)
+
+### `@dotdo/rpc/events` - Event Streaming
+
+**Exports**: `createEventEmitter`, `CDCCollection`, `EventEmitter`, event types (`DurableEvent`, `CollectionChangeEvent`, etc.)
+
+**Requirements**: `@dotdo/events` must be installed as peer dependency.
+
+**Use When**: You need CDC (Change Data Capture), event streaming, or analytics integration.
+
+```typescript
+import { createEventEmitter, CDCCollection } from '@dotdo/rpc/events'
+
+events = createEventEmitter(this, { cdc: true })
+users = new CDCCollection(this.collection('users'), this.events, 'users')
+// Changes auto-emit to events.do
+```
+
+## Related Packages
+
+| Package | Description |
+|---------|-------------|
+| [`rpc.do`](../README.md) | Managed client implementation with platform integrations |
+| [`@dotdo/collections`](https://github.com/dot-do/collections) | Core collections library |
+| [`@dotdo/events`](https://github.com/dot-do/events) | Event streaming and CDC |
+| [`@dotdo/capnweb`](https://github.com/dot-do/capnweb) | Capnproto-style RPC protocol |
+| [`colo.do`](https://github.com/dot-do/colo.do) | Cloudflare colo location data |
+| [`@dotdo/types`](https://github.com/dot-do/types) | Core platform type definitions |
 
 ## License
 

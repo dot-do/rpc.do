@@ -730,7 +730,8 @@ async function watchCommand(args: string[]): Promise<void> {
   const outIndex = args.indexOf('--output')
   const outputArg = outIndex !== -1 ? args[outIndex + 1] : undefined
   const intervalIndex = args.indexOf('--interval')
-  const intervalArg = intervalIndex !== -1 ? parseInt(args[intervalIndex + 1], 10) : 5000
+  const intervalStr = intervalIndex !== -1 ? args[intervalIndex + 1] : undefined
+  const intervalArg = intervalStr ? parseInt(intervalStr, 10) : 5000
 
   // Check for mutually exclusive flags
   if (url && source) {

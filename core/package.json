@@ -1,7 +1,9 @@
 {
   "name": "@dotdo/rpc",
   "version": "0.2.4",
-  "description": "Durable Object RPC server with capnweb, hibernation, and $ context",
+  "description": "Abstract core library for building RPC-enabled Cloudflare Durable Objects",
+  "stability": "production-ready",
+  "apiStability": "Follows semantic versioning. See docs/VERSIONING.md for stability guarantees.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

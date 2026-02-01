@@ -73,9 +73,74 @@ import {
 // Shared RPC interface
 import { RpcInterface, SKIP_PROPS_EXTENDED } from './rpc-interface.js'
 
+// Introspection utilities
+import {
+  introspectDatabase,
+  introspectDurableRPC,
+  type RpcSchema,
+  type DatabaseSchema,
+} from './introspection.js'
+
+// Re-export introspection types and functions
+export {
+  introspectDatabase,
+  introspectDurableRPC,
+  collectRpcMethods,
+  collectRpcNamespaces,
+  type RpcSchema,
+  type RpcMethodSchema,
+  type RpcNamespaceSchema,
+  type DatabaseSchema,
+  type ColumnSchema,
+  type TableSchema,
+  type IndexSchema,
+  type IntrospectableRpc,
+  type IntrospectionConfig,
+} from './introspection.js'
+
 // Re-export capnweb types for convenience
 export { RpcTarget, RpcSession, type RpcTransport, type RpcSessionOptions }
 export { HibernatableWebSocketTransport, TransportRegistry }
+
+// ============================================================================
+// WebSocket State Machine
+// ============================================================================
+
+/**
+ * Explicit state tracking for WebSocket hibernation.
+ *
+ * State transitions:
+ * ```
+ *   [connecting] ──accept──> [active] ──hibernate──> [hibernated]
+ *        │                      │                         │
+ *        │                      │                         │
+ *        │                      ▼                         │
+ *        │                   [closed] <─────close─────────┤
+ *        │                      ▲                         │
+ *        └───────error──────────┴────────error────────────┘
+ * ```
+ *
+ * - connecting: WebSocket pair created, waiting for acceptance
+ * - active: WebSocket accepted and actively processing messages
+ * - hibernated: DO hibernated, WebSocket maintained by runtime (will wake on message)
+ * - closed: WebSocket closed (terminal state)
+ */
+export type WebSocketState = 'connecting' | 'active' | 'hibernated' | 'closed'
+
+/**
+ * WebSocket attachment data that survives hibernation.
+ * Stored via ws.serializeAttachment() and retrieved via ws.deserializeAttachment()
+ */
+export interface WebSocketAttachment {
+  /** Transport ID for capnweb session recovery */
+  transportId: string
+  /** Current WebSocket state */
+  state: WebSocketState
+  /** Timestamp when connection was established */
+  connectedAt: number
+  /** Timestamp of last state transition */
+  lastTransition: number
+}
 
 // Re-export colo.do/tiny for convenience (minimal bundle)
 export {
@@ -194,6 +259,78 @@ export class DurableRPC extends DurableObject {
 
   /** Collections manager (lazy-initialized) */
   private _collections?: Collections
+
+  // ==========================================================================
+  // WebSocket State Machine Helpers
+  // ==========================================================================
+
+  /**
+   * Create initial WebSocket attachment with 'connecting' state.
+   *
+   * STATE: -> connecting
+   */
+  private createWebSocketAttachment(transportId: string): WebSocketAttachment {
+    const now = Date.now()
+    return {
+      transportId,
+      state: 'connecting',
+      connectedAt: now,
+      lastTransition: now,
+    }
+  }
+
+  /**
+   * Transition WebSocket to a new state.
+   * Updates the attachment and logs the transition for debugging.
+   *
+   * Valid state transitions:
+   * - connecting -> active (WebSocket accepted)
+   * - connecting -> closed (error during setup)
+   * - active -> hibernated (DO hibernating, implicit)
+   * - active -> closed (normal close or error)
+   * - hibernated -> active (DO woke from hibernation)
+   * - hibernated -> closed (close while hibernated)
+   *
+   * @param ws - The WebSocket to update
+   * @param attachment - Current attachment data
+   * @param newState - Target state
+   * @param reason - Optional reason for the transition (for debugging)
+   */
+  private transitionWebSocketState(
+    ws: WebSocket,
+    attachment: WebSocketAttachment,
+    newState: WebSocketState,
+    reason?: string
+  ): void {
+    const oldState = attachment.state
+    attachment.state = newState
+    attachment.lastTransition = Date.now()
+
+    // Persist the updated state (survives hibernation)
+    ws.serializeAttachment(attachment)
+
+    // Debug logging for state transitions
+    console.debug(
+      `[DurableRPC] WebSocket state: ${oldState} -> ${newState}` +
+        (reason ? ` (${reason})` : '')
+    )
+  }
+
+  /**
+   * Get WebSocket attachment with type safety.
+   * Returns null if attachment is missing or invalid.
+   */
+  private getWebSocketAttachment(ws: WebSocket): WebSocketAttachment | null {
+    try {
+      const attachment = ws.deserializeAttachment() as WebSocketAttachment | null
+      if (attachment && typeof attachment.state === 'string' && typeof attachment.transportId === 'string') {
+        return attachment
+      }
+    } catch (error) {
+      console.debug('[DurableRPC] Failed to deserialize WebSocket attachment:', error)
+    }
+    return null
+  }
 
   // ==========================================================================
   // Direct accessors (same API inside DO and via RPC)
@@ -548,17 +685,36 @@ export class DurableRPC extends DurableObject {
   // WebSocket Hibernation with capnweb
   // ==========================================================================
 
+  /**
+   * Handle WebSocket upgrade request.
+   *
+   * State transitions: -> connecting -> active
+   *
+   * This creates the WebSocket pair, accepts the server socket with the
+   * hibernation API, and sets up the RPC session. The WebSocket starts
+   * in 'connecting' state and immediately transitions to 'active'.
+   */
   private handleWebSocketUpgrade(request: Request): Response {
     const pair = new WebSocketPair()
     const client = pair[0]
     const server = pair[1]
 
-    // Use hibernation API
-    this.ctx.acceptWebSocket(server)
-
     // Create transport for this WebSocket
     const transport = new HibernatableWebSocketTransport(server)
     this._transportRegistry.register(transport)
+
+    // STATE: -> connecting
+    // Create attachment with initial 'connecting' state
+    const attachment = this.createWebSocketAttachment(transport.id)
+    server.serializeAttachment(attachment)
+
+    // Use hibernation API to accept the WebSocket
+    // This allows the DO to hibernate while keeping the connection open
+    this.ctx.acceptWebSocket(server)
+
+    // STATE: connecting -> active
+    // WebSocket is now accepted and ready to process messages
+    this.transitionWebSocketState(server, attachment, 'active', 'WebSocket accepted')
 
     // Create capnweb RpcSession with the transport
     const session = new RpcSession(
@@ -567,18 +723,23 @@ export class DurableRPC extends DurableObject {
       this.getRpcSessionOptions()
     )
 
-    // Store session reference
+    // Store session reference (in-memory, will be recreated after hibernation)
     this._sessions.set(server, session)
-
-    // Store transport ID in WebSocket attachment for hibernation recovery
-    server.serializeAttachment({ transportId: transport.id })
 
     return new Response(null, { status: 101, webSocket: client })
   }
 
   /**
-   * Called when a hibernated WebSocket receives a message
-   * (Part of the Hibernation API)
+   * Called when a WebSocket receives a message.
+   * (Part of the Hibernation API - also called for non-hibernated sockets)
+   *
+   * State transitions:
+   * - hibernated -> active (DO woke from hibernation to process message)
+   * - active -> active (no change, already processing)
+   *
+   * When the DO hibernates, in-memory state (transport registry, sessions) is lost.
+   * The WebSocket attachment survives and contains the previous state.
+   * On wake, we detect 'hibernated' state and recreate the necessary objects.
    */
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     if (typeof message !== 'string') {
@@ -586,19 +747,16 @@ export class DurableRPC extends DurableObject {
       return
     }
 
-    // Get transport from attachment (survives hibernation)
+    // Get attachment from WebSocket (survives hibernation)
+    let attachment = this.getWebSocketAttachment(ws)
     let transport: HibernatableWebSocketTransport | undefined
 
-    try {
-      const attachment = ws.deserializeAttachment() as { transportId?: string } | null
-      if (attachment?.transportId) {
-        transport = this._transportRegistry.get(attachment.transportId)
-      }
-    } catch (error) {
-      console.debug('[DurableRPC] Failed to deserialize WebSocket attachment:', error)
+    if (attachment?.transportId) {
+      transport = this._transportRegistry.get(attachment.transportId)
     }
 
-    // If transport not found, we need to recreate it (DO woke from hibernation)
+    // If transport not found, the DO woke from hibernation
+    // In-memory transport registry was cleared, need to recreate
     if (!transport) {
       transport = new HibernatableWebSocketTransport(ws)
       this._transportRegistry.register(transport)
@@ -611,56 +769,89 @@ export class DurableRPC extends DurableObject {
       )
       this._sessions.set(ws, session)
 
-      // Update attachment with new transport ID
-      ws.serializeAttachment({ transportId: transport.id })
+      if (attachment) {
+        // STATE: hibernated -> active
+        // DO woke from hibernation, restore session and mark as active
+        attachment.transportId = transport.id
+        this.transitionWebSocketState(ws, attachment, 'active', 'woke from hibernation')
+      } else {
+        // No existing attachment - create new one (unusual case, possibly error recovery)
+        attachment = this.createWebSocketAttachment(transport.id)
+        attachment.state = 'active'
+        ws.serializeAttachment(attachment)
+        console.debug('[DurableRPC] WebSocket state: (unknown) -> active (created new attachment)')
+      }
     }
+    // If transport exists and state is active, no state change needed
 
     // Feed message to transport -> capnweb session will process it
     transport.enqueueMessage(message)
   }
 
   /**
-   * Called when a hibernated WebSocket is closed
+   * Called when a WebSocket is closed.
+   * (Part of the Hibernation API)
+   *
+   * State transition: active|hibernated -> closed
+   *
+   * The 'closed' state is terminal. We clean up all associated resources:
+   * - Remove transport from registry
+   * - Remove session from sessions map
+   * - Mark state as closed in attachment (for debugging)
    */
   override async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
-    // Get transport and clean up
-    try {
-      const attachment = ws.deserializeAttachment() as { transportId?: string } | null
-      if (attachment?.transportId) {
-        const transport = this._transportRegistry.get(attachment.transportId)
-        if (transport) {
-          transport.handleClose(code, reason)
-          this._transportRegistry.remove(attachment.transportId)
-        }
+    const attachment = this.getWebSocketAttachment(ws)
+
+    // STATE: * -> closed
+    // Terminal state - clean up all resources
+    if (attachment) {
+      const closeReason = `code=${code}, reason=${reason || 'none'}, wasClean=${wasClean}`
+      this.transitionWebSocketState(ws, attachment, 'closed', closeReason)
+
+      // Clean up transport
+      const transport = this._transportRegistry.get(attachment.transportId)
+      if (transport) {
+        transport.handleClose(code, reason)
+        this._transportRegistry.remove(attachment.transportId)
       }
-    } catch {
-      // Ignore cleanup errors
+    } else {
+      console.debug(`[DurableRPC] WebSocket closed without attachment (code=${code})`)
     }
 
-    // Remove session
+    // Remove session from in-memory map
     this._sessions.delete(ws)
   }
 
   /**
-   * Called when a hibernated WebSocket encounters an error
+   * Called when a WebSocket encounters an error.
+   * (Part of the Hibernation API)
+   *
+   * State transition: active|hibernated|connecting -> closed
+   *
+   * Errors can occur at any point in the WebSocket lifecycle.
+   * We transition to 'closed' state and clean up all resources.
+   * The error is passed to the transport for proper RPC error handling.
    */
   override async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
     const err = error instanceof Error ? error : new Error(String(error))
+    const attachment = this.getWebSocketAttachment(ws)
 
-    try {
-      const attachment = ws.deserializeAttachment() as { transportId?: string } | null
-      if (attachment?.transportId) {
-        const transport = this._transportRegistry.get(attachment.transportId)
-        if (transport) {
-          transport.handleError(err)
-          this._transportRegistry.remove(attachment.transportId)
-        }
+    // STATE: * -> closed (via error)
+    // Error is a terminal condition, transition to closed
+    if (attachment) {
+      this.transitionWebSocketState(ws, attachment, 'closed', `error: ${err.message}`)
+
+      // Clean up transport with error notification
+      const transport = this._transportRegistry.get(attachment.transportId)
+      if (transport) {
+        transport.handleError(err)
+        this._transportRegistry.remove(attachment.transportId)
       }
-    } catch {
-      // Ignore cleanup errors
+    } else {
+      console.debug('[DurableRPC] WebSocket error without attachment:', err.message)
     }
 
-    // Remove session
+    // Remove session from in-memory map
     this._sessions.delete(ws)
   }
 
@@ -699,7 +890,10 @@ export class DurableRPC extends DurableObject {
    * Used by `npx rpc.do generate` for typed client codegen.
    */
   getSchema(): RpcSchema {
-    return introspect(this)
+    return introspectDurableRPC(this, {
+      skipProps: SKIP_PROPS_EXTENDED,
+      basePrototype: DurableRPC.prototype,
+    })
   }
 
   // ==========================================================================
@@ -876,228 +1070,6 @@ export function router<Env extends Record<string, unknown>>(options: RouterOptio
   }
 }
 
-// ============================================================================
-// Schema Reflection
-// ============================================================================
-
-/**
- * Describes a single RPC method
- */
-export interface RpcMethodSchema {
-  /** Method name */
-  name: string
-  /** Dot-separated path (e.g. "users.get") */
-  path: string
-  /** Number of declared parameters (from Function.length) */
-  params: number
-}
-
-/**
- * Describes a namespace (object with methods)
- */
-export interface RpcNamespaceSchema {
-  /** Namespace name */
-  name: string
-  /** Methods within this namespace */
-  methods: RpcMethodSchema[]
-}
-
-/**
- * Database column schema
- */
-export interface ColumnSchema {
-  name: string
-  type: string
-  nullable: boolean
-  primaryKey: boolean
-  defaultValue?: string
-}
-
-/**
- * Database table schema
- */
-export interface TableSchema {
-  name: string
-  columns: ColumnSchema[]
-  indexes: IndexSchema[]
-}
-
-/**
- * Database index schema
- */
-export interface IndexSchema {
-  name: string
-  columns: string[]
-  unique: boolean
-}
-
-/**
- * Full database schema (SQLite)
- */
-export interface DatabaseSchema {
-  tables: TableSchema[]
-  version?: number
-}
-
-/**
- * Full schema for a DurableRPC class.
- * Returned by GET /__schema and used by `npx rpc.do generate`.
- */
-export interface RpcSchema {
-  /** Schema version */
-  version: 1
-  /** Top-level RPC methods */
-  methods: RpcMethodSchema[]
-  /** Grouped namespaces (e.g. { users: { get, create } }) */
-  namespaces: RpcNamespaceSchema[]
-  /** Database schema (if SQLite is used) */
-  database?: DatabaseSchema
-  /** Storage keys (sample for discovery) */
-  storageKeys?: string[]
-  /** Colo where this DO is running */
-  colo?: string
-}
-
-/**
- * Introspect SQLite database schema
- */
-function introspectDatabase(sql: SqlStorage): DatabaseSchema {
-  const tables: TableSchema[] = []
-
-  try {
-    // Get all tables
-    const tableRows = sql.exec<{ name: string }>(
-      `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'`
-    ).toArray()
-
-    for (const { name: tableName } of tableRows) {
-      // Get columns
-      const columns: ColumnSchema[] = []
-      const columnRows = sql.exec<{
-        name: string
-        type: string
-        notnull: number
-        pk: number
-        dflt_value: string | null
-      }>(`PRAGMA table_info('${tableName}')`).toArray()
-
-      for (const col of columnRows) {
-        const columnSchema: ColumnSchema = {
-          name: col.name,
-          type: col.type,
-          nullable: col.notnull === 0,
-          primaryKey: col.pk > 0,
-        }
-        if (col.dflt_value !== null) {
-          columnSchema.defaultValue = col.dflt_value
-        }
-        columns.push(columnSchema)
-      }
-
-      // Get indexes
-      const indexes: IndexSchema[] = []
-      const indexRows = sql.exec<{ name: string; unique: number }>(
-        `PRAGMA index_list('${tableName}')`
-      ).toArray()
-
-      for (const idx of indexRows) {
-        if (idx.name.startsWith('sqlite_')) continue
-
-        const indexCols = sql.exec<{ name: string }>(
-          `PRAGMA index_info('${idx.name}')`
-        ).toArray()
-
-        indexes.push({
-          name: idx.name,
-          columns: indexCols.map(c => c.name),
-          unique: idx.unique === 1,
-        })
-      }
-
-      tables.push({ name: tableName, columns, indexes })
-    }
-  } catch (error) {
-    // SQLite may not be initialized yet
-    console.debug('[DurableRPC] SQLite introspection skipped - not initialized:', error)
-  }
-
-  return { tables }
-}
-
-/**
- * Introspect a DurableRPC instance and return its API schema.
- * Walks own + prototype properties, skipping internals.
- */
-function introspect(instance: DurableRPC): RpcSchema {
-  const methods: RpcMethodSchema[] = []
-  const namespaces: RpcNamespaceSchema[] = []
-
-  const seen = new Set<string>()
-
-  // Collect properties from instance and prototype chain (up to DurableRPC)
-  const collectProps = (obj: any) => {
-    if (!obj || obj === Object.prototype) return
-    for (const key of Object.getOwnPropertyNames(obj)) {
-      if (!seen.has(key) && !SKIP_PROPS_EXTENDED.has(key) && !key.startsWith('_')) {
-        seen.add(key)
-
-        let value: any
-        try {
-          value = (instance as any)[key]
-        } catch {
-          continue
-        }
-
-        if (typeof value === 'function') {
-          methods.push({ name: key, path: key, params: value.length })
-        } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-          // Check if it's a namespace (object with function properties)
-          const nsMethods: RpcMethodSchema[] = []
-          for (const nsKey of Object.keys(value)) {
-            if (typeof value[nsKey] === 'function') {
-              nsMethods.push({
-                name: nsKey,
-                path: `${key}.${nsKey}`,
-                params: value[nsKey].length,
-              })
-            }
-          }
-          if (nsMethods.length > 0) {
-            namespaces.push({ name: key, methods: nsMethods })
-          }
-        }
-      }
-    }
-  }
-
-  // Walk instance own props first, then prototype chain
-  collectProps(instance)
-  let proto = Object.getPrototypeOf(instance)
-  while (proto && proto !== DurableRPC.prototype && proto !== DurableObject.prototype) {
-    collectProps(proto)
-    proto = Object.getPrototypeOf(proto)
-  }
-
-  // Add database schema
-  let database: DatabaseSchema | undefined
-  try {
-    database = introspectDatabase(instance.sql)
-    if (database.tables.length === 0) {
-      database = undefined
-    }
-  } catch {
-    // SQL not available
-  }
-
-  const schema: RpcSchema = {
-    version: 1,
-    methods,
-    namespaces,
-  }
-  if (database) schema.database = database
-  if (instance.colo) schema.colo = instance.colo
-  return schema
-}
 
 // ============================================================================
 // Config Convention (do.config.ts)

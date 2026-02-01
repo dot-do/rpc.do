@@ -38,7 +38,9 @@ describe('Browser Compatibility', () => {
     expect(result.errors).toHaveLength(0)
 
     // Verify output doesn't contain Node.js module imports
-    const output = result.outputFiles[0].text
+    const outputFile = result.outputFiles[0]
+    expect(outputFile).toBeDefined()
+    const output = outputFile!.text
     expect(output).not.toContain('node:')
     expect(output).not.toContain('child_process')
     expect(output).not.toContain('require("fs")')
@@ -65,7 +67,9 @@ describe('Browser Compatibility', () => {
     })
 
     expect(result.errors).toHaveLength(0)
-    const output = result.outputFiles[0].text
+    const outputFile = result.outputFiles[0]
+    expect(outputFile).toBeDefined()
+    const output = outputFile!.text
     expect(output).not.toContain('node:')
     expect(output).not.toContain('child_process')
   })
@@ -96,7 +100,9 @@ describe('Browser Compatibility', () => {
     // Should succeed with oauth.do marked as external
     expect(result.errors).toHaveLength(0)
     // Output should have oauth.do import (not bundled)
-    const output = result.outputFiles[0].text
+    const outputFile = result.outputFiles[0]
+    expect(outputFile).toBeDefined()
+    const output = outputFile!.text
     expect(output).toContain('oauth.do')
   })
 })

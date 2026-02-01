@@ -142,6 +142,9 @@ function parseWranglerToml(filePath: string): WranglerBinding[] {
   }
 
   const section = durableObjectsMatch[1]
+  if (!section) {
+    return []
+  }
 
   // Find bindings = [ ... ]
   const bindingsMatch = section.match(/bindings\s*=\s*\[([\s\S]*?)\]/)
@@ -150,6 +153,9 @@ function parseWranglerToml(filePath: string): WranglerBinding[] {
   }
 
   const bindingsContent = bindingsMatch[1]
+  if (!bindingsContent) {
+    return []
+  }
 
   // Parse each binding: { name = "X", class_name = "Y" }
   const bindings: WranglerBinding[] = []
@@ -157,10 +163,11 @@ function parseWranglerToml(filePath: string): WranglerBinding[] {
 
   let match
   while ((match = bindingRegex.exec(bindingsContent)) !== null) {
-    bindings.push({
-      name: match[1],
-      className: match[2],
-    })
+    const name = match[1]
+    const className = match[2]
+    if (name && className) {
+      bindings.push({ name, className })
+    }
   }
 
   return bindings
@@ -255,15 +262,20 @@ export async function detectFromScan(dir: string, pattern?: string): Promise<Sca
     for (const baseClass of DO_BASE_CLASSES) {
       const classRegex = new RegExp(`class\\s+(\\w+)\\s+extends\\s+${baseClass}\\b`)
       for (let i = 0; i < lines.length; i++) {
-        const match = classRegex.exec(lines[i])
+        const line = lines[i]
+        if (!line) continue
+        const match = classRegex.exec(line)
         if (match) {
-          results.push({
-            className: match[1],
-            filePath,
-            pattern: 'class',
-            baseClass,
-            lineNumber: i + 1,
-          })
+          const className = match[1]
+          if (className) {
+            results.push({
+              className,
+              filePath,
+              pattern: 'class',
+              baseClass,
+              lineNumber: i + 1,
+            })
+          }
         }
       }
     }
@@ -271,14 +283,19 @@ export async function detectFromScan(dir: string, pattern?: string): Promise<Sca
     // Find factory-based DOs: export const X = DO(...)
     const factoryRegex = /export\s+const\s+(\w+)\s*=\s*DO\s*\(/
     for (let i = 0; i < lines.length; i++) {
-      const match = factoryRegex.exec(lines[i])
+      const line = lines[i]
+      if (!line) continue
+      const match = factoryRegex.exec(line)
       if (match) {
-        results.push({
-          exportName: match[1],
-          filePath,
-          pattern: 'factory',
-          lineNumber: i + 1,
-        })
+        const exportName = match[1]
+        if (exportName) {
+          results.push({
+            exportName,
+            filePath,
+            pattern: 'factory',
+            lineNumber: i + 1,
+          })
+        }
       }
     }
   }

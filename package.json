@@ -1,7 +1,9 @@
 {
   "name": "rpc.do",
   "version": "0.2.4",
-  "description": "Lightweight transport-agnostic RPC client proxy",
+  "description": "Managed RPC implementation for the .do platform with oauth.do authentication and cli.do tooling",
+  "stability": "production-ready",
+  "apiStability": "Follows semantic versioning. See docs/VERSIONING.md for stability guarantees.",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -37,6 +39,26 @@
     "./expose": {
       "types": "./dist/expose.d.ts",
       "import": "./dist/expose.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
+    },
+    "./middleware": {
+      "types": "./dist/middleware/index.d.ts",
+      "import": "./dist/middleware/index.js"
+    },
+    "./middleware/logging": {
+      "types": "./dist/middleware/logging.d.ts",
+      "import": "./dist/middleware/logging.js"
+    },
+    "./middleware/timing": {
+      "types": "./dist/middleware/timing.d.ts",
+      "import": "./dist/middleware/timing.js"
     }
   },
   "files": [

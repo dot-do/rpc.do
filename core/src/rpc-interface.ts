@@ -89,6 +89,115 @@ export const SKIP_PROPS_EXTENDED = new Set([
 ])
 
 // ============================================================================
+// Shared Utility Functions
+// ============================================================================
+
+/**
+ * Check if an object has functions at any nesting level.
+ * Used to determine if an object should be wrapped as a namespace.
+ */
+export function hasNestedFunctions(obj: Record<string, unknown>, maxDepth = 5): boolean {
+  if (maxDepth <= 0) return false
+  for (const key of Object.keys(obj)) {
+    const value = obj[key]
+    if (typeof value === 'function') return true
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      if (hasNestedFunctions(value as Record<string, unknown>, maxDepth - 1)) return true
+    }
+  }
+  return false
+}
+
+/**
+ * Collected methods and namespaces from object introspection
+ */
+export interface CollectedInterfaceProperties {
+  methods: Record<string, Function>
+  namespaces: Record<string, Record<string, Function>>
+}
+
+/**
+ * Collect methods and namespaces from an instance and its prototype chain.
+ * Stops at the specified base prototype.
+ */
+export function collectInterfaceProperties(
+  instance: object,
+  skipProps: Set<string>,
+  basePrototype: object
+): CollectedInterfaceProperties {
+  const methods: Record<string, Function> = {}
+  const namespaces: Record<string, Record<string, Function>> = {}
+  const seen = new Set<string>()
+
+  const collectProps = (obj: unknown) => {
+    if (!obj || obj === Object.prototype) return
+    for (const key of Object.getOwnPropertyNames(obj)) {
+      if (seen.has(key) || skipProps.has(key) || key.startsWith('_')) continue
+      seen.add(key)
+
+      let value: unknown
+      try {
+        value = (instance as Record<string, unknown>)[key]
+      } catch {
+        continue
+      }
+
+      if (typeof value === 'function') {
+        methods[key] = (value as Function).bind(instance)
+      } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const valueObj = value as Record<string, unknown>
+        if (hasNestedFunctions(valueObj, 1)) {
+          // Create a namespace object with bound methods (shallow)
+          const namespace: Record<string, Function> = {}
+          for (const nsKey of Object.keys(valueObj)) {
+            if (typeof valueObj[nsKey] === 'function') {
+              namespace[nsKey] = (valueObj[nsKey] as Function).bind(valueObj)
+            }
+          }
+          namespaces[key] = namespace
+        }
+      }
+    }
+  }
+
+  // Walk instance own props first, then prototype chain
+  collectProps(instance)
+  let proto = Object.getPrototypeOf(instance)
+  while (proto && proto !== basePrototype && proto !== Object.prototype) {
+    collectProps(proto)
+    proto = Object.getPrototypeOf(proto)
+  }
+
+  return { methods, namespaces }
+}
+
+/**
+ * Define collected properties on an instance
+ */
+export function defineInstanceProperties(
+  target: object,
+  collected: CollectedInterfaceProperties
+): void {
+  // Define methods
+  for (const [key, fn] of Object.entries(collected.methods)) {
+    Object.defineProperty(target, key, {
+      value: fn,
+      enumerable: true,
+      configurable: true,
+    })
+  }
+
+  // Define namespaces
+  for (const [key, namespace] of Object.entries(collected.namespaces)) {
+    Object.defineProperty(target, key, {
+      value: namespace,
+      enumerable: true,
+      configurable: true,
+    })
+  }
+}
+
+// ============================================================================
 // RPC Interface - Wrapper for RpcTarget
 // ============================================================================
 
@@ -125,64 +234,12 @@ export class RpcInterface<T extends RpcWrappable> extends RpcTarget {
   constructor(config: RpcInterfaceConfig<T>) {
     super()
     this.durableRpc = config.instance
-    this.exposeInterface(config.skipProps, config.basePrototype)
-  }
-
-  private exposeInterface(skipProps: Set<string>, basePrototype: object): void {
-    const instance = this.durableRpc
-    const seen = new Set<string>()
-
-    // Collect properties from instance and prototype chain
-    const collectProps = (obj: unknown) => {
-      if (!obj || obj === Object.prototype) return
-      for (const key of Object.getOwnPropertyNames(obj)) {
-        if (!seen.has(key) && !skipProps.has(key) && !key.startsWith('_')) {
-          seen.add(key)
-
-          let value: unknown
-          try {
-            value = (instance as Record<string, unknown>)[key]
-          } catch {
-            continue
-          }
-
-          if (typeof value === 'function') {
-            // Bind method to the DurableRPC instance
-            Object.defineProperty(this, key, {
-              value: (value as (...args: unknown[]) => unknown).bind(instance),
-              enumerable: true,
-              configurable: true,
-            })
-          } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-            // Check if it's a namespace (object with function properties)
-            const valueObj = value as Record<string, unknown>
-            const hasMethodKeys = Object.keys(valueObj).some(k => typeof valueObj[k] === 'function')
-            if (hasMethodKeys) {
-              // Create a namespace object with bound methods
-              const namespace: Record<string, (...args: unknown[]) => unknown> = {}
-              for (const nsKey of Object.keys(valueObj)) {
-                if (typeof valueObj[nsKey] === 'function') {
-                  namespace[nsKey] = (valueObj[nsKey] as (...args: unknown[]) => unknown).bind(valueObj)
-                }
-              }
-              Object.defineProperty(this, key, {
-                value: namespace,
-                enumerable: true,
-                configurable: true,
-              })
-            }
-          }
-        }
-      }
-    }
-
-    // Walk instance own props first, then prototype chain
-    collectProps(instance)
-    let proto = Object.getPrototypeOf(instance)
-    while (proto && proto !== basePrototype && proto !== Object.prototype) {
-      collectProps(proto)
-      proto = Object.getPrototypeOf(proto)
-    }
+    const collected = collectInterfaceProperties(
+      config.instance,
+      config.skipProps,
+      config.basePrototype
+    )
+    defineInstanceProperties(this, collected)
   }
 
   /**

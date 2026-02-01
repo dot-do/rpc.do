@@ -41,6 +41,12 @@
 
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { RpcTarget } from '@dotdo/capnweb/server'
+import {
+  wrapObjectAsTarget,
+  wrapObjectWithCustomMethods,
+  definePrototypeProperties,
+  DEFAULT_SKIP_PROPS,
+} from './utils/wrap-target'
 
 // ============================================================================
 // Types
@@ -72,103 +78,7 @@ export interface ExposeMultiOptions<Env> {
 // ============================================================================
 
 /** Properties to skip when exposing an SDK object */
-const SKIP_PROPS = new Set([
-  'constructor', 'toString', 'valueOf', 'toJSON',
-  'then', 'catch', 'finally', // prevent thenable confusion
-])
-
-/**
- * Check if an object has functions at any nesting level.
- */
-function hasNestedFunctions(obj: Record<string, unknown>, maxDepth = 5): boolean {
-  if (maxDepth <= 0) return false
-  for (const key of Object.keys(obj)) {
-    const value = obj[key]
-    if (typeof value === 'function') return true
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      if (hasNestedFunctions(value as Record<string, unknown>, maxDepth - 1)) return true
-    }
-  }
-  return false
-}
-
-/**
- * Recursively wrap an object as an RpcTarget, converting namespace
- * objects into sub-RpcTargets so they're callable over capnweb RPC.
- *
- * Creates a dynamic class with methods on the prototype (required by capnweb).
- */
-function wrapAsTarget(obj: object, seen: WeakSet<object>): RpcTarget {
-  if (seen.has(obj)) {
-    return new RpcTarget()
-  }
-  seen.add(obj)
-
-  // Collect methods and namespaces
-  const methods: Record<string, Function> = {}
-  const namespaces: Record<string, RpcTarget> = {}
-  const visited = new Set<string>()
-
-  const collect = (source: object) => {
-    for (const key of Object.getOwnPropertyNames(source)) {
-      if (visited.has(key) || SKIP_PROPS.has(key) || key.startsWith('_')) continue
-      visited.add(key)
-
-      let value: unknown
-      try {
-        value = (obj as Record<string, unknown>)[key]
-      } catch {
-        continue
-      }
-
-      if (typeof value === 'function') {
-        methods[key] = (value as Function).bind(obj)
-      } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-        const valueObj = value as Record<string, unknown>
-        const hasCallableContent = hasNestedFunctions(valueObj)
-        if (hasCallableContent) {
-          namespaces[key] = wrapAsTarget(valueObj, seen)
-        }
-      }
-    }
-  }
-
-  collect(obj)
-  let proto = Object.getPrototypeOf(obj)
-  while (proto && proto !== Object.prototype) {
-    collect(proto)
-    proto = Object.getPrototypeOf(proto)
-  }
-
-  // Create dynamic class with prototype methods (capnweb requirement)
-  class DynamicTarget extends RpcTarget {}
-
-  for (const [key, fn] of Object.entries(methods)) {
-    Object.defineProperty(DynamicTarget.prototype, key, {
-      value: fn,
-      enumerable: true,
-      configurable: true,
-      writable: true,
-    })
-  }
-
-  for (const [key, subTarget] of Object.entries(namespaces)) {
-    Object.defineProperty(DynamicTarget.prototype, key, {
-      get() { return subTarget },
-      enumerable: true,
-      configurable: true,
-    })
-  }
-
-  return new DynamicTarget()
-}
-
-/**
- * Create an RpcTarget that wraps an object's methods.
- */
-function createWrappedTarget(obj: object): RpcTarget {
-  return wrapAsTarget(obj, new WeakSet())
-}
+const SKIP_PROPS = new Set([...DEFAULT_SKIP_PROPS])
 
 /**
  * Create an RpcTarget for multi-SDK setup with optional custom methods.
@@ -180,19 +90,14 @@ function createMultiTarget(
 ): RpcTarget {
   const subTargets: Record<string, RpcTarget> = {}
   for (const [name, sdk] of Object.entries(sdkInstances)) {
-    subTargets[name] = wrapAsTarget(sdk, new WeakSet())
+    subTargets[name] = wrapObjectAsTarget(sdk, { skip: SKIP_PROPS })
   }
 
   // Create dynamic class with getters for sub-targets
   class MultiTarget extends RpcTarget {}
 
-  for (const [name, subTarget] of Object.entries(subTargets)) {
-    Object.defineProperty(MultiTarget.prototype, name, {
-      get() { return subTarget },
-      enumerable: true,
-      configurable: true,
-    })
-  }
+  // Define namespace getters
+  definePrototypeProperties(MultiTarget, {}, subTargets)
 
   // Add custom methods on prototype
   if (methods && ctx) {
@@ -217,75 +122,7 @@ function createSingleTarget(
   methods?: Record<string, Function>,
   ctx?: { sdk: object; env: unknown }
 ): RpcTarget {
-  // Collect methods and namespaces from SDK
-  const sdkMethods: Record<string, Function> = {}
-  const namespaces: Record<string, RpcTarget> = {}
-  const visited = new Set<string>()
-  const seen = new WeakSet<object>()
-
-  const collect = (source: object) => {
-    for (const key of Object.getOwnPropertyNames(source)) {
-      if (visited.has(key) || SKIP_PROPS.has(key) || key.startsWith('_')) continue
-      visited.add(key)
-
-      let value: unknown
-      try {
-        value = (sdk as Record<string, unknown>)[key]
-      } catch {
-        continue
-      }
-
-      if (typeof value === 'function') {
-        sdkMethods[key] = (value as Function).bind(sdk)
-      } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-        const valueObj = value as Record<string, unknown>
-        if (hasNestedFunctions(valueObj)) {
-          namespaces[key] = wrapAsTarget(valueObj, seen)
-        }
-      }
-    }
-  }
-
-  collect(sdk)
-  let proto = Object.getPrototypeOf(sdk)
-  while (proto && proto !== Object.prototype) {
-    collect(proto)
-    proto = Object.getPrototypeOf(proto)
-  }
-
-  // Create dynamic class with all methods on prototype
-  class SingleTarget extends RpcTarget {}
-
-  for (const [key, fn] of Object.entries(sdkMethods)) {
-    Object.defineProperty(SingleTarget.prototype, key, {
-      value: fn,
-      enumerable: true,
-      configurable: true,
-      writable: true,
-    })
-  }
-
-  for (const [key, subTarget] of Object.entries(namespaces)) {
-    Object.defineProperty(SingleTarget.prototype, key, {
-      get() { return subTarget },
-      enumerable: true,
-      configurable: true,
-    })
-  }
-
-  // Add custom methods on prototype
-  if (methods && ctx) {
-    for (const [name, method] of Object.entries(methods)) {
-      Object.defineProperty(SingleTarget.prototype, name, {
-        value: (method as Function).bind(ctx),
-        enumerable: true,
-        configurable: true,
-        writable: true,
-      })
-    }
-  }
-
-  return new SingleTarget()
+  return wrapObjectWithCustomMethods(sdk, methods, ctx, { skip: SKIP_PROPS })
 }
 
 // ============================================================================

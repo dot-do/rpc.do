@@ -36,7 +36,7 @@
  * ```
  */
 
-import type { Transport, TransportFactory, RPCProxy } from './index'
+import type { Transport, TransportFactory, RPCProxy, RPCClientMiddleware } from './index'
 import type {
   SqlQueryResult as TypesSqlQueryResult,
   SqlQuery as TypesSqlQuery,
@@ -253,6 +253,80 @@ export type DOClient<T = unknown> = {
 // ============================================================================
 
 /**
+ * Options for createDOClient
+ */
+export interface CreateDOClientOptions {
+  /** Middleware chain for request/response hooks */
+  middleware?: RPCClientMiddleware[]
+}
+
+/**
+ * Execute middleware chain for onRequest hooks
+ */
+async function executeOnRequest(middleware: RPCClientMiddleware[], method: string, args: unknown[]): Promise<void> {
+  for (const mw of middleware) {
+    if (mw.onRequest) {
+      await mw.onRequest(method, args)
+    }
+  }
+}
+
+/**
+ * Execute middleware chain for onResponse hooks
+ */
+async function executeOnResponse(middleware: RPCClientMiddleware[], method: string, result: unknown): Promise<void> {
+  for (const mw of middleware) {
+    if (mw.onResponse) {
+      await mw.onResponse(method, result)
+    }
+  }
+}
+
+/**
+ * Execute middleware chain for onError hooks
+ */
+async function executeOnError(middleware: RPCClientMiddleware[], method: string, error: unknown): Promise<void> {
+  for (const mw of middleware) {
+    if (mw.onError) {
+      await mw.onError(method, error)
+    }
+  }
+}
+
+/**
+ * Wrap a transport with middleware support
+ */
+function wrapTransportWithMiddleware(transport: Transport, middleware: RPCClientMiddleware[]): Transport {
+  if (!middleware.length) {
+    return transport
+  }
+
+  return {
+    async call(method: string, args: unknown[]): Promise<unknown> {
+      // Execute onRequest hooks
+      await executeOnRequest(middleware, method, args)
+
+      try {
+        // Make the actual call
+        const result = await transport.call(method, args)
+
+        // Execute onResponse hooks
+        await executeOnResponse(middleware, method, result)
+
+        return result
+      } catch (error) {
+        // Execute onError hooks
+        await executeOnError(middleware, method, error)
+
+        // Re-throw the error
+        throw error
+      }
+    },
+    close: transport.close ? transport.close.bind(transport) : undefined,
+  } as Transport
+}
+
+/**
  * Create a serialized SQL query from tagged template
  */
 function serializeSql(strings: TemplateStringsArray, values: unknown[]): { strings: string[]; values: unknown[] } {
@@ -407,8 +481,10 @@ function createStorageProxy(transport: Transport): RemoteStorage {
  * ```
  */
 export function createDOClient<T = unknown>(
-  transport: Transport | TransportFactory
+  transport: Transport | TransportFactory,
+  options?: CreateDOClientOptions
 ): DOClient<T> {
+  const middleware = options?.middleware ?? []
   let _transport: Transport | null = null
   let _transportPromise: Promise<Transport> | null = null
 
@@ -418,10 +494,11 @@ export function createDOClient<T = unknown>(
 
     if (typeof transport === 'function') {
       _transportPromise = Promise.resolve(transport())
-      _transport = await _transportPromise
+      const rawTransport = await _transportPromise
+      _transport = wrapTransportWithMiddleware(rawTransport, middleware)
       _transportPromise = null
     } else {
-      _transport = transport
+      _transport = wrapTransportWithMiddleware(transport, middleware)
     }
     return _transport
   }
@@ -431,7 +508,7 @@ export function createDOClient<T = unknown>(
     if (!_transport) {
       // Initialize synchronously if possible
       if (typeof transport !== 'function') {
-        _transport = transport
+        _transport = wrapTransportWithMiddleware(transport, middleware)
       } else {
         throw new Error('Transport not initialized. Call any async method first.')
       }
@@ -533,10 +610,12 @@ export async function connectDO<T = unknown>(
   // Dynamic import to avoid circular deps
   const { capnweb } = await import('./transports.js')
 
-  const transport = capnweb(url, {
-    auth: options?.auth,
+  // Build options object, only adding defined values to satisfy exactOptionalPropertyTypes
+  const capnwebOpts: { auth?: string | (() => string | null | Promise<string | null>); reconnect: boolean } = {
     reconnect: options?.reconnect ?? true,
-  })
+  }
+  if (options?.auth !== undefined) capnwebOpts.auth = options.auth
+  const transport = capnweb(url, capnwebOpts)
 
   return createDOClient<T>(transport)
 }

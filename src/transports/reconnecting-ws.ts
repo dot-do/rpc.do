@@ -187,8 +187,8 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
     this.url = url
     this.currentBackoff = options.reconnectBackoff ?? DEFAULT_RECONNECT_BACKOFF
 
-    this.options = {
-      auth: options.auth,
+    // Build options object, only adding defined values to satisfy exactOptionalPropertyTypes
+    const opts: typeof this.options = {
       autoReconnect: options.autoReconnect ?? true,
       maxReconnectAttempts: options.maxReconnectAttempts ?? Infinity,
       reconnectBackoff: options.reconnectBackoff ?? DEFAULT_RECONNECT_BACKOFF,
@@ -198,11 +198,14 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
       heartbeatTimeout: options.heartbeatTimeout ?? DEFAULT_HEARTBEAT_TIMEOUT,
       allowInsecureAuth: options.allowInsecureAuth ?? false,
       debug: options.debug ?? false,
-      onConnect: options.onConnect,
-      onDisconnect: options.onDisconnect,
-      onReconnecting: options.onReconnecting,
-      onError: options.onError,
     }
+    // Only add optional properties if they are defined
+    if (options.auth !== undefined) opts.auth = options.auth
+    if (options.onConnect !== undefined) opts.onConnect = options.onConnect
+    if (options.onDisconnect !== undefined) opts.onDisconnect = options.onDisconnect
+    if (options.onReconnecting !== undefined) opts.onReconnecting = options.onReconnecting
+    if (options.onError !== undefined) opts.onError = options.onError
+    this.options = opts
   }
 
   // ==========================================================================

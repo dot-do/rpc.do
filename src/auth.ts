@@ -186,7 +186,11 @@ export function oauthProvider(options: OAuthProviderOptions = {}): AuthProvider 
     return token ?? fallbackToken ?? null
   }
 
-  return cachedAuth(getTokenFn, { ttl, refreshBuffer })
+  // Build options object, only setting defined values to satisfy exactOptionalPropertyTypes
+  const cacheOptions: CachedAuthOptions = {}
+  if (ttl !== undefined) cacheOptions.ttl = ttl
+  if (refreshBuffer !== undefined) cacheOptions.refreshBuffer = refreshBuffer
+  return cachedAuth(getTokenFn, cacheOptions)
 }
 
 /**
@@ -259,7 +263,7 @@ export async function getToken(): Promise<string | null> {
 
   // Check environment variables (Node.js only)
   if (typeof process !== 'undefined' && process.env) {
-    const envToken = process.env.DO_ADMIN_TOKEN ?? process.env.DO_TOKEN
+    const envToken = process.env['DO_ADMIN_TOKEN'] ?? process.env['DO_TOKEN']
     if (envToken) {
       return envToken
     }

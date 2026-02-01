@@ -46,21 +46,14 @@ export type {
 } from '@dotdo/capnweb/server'
 
 import { RpcTarget, newWorkersRpcResponse } from '@dotdo/capnweb/server'
+import { wrapObjectAsTarget, DEFAULT_SKIP_PROPS } from './utils/wrap-target'
 
 // ============================================================================
 // Convenience wrappers
 // ============================================================================
 
 /** Properties to skip when wrapping a plain object as an RpcTarget */
-const DEFAULT_SKIP = new Set([
-  'constructor',
-  'toString',
-  'valueOf',
-  'toJSON',
-  'then',
-  'catch',
-  'finally',
-])
+const DEFAULT_SKIP = new Set([...DEFAULT_SKIP_PROPS])
 
 /**
  * Wrap a plain object/SDK as an RpcTarget, recursively converting namespace
@@ -90,104 +83,7 @@ export function createTarget(obj: object, opts?: { skip?: string[] }): RpcTarget
     ? new Set([...DEFAULT_SKIP, ...opts.skip])
     : DEFAULT_SKIP
 
-  return wrapAsTarget(obj, skip, new WeakSet())
-}
-
-/**
- * Check if an object has functions at any nesting level.
- * Used to determine if an object should be wrapped as a namespace.
- */
-function hasNestedFunctions(obj: Record<string, unknown>, maxDepth = 5): boolean {
-  if (maxDepth <= 0) return false
-  for (const key of Object.keys(obj)) {
-    const value = obj[key]
-    if (typeof value === 'function') return true
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      if (hasNestedFunctions(value as Record<string, unknown>, maxDepth - 1)) return true
-    }
-  }
-  return false
-}
-
-/**
- * Recursively wrap an object as an RpcTarget.
- *
- * Creates a dynamic class that extends RpcTarget with methods defined on
- * the prototype (not instance properties). This is required because capnweb
- * only allows prototype methods to be called over RPC for security.
- *
- * Namespace objects with function properties become getters returning sub-RpcTargets.
- */
-function wrapAsTarget(obj: object, skip: Set<string>, seen: WeakSet<object>): RpcTarget {
-  // Prevent infinite recursion on circular references
-  if (seen.has(obj)) {
-    return new RpcTarget()
-  }
-  seen.add(obj)
-
-  // Collect all methods and namespaces to expose
-  const methods: Record<string, Function> = {}
-  const namespaces: Record<string, RpcTarget> = {}
-  const visited = new Set<string>()
-
-  const collect = (source: object) => {
-    for (const key of Object.getOwnPropertyNames(source)) {
-      if (visited.has(key) || skip.has(key) || key.startsWith('_')) continue
-      visited.add(key)
-
-      let value: unknown
-      try {
-        value = (obj as Record<string, unknown>)[key]
-      } catch {
-        continue
-      }
-
-      if (typeof value === 'function') {
-        // Bind method to original object
-        methods[key] = (value as Function).bind(obj)
-      } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-        // Check if it's a namespace (object with function properties or nested namespaces)
-        const valueObj = value as Record<string, unknown>
-        const hasCallableContent = hasNestedFunctions(valueObj)
-        if (hasCallableContent) {
-          // Recursively wrap namespace as a sub-RpcTarget
-          namespaces[key] = wrapAsTarget(valueObj, skip, seen)
-        }
-      }
-    }
-  }
-
-  collect(obj)
-  let proto = Object.getPrototypeOf(obj)
-  while (proto && proto !== Object.prototype) {
-    collect(proto)
-    proto = Object.getPrototypeOf(proto)
-  }
-
-  // Create a dynamic class with methods on the prototype
-  // This is required because capnweb only exposes prototype methods over RPC
-  class DynamicTarget extends RpcTarget {}
-
-  // Define methods on the prototype
-  for (const [key, fn] of Object.entries(methods)) {
-    Object.defineProperty(DynamicTarget.prototype, key, {
-      value: fn,
-      enumerable: true,
-      configurable: true,
-      writable: true,
-    })
-  }
-
-  // Define namespace getters on the prototype
-  for (const [key, subTarget] of Object.entries(namespaces)) {
-    Object.defineProperty(DynamicTarget.prototype, key, {
-      get() { return subTarget },
-      enumerable: true,
-      configurable: true,
-    })
-  }
-
-  return new DynamicTarget()
+  return wrapObjectAsTarget(obj, { skip })
 }
 
 /**

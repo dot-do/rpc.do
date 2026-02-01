@@ -10,6 +10,10 @@ export default defineConfig([
       'src/errors.ts',
       'src/server.ts',
       'src/expose.ts',
+      'src/react.ts',
+      'src/middleware/index.ts',
+      'src/middleware/logging.ts',
+      'src/middleware/timing.ts',
     ],
     format: ['esm'],
     dts: true,
@@ -21,6 +25,13 @@ export default defineConfig([
     format: ['esm'],
     dts: true,
     external: ['capnweb', 'oauth.do', 'cloudflare:workers', 'ts-morph', 'glob'],
+  },
+  // Testing utilities (Node.js only, uses node:http for TestServer)
+  {
+    entry: ['src/testing.ts'],
+    format: ['esm'],
+    dts: true,
+    external: ['capnweb', '@dotdo/capnweb', '@dotdo/capnweb/server', 'oauth.do', 'cloudflare:workers', 'node:http'],
   },
   // CLI (Node.js only)
   {

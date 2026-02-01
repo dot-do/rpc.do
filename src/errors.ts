@@ -205,7 +205,8 @@ export class ProtocolVersionError extends Error {
    */
   private static getMajorVersion(version: string): number {
     const match = version.match(/^(\d+)/)
-    return match ? parseInt(match[1], 10) : 0
+    const majorStr = match?.[1]
+    return majorStr ? parseInt(majorStr, 10) : 0
   }
 
   /**
@@ -237,7 +238,7 @@ export class ProtocolVersionError extends Error {
  * ```
  */
 export class AuthenticationError extends Error {
-  readonly name = 'AuthenticationError'
+  override readonly name = 'AuthenticationError'
   readonly status = 401
 
   constructor(message: string = 'Authentication failed') {
@@ -272,7 +273,7 @@ export class AuthenticationError extends Error {
  * ```
  */
 export class RateLimitError extends Error {
-  readonly name = 'RateLimitError'
+  override readonly name = 'RateLimitError'
   readonly status = 429
 
   constructor(

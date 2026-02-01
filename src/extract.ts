@@ -195,9 +195,11 @@ async function extractFromFile(project: Project, filePath: string): Promise<Extr
   })
   if (syntaxDiagnostics.length > 0) {
     const firstError = syntaxDiagnostics[0]
-    const messageText = firstError.getMessageText()
-    const message = typeof messageText === 'string' ? messageText : messageText.getMessageText()
-    throw new Error(`TypeScript syntax error in ${filePath}: ${message}`)
+    if (firstError) {
+      const messageText = firstError.getMessageText()
+      const message = typeof messageText === 'string' ? messageText : messageText.getMessageText()
+      throw new Error(`TypeScript syntax error in ${filePath}: ${message}`)
+    }
   }
 
   const results: ExtractedSchema[] = []
@@ -233,7 +235,7 @@ async function extractFromFile(project: Project, filePath: string): Promise<Extr
     throw new Error(`No DurableObject class found in ${filePath}. Expected a class extending DurableObject, DurableRPC, or DigitalObject.`)
   }
 
-  return results.length === 1 ? results[0] : results
+  return results.length === 1 ? (results[0] ?? null) : results
 }
 
 /**
@@ -740,28 +742,35 @@ function extractNamespaceFromType(name: string, type: Type, annotatedTypeName?: 
     const callSignatures = propType.getCallSignatures()
     if (callSignatures.length > 0) {
       const sig = callSignatures[0]
+      if (sig) {
+        const parameters: ExtractedParameter[] = sig.getParameters().map((param) => {
+          const paramDecl = param.getValueDeclaration()
+          const paramDeclarations = param.getDeclarations()
+          if (!paramDecl && (!paramDeclarations || paramDeclarations.length === 0)) {
+            return { name: param.getName(), type: 'unknown', optional: false }
+          }
+          const firstDecl = paramDeclarations?.[0]
+          return {
+            name: param.getName(),
+            type: getTypeText(paramDecl?.getType() ?? (firstDecl ? param.getTypeAtLocation(firstDecl) : undefined), undefined),
+            optional: (paramDecl && 'hasQuestionToken' in paramDecl) ? (paramDecl as any).hasQuestionToken() : false,
+          }
+        })
 
-      const parameters: ExtractedParameter[] = sig.getParameters().map((param) => {
-        const paramDecl = param.getValueDeclaration()
-        const paramDeclarations = param.getDeclarations()
-        if (!paramDecl && (!paramDeclarations || paramDeclarations.length === 0)) {
-          return { name: param.getName(), type: 'unknown', optional: false }
-        }
-        return {
-          name: param.getName(),
-          type: getTypeText(paramDecl?.getType() || param.getTypeAtLocation(paramDeclarations![0]!), undefined),
-          optional: (paramDecl && 'hasQuestionToken' in paramDecl) ? (paramDecl as any).hasQuestionToken() : false,
-        }
-      })
+        const returnType = getTypeText(sig.getReturnType(), undefined)
 
-      const returnType = getTypeText(sig.getReturnType(), undefined)
-
-      methods.push({ name: prop.getName(), parameters, returnType })
+        methods.push({ name: prop.getName(), parameters, returnType })
+      }
     }
   }
 
   if (methods.length > 0) {
-    return { name, methods, typeName: annotatedTypeName }
+    // Only include typeName if it's defined
+    const result: ExtractedNamespace = { name, methods }
+    if (annotatedTypeName !== undefined) {
+      result.typeName = annotatedTypeName
+    }
+    return result
   }
 
   return null
@@ -770,10 +779,15 @@ function extractNamespaceFromType(name: string, type: Type, annotatedTypeName?: 
 /**
  * Get type text, preferring the explicit annotation over inferred type
  */
-function getTypeText(type: Type, annotatedType?: string): string {
+function getTypeText(type: Type | undefined, annotatedType?: string): string {
   // Prefer explicit annotation
   if (annotatedType) {
     return annotatedType
+  }
+
+  // Handle undefined type
+  if (!type) {
+    return 'unknown'
   }
 
   // Get the type text
