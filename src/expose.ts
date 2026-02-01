@@ -58,8 +58,8 @@ export type SDKFactory<Env, SDK> = (env: Env) => SDK
 /** Method implementation with access to SDK and env */
 export type MethodImpl<Env, SDK> = (
   this: { sdk: SDK; env: Env },
-  ...args: any[]
-) => Promise<any> | any
+  ...args: unknown[]
+) => Promise<unknown> | unknown
 
 /** Options for expose() with a single SDK + optional custom methods */
 export interface ExposeOptions<Env, SDK extends object> {
@@ -70,7 +70,7 @@ export interface ExposeOptions<Env, SDK extends object> {
 /** Options for expose() with multiple named SDKs */
 export interface ExposeMultiOptions<Env> {
   sdks: Record<string, SDKFactory<Env, object>>
-  methods?: Record<string, (this: { sdks: Record<string, object>; env: Env }, ...args: any[]) => any>
+  methods?: Record<string, (this: { sdks: Record<string, object>; env: Env }, ...args: unknown[]) => unknown>
 }
 
 // ============================================================================

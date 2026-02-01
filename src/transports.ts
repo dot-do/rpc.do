@@ -45,6 +45,73 @@ export function isServerMessage(data: unknown): data is ServerMessage {
   return hasResult || hasError
 }
 
+// ============================================================================
+// Error Wrapping
+// ============================================================================
+
+/**
+ * Wrap transport errors from capnweb into appropriate rpc.do error types.
+ *
+ * Converts generic errors thrown by capnweb into:
+ * - ConnectionError for network failures, HTTP errors, timeouts
+ * - RPCError for server-side RPC errors
+ *
+ * @internal
+ */
+export function wrapTransportError(error: unknown): ConnectionError | RPCError {
+  if (error instanceof ConnectionError || error instanceof RPCError) {
+    return error
+  }
+
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase()
+
+    // Network errors (fetch failures, DNS, etc.)
+    if (
+      error.name === 'TypeError' ||
+      message.includes('network') ||
+      message.includes('fetch') ||
+      message.includes('econnrefused') ||
+      message.includes('enotfound') ||
+      message.includes('failed to fetch') ||
+      message.includes('networkerror')
+    ) {
+      return new ConnectionError(error.message, 'CONNECTION_FAILED', true)
+    }
+
+    // Auth failures (401)
+    if (message.includes('401') || message.includes('unauthorized') || message.includes('authentication failed')) {
+      return ConnectionError.authFailed(error.message)
+    }
+
+    // Rate limiting (429)
+    if (message.includes('429') || message.includes('rate limit') || message.includes('too many requests')) {
+      return new ConnectionError(error.message, 'CONNECTION_FAILED', true)
+    }
+
+    // Server errors (5xx) - retryable
+    if (message.includes('500') || message.includes('502') || message.includes('503') || message.includes('504') || message.includes('internal server error')) {
+      return new ConnectionError(error.message, 'CONNECTION_FAILED', true)
+    }
+
+    // Client errors (4xx except 401, 429) - typically not retryable, treat as RPC error
+    if (/\b4\d{2}\b/.test(message) && !message.includes('401') && !message.includes('429')) {
+      return new RPCError(error.message, 'REQUEST_ERROR')
+    }
+
+    // RPC-level errors from the server (usually have code property)
+    if ('code' in error && typeof (error as { code: unknown }).code === 'string') {
+      return new RPCError(error.message, (error as { code: string }).code)
+    }
+
+    // Default: treat as RPC error
+    return new RPCError(error.message, 'UNKNOWN_ERROR')
+  }
+
+  // Non-Error thrown
+  return new RPCError(String(error), 'UNKNOWN_ERROR')
+}
+
 /**
  * Auth provider function type for HTTP clients
  * Returns a token string or null/undefined
@@ -384,22 +451,27 @@ export function capnweb(
         }
       }
 
-      // Navigate the session proxy
-      const parts = method.split('.')
-      let target: unknown = session
-      for (const part of parts) {
-        // Allow both objects and functions (capnweb returns proxy functions that are traversable)
-        if ((typeof target !== 'object' && typeof target !== 'function') || target === null) {
-          throw new RPCError(`Invalid path: ${part}`, 'INVALID_PATH')
+      try {
+        // Navigate the session proxy
+        const parts = method.split('.')
+        let target: unknown = session
+        for (const part of parts) {
+          // Allow both objects and functions (capnweb returns proxy functions that are traversable)
+          if ((typeof target !== 'object' && typeof target !== 'function') || target === null) {
+            throw new RPCError(`Invalid path: ${part}`, 'INVALID_PATH')
+          }
+          target = (target as Record<string, unknown>)[part]
         }
-        target = (target as Record<string, unknown>)[part]
-      }
 
-      // Call with args
-      if (!isFunction(target)) {
-        throw new RPCError(`Method not found: ${method}`, 'METHOD_NOT_FOUND')
+        // Call with args
+        if (!isFunction(target)) {
+          throw new RPCError(`Method not found: ${method}`, 'METHOD_NOT_FOUND')
+        }
+        return await target(...args)
+      } catch (error) {
+        // Wrap errors from capnweb into appropriate error types
+        throw wrapTransportError(error)
       }
-      return target(...args)
     },
     close() {
       if (session && (typeof session === 'object' || typeof session === 'function') && session !== null) {
@@ -457,22 +529,27 @@ function createReconnectingCapnwebTransport(
         session = rpcSession.getRemoteMain()
       }
 
-      // Navigate the session proxy
-      const parts = method.split('.')
-      let target: unknown = session
-      for (const part of parts) {
-        // Allow both objects and functions (capnweb returns proxy functions that are traversable)
-        if ((typeof target !== 'object' && typeof target !== 'function') || target === null) {
-          throw new RPCError(`Invalid path: ${part}`, 'INVALID_PATH')
+      try {
+        // Navigate the session proxy
+        const parts = method.split('.')
+        let target: unknown = session
+        for (const part of parts) {
+          // Allow both objects and functions (capnweb returns proxy functions that are traversable)
+          if ((typeof target !== 'object' && typeof target !== 'function') || target === null) {
+            throw new RPCError(`Invalid path: ${part}`, 'INVALID_PATH')
+          }
+          target = (target as Record<string, unknown>)[part]
         }
-        target = (target as Record<string, unknown>)[part]
-      }
 
-      // Call with args
-      if (!isFunction(target)) {
-        throw new RPCError(`Method not found: ${method}`, 'METHOD_NOT_FOUND')
+        // Call with args
+        if (!isFunction(target)) {
+          throw new RPCError(`Method not found: ${method}`, 'METHOD_NOT_FOUND')
+        }
+        return await target(...args)
+      } catch (error) {
+        // Wrap errors from capnweb into appropriate error types
+        throw wrapTransportError(error)
       }
-      return target(...args)
     },
     close() {
       transport?.close()

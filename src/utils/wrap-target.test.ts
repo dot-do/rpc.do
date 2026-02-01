@@ -11,6 +11,7 @@ import {
   wrapObjectAsTarget,
   wrapObjectWithCustomMethods,
   DEFAULT_SKIP_PROPS,
+  SECURITY_BLOCKLIST,
 } from './wrap-target'
 
 describe('hasNestedFunctions', () => {
@@ -268,5 +269,154 @@ describe('wrapObjectWithCustomMethods', () => {
 
     expect(typeof target.test).toBe('function')
     expect(target.test()).toBe('ok')
+  })
+})
+
+// ============================================================================
+// Security Tests
+// ============================================================================
+
+describe('SECURITY_BLOCKLIST', () => {
+  it('should contain all dangerous prototype-related properties', () => {
+    expect(SECURITY_BLOCKLIST.has('__proto__')).toBe(true)
+    expect(SECURITY_BLOCKLIST.has('constructor')).toBe(true)
+    expect(SECURITY_BLOCKLIST.has('prototype')).toBe(true)
+  })
+
+  it('should contain legacy property descriptor methods', () => {
+    expect(SECURITY_BLOCKLIST.has('__defineGetter__')).toBe(true)
+    expect(SECURITY_BLOCKLIST.has('__defineSetter__')).toBe(true)
+    expect(SECURITY_BLOCKLIST.has('__lookupGetter__')).toBe(true)
+    expect(SECURITY_BLOCKLIST.has('__lookupSetter__')).toBe(true)
+  })
+
+  it('should have all blocklisted properties included in DEFAULT_SKIP_PROPS', () => {
+    for (const prop of SECURITY_BLOCKLIST) {
+      expect(DEFAULT_SKIP_PROPS.has(prop)).toBe(true)
+    }
+  })
+})
+
+describe('Security: dangerous property blocking', () => {
+  it('should not expose __proto__ as an RPC method from source object', () => {
+    const obj: Record<string, unknown> = {
+      greet: () => 'hello',
+    }
+
+    // Attacker tries to add __proto__ as an own property
+    Object.defineProperty(obj, '__proto__', {
+      value: () => 'malicious',
+      enumerable: true,
+      configurable: true,
+    })
+
+    const { methods } = collectObjectProperties(obj, DEFAULT_SKIP_PROPS, new WeakSet())
+
+    // Safe method should be collected
+    expect(Object.keys(methods)).toContain('greet')
+
+    // __proto__ should NOT be collected (blocked by skip set and _ prefix)
+    // Note: We use Object.keys() to avoid JavaScript's special __proto__ behavior
+    expect(Object.keys(methods)).not.toContain('__proto__')
+  })
+
+  it('should not expose constructor as an RPC method from source object', () => {
+    const obj: Record<string, unknown> = {
+      greet: () => 'hello',
+    }
+
+    // Attacker tries to add constructor as an own property
+    Object.defineProperty(obj, 'constructor', {
+      value: () => 'malicious constructor',
+      enumerable: true,
+      configurable: true,
+    })
+
+    const { methods } = collectObjectProperties(obj, DEFAULT_SKIP_PROPS, new WeakSet())
+
+    // Safe method should be collected
+    expect(Object.keys(methods)).toContain('greet')
+
+    // constructor should NOT be collected (blocked by skip set)
+    expect(Object.keys(methods)).not.toContain('constructor')
+  })
+
+  it('should not expose prototype as an RPC method from source object', () => {
+    const obj: Record<string, unknown> = {
+      greet: () => 'hello',
+    }
+
+    // Attacker tries to add prototype as an own property
+    Object.defineProperty(obj, 'prototype', {
+      value: () => 'malicious prototype',
+      enumerable: true,
+      configurable: true,
+    })
+
+    const { methods } = collectObjectProperties(obj, DEFAULT_SKIP_PROPS, new WeakSet())
+
+    // Safe method should be collected
+    expect(Object.keys(methods)).toContain('greet')
+
+    // prototype should NOT be collected (blocked by skip set)
+    expect(Object.keys(methods)).not.toContain('prototype')
+  })
+
+  it('should block all SECURITY_BLOCKLIST properties even when added to source', () => {
+    const obj: Record<string, unknown> = {
+      safeMethod: () => 'safe',
+    }
+
+    // Try to add all security-sensitive properties
+    for (const prop of SECURITY_BLOCKLIST) {
+      Object.defineProperty(obj, prop, {
+        value: () => `malicious-${prop}`,
+        enumerable: true,
+        configurable: true,
+      })
+    }
+
+    const { methods } = collectObjectProperties(obj, DEFAULT_SKIP_PROPS, new WeakSet())
+    const methodKeys = Object.keys(methods)
+
+    // Safe method should be collected
+    expect(methodKeys).toContain('safeMethod')
+
+    // All security-sensitive properties should NOT be collected
+    for (const prop of SECURITY_BLOCKLIST) {
+      expect(methodKeys).not.toContain(prop)
+    }
+  })
+
+  it('should block dangerous properties in wrapped targets', () => {
+    const obj = {
+      greet: (name: string) => `Hello, ${name}!`,
+    }
+
+    const target = wrapObjectAsTarget(obj) as Record<string, unknown>
+
+    // greet should be accessible
+    expect(typeof target.greet).toBe('function')
+
+    // Verify that prototype-pollution vectors are not exposed as enumerable methods
+    // Note: __proto__ is a special JavaScript property, not an RPC method
+    // constructor is inherited from RpcTarget, not exposed via RPC
+    const ownMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(target))
+      .filter(key => {
+        const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(target), key)
+        return descriptor?.enumerable === true
+      })
+
+    // greet should be enumerable
+    expect(ownMethods).toContain('greet')
+
+    // Security properties should NOT be enumerable on the prototype
+    expect(ownMethods).not.toContain('__proto__')
+    expect(ownMethods).not.toContain('constructor')
+    expect(ownMethods).not.toContain('prototype')
+    expect(ownMethods).not.toContain('__defineGetter__')
+    expect(ownMethods).not.toContain('__defineSetter__')
+    expect(ownMethods).not.toContain('__lookupGetter__')
+    expect(ownMethods).not.toContain('__lookupSetter__')
   })
 })

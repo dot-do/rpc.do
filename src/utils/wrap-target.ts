@@ -8,15 +8,34 @@
 import { RpcTarget } from '@dotdo/capnweb/server'
 
 // ============================================================================
-// Default Skip Properties
+// Security Blocklist and Default Skip Properties
 // ============================================================================
+
+/**
+ * Security blocklist: dangerous properties that must never be exposed via RPC.
+ * These could enable prototype pollution or access to internal JavaScript mechanisms.
+ */
+export const SECURITY_BLOCKLIST = new Set([
+  // Prototype chain access - could enable prototype pollution attacks
+  '__proto__',
+  'constructor',
+  'prototype',
+  // Legacy property descriptor methods - could modify object behavior
+  '__defineGetter__',
+  '__defineSetter__',
+  '__lookupGetter__',
+  '__lookupSetter__',
+])
 
 /** Default properties to skip when wrapping a plain object as an RpcTarget */
 export const DEFAULT_SKIP_PROPS = new Set([
-  'constructor',
+  // Include all security-critical properties
+  ...SECURITY_BLOCKLIST,
+  // Standard object methods that shouldn't be exposed
   'toString',
   'valueOf',
   'toJSON',
+  // Promise-like methods to prevent thenable detection issues
   'then',
   'catch',
   'finally',

@@ -709,8 +709,7 @@ export async function createRpcSession<T = unknown>(
   options: RpcSessionOptions = {}
 ): Promise<{
   transport: ReconnectingWebSocketTransport
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  session: any
+  session: unknown
   api: T
 }> {
   const { localMain, ...transportOptions } = options

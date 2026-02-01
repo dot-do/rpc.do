@@ -228,6 +228,134 @@ describe('HTTP Transport', () => {
 })
 
 // ============================================================================
+// Error Wrapping Tests
+// ============================================================================
+
+describe('wrapTransportError', () => {
+  it('should pass through ConnectionError unchanged', async () => {
+    const { wrapTransportError } = await import('./transports')
+    const { ConnectionError } = await import('./errors')
+
+    const original = ConnectionError.timeout(5000)
+    const wrapped = wrapTransportError(original)
+
+    expect(wrapped).toBe(original)
+    expect(wrapped).toBeInstanceOf(ConnectionError)
+  })
+
+  it('should pass through RPCError unchanged', async () => {
+    const { wrapTransportError } = await import('./transports')
+
+    const original = new RPCError('test error', 'TEST_CODE')
+    const wrapped = wrapTransportError(original)
+
+    expect(wrapped).toBe(original)
+    expect(wrapped).toBeInstanceOf(RPCError)
+  })
+
+  it('should wrap TypeError as ConnectionError', async () => {
+    const { wrapTransportError } = await import('./transports')
+    const { ConnectionError } = await import('./errors')
+
+    const typeError = new TypeError('Failed to fetch')
+    const wrapped = wrapTransportError(typeError)
+
+    expect(wrapped).toBeInstanceOf(ConnectionError)
+    expect((wrapped as InstanceType<typeof ConnectionError>).code).toBe('CONNECTION_FAILED')
+    expect((wrapped as InstanceType<typeof ConnectionError>).retryable).toBe(true)
+  })
+
+  it('should wrap network errors as ConnectionError', async () => {
+    const { wrapTransportError } = await import('./transports')
+    const { ConnectionError } = await import('./errors')
+
+    const networkError = new Error('NetworkError when attempting to fetch resource')
+    const wrapped = wrapTransportError(networkError)
+
+    expect(wrapped).toBeInstanceOf(ConnectionError)
+    expect((wrapped as InstanceType<typeof ConnectionError>).code).toBe('CONNECTION_FAILED')
+  })
+
+  it('should wrap 401 errors as auth failed', async () => {
+    const { wrapTransportError } = await import('./transports')
+    const { ConnectionError } = await import('./errors')
+
+    const authError = new Error('401 Unauthorized')
+    const wrapped = wrapTransportError(authError)
+
+    expect(wrapped).toBeInstanceOf(ConnectionError)
+    expect((wrapped as InstanceType<typeof ConnectionError>).code).toBe('AUTH_FAILED')
+    expect((wrapped as InstanceType<typeof ConnectionError>).retryable).toBe(false)
+  })
+
+  it('should wrap 429 errors as retryable ConnectionError', async () => {
+    const { wrapTransportError } = await import('./transports')
+    const { ConnectionError } = await import('./errors')
+
+    const rateLimitError = new Error('429 Too Many Requests')
+    const wrapped = wrapTransportError(rateLimitError)
+
+    expect(wrapped).toBeInstanceOf(ConnectionError)
+    expect((wrapped as InstanceType<typeof ConnectionError>).code).toBe('CONNECTION_FAILED')
+    expect((wrapped as InstanceType<typeof ConnectionError>).retryable).toBe(true)
+  })
+
+  it('should wrap 5xx errors as retryable ConnectionError', async () => {
+    const { wrapTransportError } = await import('./transports')
+    const { ConnectionError } = await import('./errors')
+
+    for (const code of ['500', '502', '503', '504']) {
+      const serverError = new Error(`${code} Server Error`)
+      const wrapped = wrapTransportError(serverError)
+
+      expect(wrapped).toBeInstanceOf(ConnectionError)
+      expect((wrapped as InstanceType<typeof ConnectionError>).code).toBe('CONNECTION_FAILED')
+      expect((wrapped as InstanceType<typeof ConnectionError>).retryable).toBe(true)
+    }
+  })
+
+  it('should wrap 4xx errors (except 401, 429) as RPCError', async () => {
+    const { wrapTransportError } = await import('./transports')
+
+    const badRequestError = new Error('400 Bad Request')
+    const wrapped = wrapTransportError(badRequestError)
+
+    expect(wrapped).toBeInstanceOf(RPCError)
+    expect((wrapped as RPCError).code).toBe('REQUEST_ERROR')
+  })
+
+  it('should wrap error with code property as RPCError', async () => {
+    const { wrapTransportError } = await import('./transports')
+
+    const errorWithCode = Object.assign(new Error('Custom error'), { code: 'CUSTOM_CODE' })
+    const wrapped = wrapTransportError(errorWithCode)
+
+    expect(wrapped).toBeInstanceOf(RPCError)
+    expect((wrapped as RPCError).code).toBe('CUSTOM_CODE')
+  })
+
+  it('should wrap unknown errors as RPCError with UNKNOWN_ERROR code', async () => {
+    const { wrapTransportError } = await import('./transports')
+
+    const unknownError = new Error('Something went wrong')
+    const wrapped = wrapTransportError(unknownError)
+
+    expect(wrapped).toBeInstanceOf(RPCError)
+    expect((wrapped as RPCError).code).toBe('UNKNOWN_ERROR')
+  })
+
+  it('should wrap non-Error values as RPCError', async () => {
+    const { wrapTransportError } = await import('./transports')
+
+    const wrapped = wrapTransportError('string error')
+
+    expect(wrapped).toBeInstanceOf(RPCError)
+    expect((wrapped as RPCError).code).toBe('UNKNOWN_ERROR')
+    expect((wrapped as RPCError).message).toBe('string error')
+  })
+})
+
+// ============================================================================
 // Binding Transport Tests
 // ============================================================================
 
