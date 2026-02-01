@@ -19,7 +19,7 @@
  * ```
  */
 
-import type { RPCClientMiddleware } from '../index'
+import type { RpcClientMiddleware } from '../index'
 
 /**
  * Options for the logging middleware
@@ -41,7 +41,7 @@ export interface LoggingOptions {
  * Create a logging middleware
  *
  * @param options - Logging options
- * @returns RPCClientMiddleware that logs requests, responses, and errors
+ * @returns RpcClientMiddleware that logs requests, responses, and errors
  *
  * @example
  * ```typescript
@@ -68,7 +68,7 @@ export interface LoggingOptions {
  * })
  * ```
  */
-export function loggingMiddleware(options: LoggingOptions = {}): RPCClientMiddleware {
+export function loggingMiddleware(options: LoggingOptions = {}): RpcClientMiddleware {
   const {
     log = console.log.bind(console),
     error = console.error.bind(console),

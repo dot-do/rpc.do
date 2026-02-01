@@ -33,12 +33,12 @@ export default defineConfig([
     dts: true,
     external: ['capnweb', '@dotdo/capnweb', '@dotdo/capnweb/server', 'oauth.do', 'cloudflare:workers', 'node:http'],
   },
-  // CLI (Node.js only)
+  // CLI (Node.js only, uses ts-morph and glob via extract/detect)
   {
     entry: ['src/cli.ts'],
     format: ['esm'],
     dts: false,
     banner: { js: '#!/usr/bin/env node' },
-    external: ['capnweb', 'oauth.do', 'cloudflare:workers'],
+    external: ['capnweb', 'oauth.do', 'cloudflare:workers', 'ts-morph', 'glob'],
   },
 ])

@@ -73,6 +73,26 @@ import {
 // Shared RPC interface
 import { RpcInterface, SKIP_PROPS_EXTENDED } from './rpc-interface.js'
 
+// Shared WebSocket state machine
+import {
+  type WebSocketState,
+  type WebSocketAttachment,
+  isWebSocketAttachment,
+  createWebSocketAttachment,
+  transitionWebSocketState,
+  getWebSocketAttachment,
+} from './websocket-state.js'
+
+// Re-export WebSocket state types and utilities
+export {
+  type WebSocketState,
+  type WebSocketAttachment,
+  isWebSocketAttachment,
+  createWebSocketAttachment,
+  transitionWebSocketState,
+  getWebSocketAttachment,
+} from './websocket-state.js'
+
 // Introspection utilities
 import {
   introspectDatabase,
@@ -101,64 +121,6 @@ export {
 // Re-export capnweb types for convenience
 export { RpcTarget, RpcSession, type RpcTransport, type RpcSessionOptions }
 export { HibernatableWebSocketTransport, TransportRegistry }
-
-// ============================================================================
-// WebSocket State Machine
-// ============================================================================
-
-/**
- * Explicit state tracking for WebSocket hibernation.
- *
- * State transitions:
- * ```
- *   [connecting] ──accept──> [active] ──hibernate──> [hibernated]
- *        │                      │                         │
- *        │                      │                         │
- *        │                      ▼                         │
- *        │                   [closed] <─────close─────────┤
- *        │                      ▲                         │
- *        └───────error──────────┴────────error────────────┘
- * ```
- *
- * - connecting: WebSocket pair created, waiting for acceptance
- * - active: WebSocket accepted and actively processing messages
- * - hibernated: DO hibernated, WebSocket maintained by runtime (will wake on message)
- * - closed: WebSocket closed (terminal state)
- */
-export type WebSocketState = 'connecting' | 'active' | 'hibernated' | 'closed'
-
-/**
- * WebSocket attachment data that survives hibernation.
- * Stored via ws.serializeAttachment() and retrieved via ws.deserializeAttachment()
- */
-export interface WebSocketAttachment {
-  /** Transport ID for capnweb session recovery */
-  transportId: string
-  /** Current WebSocket state */
-  state: WebSocketState
-  /** Timestamp when connection was established */
-  connectedAt: number
-  /** Timestamp of last state transition */
-  lastTransition: number
-}
-
-/**
- * Type guard to check if a value is a valid WebSocketAttachment.
- * Used for validating deserialized WebSocket attachments that survive hibernation.
- *
- * @param value - The value to check (typically from ws.deserializeAttachment())
- * @returns True if the value is a valid WebSocketAttachment
- */
-export function isWebSocketAttachment(value: unknown): value is WebSocketAttachment {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    typeof (value as WebSocketAttachment).transportId === 'string' &&
-    typeof (value as WebSocketAttachment).state === 'string' &&
-    typeof (value as WebSocketAttachment).connectedAt === 'number' &&
-    typeof (value as WebSocketAttachment).lastTransition === 'number'
-  )
-}
 
 // Re-export colo.do/tiny for convenience (minimal bundle)
 export {
@@ -277,78 +239,6 @@ export class DurableRPC extends DurableObject {
 
   /** Collections manager (lazy-initialized) */
   private _collections?: Collections
-
-  // ==========================================================================
-  // WebSocket State Machine Helpers
-  // ==========================================================================
-
-  /**
-   * Create initial WebSocket attachment with 'connecting' state.
-   *
-   * STATE: -> connecting
-   */
-  private createWebSocketAttachment(transportId: string): WebSocketAttachment {
-    const now = Date.now()
-    return {
-      transportId,
-      state: 'connecting',
-      connectedAt: now,
-      lastTransition: now,
-    }
-  }
-
-  /**
-   * Transition WebSocket to a new state.
-   * Updates the attachment and logs the transition for debugging.
-   *
-   * Valid state transitions:
-   * - connecting -> active (WebSocket accepted)
-   * - connecting -> closed (error during setup)
-   * - active -> hibernated (DO hibernating, implicit)
-   * - active -> closed (normal close or error)
-   * - hibernated -> active (DO woke from hibernation)
-   * - hibernated -> closed (close while hibernated)
-   *
-   * @param ws - The WebSocket to update
-   * @param attachment - Current attachment data
-   * @param newState - Target state
-   * @param reason - Optional reason for the transition (for debugging)
-   */
-  private transitionWebSocketState(
-    ws: WebSocket,
-    attachment: WebSocketAttachment,
-    newState: WebSocketState,
-    reason?: string
-  ): void {
-    const oldState = attachment.state
-    attachment.state = newState
-    attachment.lastTransition = Date.now()
-
-    // Persist the updated state (survives hibernation)
-    ws.serializeAttachment(attachment)
-
-    // Debug logging for state transitions
-    console.debug(
-      `[DurableRPC] WebSocket state: ${oldState} -> ${newState}` +
-        (reason ? ` (${reason})` : '')
-    )
-  }
-
-  /**
-   * Get WebSocket attachment with type safety.
-   * Returns null if attachment is missing or invalid.
-   */
-  private getWebSocketAttachment(ws: WebSocket): WebSocketAttachment | null {
-    try {
-      const attachment = ws.deserializeAttachment()
-      if (isWebSocketAttachment(attachment)) {
-        return attachment
-      }
-    } catch (error) {
-      console.debug('[DurableRPC] Failed to deserialize WebSocket attachment:', error)
-    }
-    return null
-  }
 
   // ==========================================================================
   // Direct accessors (same API inside DO and via RPC)
@@ -745,7 +635,7 @@ export class DurableRPC extends DurableObject {
 
     // STATE: -> connecting
     // Create attachment with initial 'connecting' state
-    const attachment = this.createWebSocketAttachment(transport.id)
+    const attachment = createWebSocketAttachment(transport.id)
     server.serializeAttachment(attachment)
 
     // Use hibernation API to accept the WebSocket
@@ -754,7 +644,7 @@ export class DurableRPC extends DurableObject {
 
     // STATE: connecting -> active
     // WebSocket is now accepted and ready to process messages
-    this.transitionWebSocketState(server, attachment, 'active', 'WebSocket accepted')
+    transitionWebSocketState(server, attachment, 'active', 'WebSocket accepted')
 
     // Create capnweb RpcSession with the transport
     const session = new RpcSession(
@@ -788,7 +678,7 @@ export class DurableRPC extends DurableObject {
     }
 
     // Get attachment from WebSocket (survives hibernation)
-    let attachment = this.getWebSocketAttachment(ws)
+    let attachment = getWebSocketAttachment(ws)
     let transport: HibernatableWebSocketTransport | undefined
 
     if (attachment?.transportId) {
@@ -813,10 +703,10 @@ export class DurableRPC extends DurableObject {
         // STATE: hibernated -> active
         // DO woke from hibernation, restore session and mark as active
         attachment.transportId = transport.id
-        this.transitionWebSocketState(ws, attachment, 'active', 'woke from hibernation')
+        transitionWebSocketState(ws, attachment, 'active', 'woke from hibernation')
       } else {
         // No existing attachment - create new one (unusual case, possibly error recovery)
-        attachment = this.createWebSocketAttachment(transport.id)
+        attachment = createWebSocketAttachment(transport.id)
         attachment.state = 'active'
         ws.serializeAttachment(attachment)
         console.debug('[DurableRPC] WebSocket state: (unknown) -> active (created new attachment)')
@@ -840,13 +730,13 @@ export class DurableRPC extends DurableObject {
    * - Mark state as closed in attachment (for debugging)
    */
   override async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
-    const attachment = this.getWebSocketAttachment(ws)
+    const attachment = getWebSocketAttachment(ws)
 
     // STATE: * -> closed
     // Terminal state - clean up all resources
     if (attachment) {
       const closeReason = `code=${code}, reason=${reason || 'none'}, wasClean=${wasClean}`
-      this.transitionWebSocketState(ws, attachment, 'closed', closeReason)
+      transitionWebSocketState(ws, attachment, 'closed', closeReason)
 
       // Clean up transport
       const transport = this._transportRegistry.get(attachment.transportId)
@@ -874,12 +764,12 @@ export class DurableRPC extends DurableObject {
    */
   override async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
     const err = error instanceof Error ? error : new Error(String(error))
-    const attachment = this.getWebSocketAttachment(ws)
+    const attachment = getWebSocketAttachment(ws)
 
     // STATE: * -> closed (via error)
     // Error is a terminal condition, transition to closed
     if (attachment) {
-      this.transitionWebSocketState(ws, attachment, 'closed', `error: ${err.message}`)
+      transitionWebSocketState(ws, attachment, 'closed', `error: ${err.message}`)
 
       // Clean up transport with error notification
       const transport = this._transportRegistry.get(attachment.transportId)

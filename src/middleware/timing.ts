@@ -18,7 +18,7 @@
  * ```
  */
 
-import type { RPCClientMiddleware } from '../index'
+import type { RpcClientMiddleware } from '../index'
 
 /**
  * Options for the timing middleware
@@ -50,7 +50,7 @@ interface TimingContext {
  * Create a timing middleware
  *
  * @param options - Timing options
- * @returns RPCClientMiddleware that tracks execution time
+ * @returns RpcClientMiddleware that tracks execution time
  *
  * @example
  * ```typescript
@@ -77,7 +77,7 @@ interface TimingContext {
  * })
  * ```
  */
-export function timingMiddleware(options: TimingOptions = {}): RPCClientMiddleware {
+export function timingMiddleware(options: TimingOptions = {}): RpcClientMiddleware {
   const {
     log = console.log.bind(console),
     prefix = '[RPC Timing]',

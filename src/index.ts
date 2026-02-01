@@ -127,13 +127,6 @@ export type TransportFactory = () => Transport | Promise<Transport>
 // ============================================================================
 
 /**
- * Defines a single RPC function signature
- * @example
- * type Generate = RPCFunction<{ prompt: string }, { text: string }>
- */
-export type RPCFunction<TInput = any, TOutput = any> = (input: TInput) => TOutput
-
-/**
  * Converts a sync function to async
  */
 export type AsyncFunction<T> = T extends (...args: infer A) => infer R
@@ -141,7 +134,42 @@ export type AsyncFunction<T> = T extends (...args: infer A) => infer R
   : never
 
 /**
+ * Defines a single RPC function signature
+ * @example
+ * type Generate = RpcFunction<{ prompt: string }, { text: string }>
+ */
+export type RpcFunction<TInput = any, TOutput = any> = (input: TInput) => TOutput
+
+/**
+ * Defines a single RPC function signature
+ * @deprecated Use `RpcFunction` instead (lowercase 'pc' for consistency with capnweb convention)
+ * @example
+ * type Generate = RPCFunction<{ prompt: string }, { text: string }>
+ */
+export type RPCFunction<TInput = any, TOutput = any> = RpcFunction<TInput, TOutput>
+
+/**
  * Recursively converts an API definition to async proxy type
+ * @example
+ * interface API {
+ *   ai: { generate: (p: { prompt: string }) => { text: string } }
+ * }
+ * type Client = RpcProxy<API>
+ * // Client.ai.generate is now (p: { prompt: string }) => Promise<{ text: string }>
+ */
+export type RpcProxy<T> = {
+  [K in keyof T]: T[K] extends (...args: any[]) => any
+    ? AsyncFunction<T[K]>
+    : T[K] extends object
+    ? RpcProxy<T[K]> & { close?: () => Promise<void> }
+    : T[K]
+} & {
+  close?: () => Promise<void>
+}
+
+/**
+ * Recursively converts an API definition to async proxy type
+ * @deprecated Use `RpcProxy` instead (lowercase 'pc' for consistency with capnweb convention)
  * @example
  * interface API {
  *   ai: { generate: (p: { prompt: string }) => { text: string } }
@@ -149,15 +177,7 @@ export type AsyncFunction<T> = T extends (...args: infer A) => infer R
  * type Client = RPCProxy<API>
  * // Client.ai.generate is now (p: { prompt: string }) => Promise<{ text: string }>
  */
-export type RPCProxy<T> = {
-  [K in keyof T]: T[K] extends (...args: any[]) => any
-    ? AsyncFunction<T[K]>
-    : T[K] extends object
-    ? RPCProxy<T[K]> & { close?: () => Promise<void> }
-    : T[K]
-} & {
-  close?: () => Promise<void>
-}
+export type RPCProxy<T> = RpcProxy<T>
 
 /**
  * Simple promise type for RPC returns.
@@ -177,16 +197,32 @@ export type RPCPromise<T> = Promise<T>
 /**
  * Infer the return type of an RPC function
  * @example
+ * type Result = RpcResult<typeof rpc.ai.generate> // { text: string }
+ */
+export type RpcResult<T> = T extends (...args: any[]) => Promise<infer R> ? R : never
+
+/**
+ * Infer the return type of an RPC function
+ * @deprecated Use `RpcResult` instead (lowercase 'pc' for consistency with capnweb convention)
+ * @example
  * type Result = RPCResult<typeof rpc.ai.generate> // { text: string }
  */
-export type RPCResult<T> = T extends (...args: any[]) => Promise<infer R> ? R : never
+export type RPCResult<T> = RpcResult<T>
 
 /**
  * Infer the input type of an RPC function
  * @example
+ * type Params = RpcInput<typeof rpc.ai.generate> // { prompt: string }
+ */
+export type RpcInput<T> = T extends (input: infer I) => any ? I : never
+
+/**
+ * Infer the input type of an RPC function
+ * @deprecated Use `RpcInput` instead (lowercase 'pc' for consistency with capnweb convention)
+ * @example
  * type Params = RPCInput<typeof rpc.ai.generate> // { prompt: string }
  */
-export type RPCInput<T> = T extends (input: infer I) => any ? I : never
+export type RPCInput<T> = RpcInput<T>
 
 // ============================================================================
 // Middleware Types
@@ -202,7 +238,7 @@ export type RPCInput<T> = T extends (input: infer I) => any ? I : never
  *
  * @example
  * ```typescript
- * const loggingMiddleware: RPCClientMiddleware = {
+ * const loggingMiddleware: RpcClientMiddleware = {
  *   onRequest: (method, args) => console.log(`Calling ${method}`, args),
  *   onResponse: (method, result) => console.log(`${method} returned`, result),
  *   onError: (method, error) => console.error(`${method} failed`, error),
@@ -213,7 +249,7 @@ export type RPCInput<T> = T extends (input: infer I) => any ? I : never
  * })
  * ```
  */
-export type RPCClientMiddleware = {
+export type RpcClientMiddleware = {
   /** Called before the RPC call is made */
   onRequest?: (method: string, args: unknown[]) => void | Promise<void>
   /** Called after a successful response */
@@ -222,6 +258,12 @@ export type RPCClientMiddleware = {
   onError?: (method: string, error: unknown) => void | Promise<void>
 }
 
+/**
+ * Middleware hook for RPC requests and responses.
+ * @deprecated Use `RpcClientMiddleware` instead (lowercase 'pc' for consistency with capnweb convention)
+ */
+export type RPCClientMiddleware = RpcClientMiddleware
+
 // ============================================================================
 // RPC Factory
 // ============================================================================
@@ -229,7 +271,7 @@ export type RPCClientMiddleware = {
 /**
  * Options for RPC client
  */
-export interface RPCOptions {
+export interface RpcOptions {
   /** Auth token or provider */
   auth?: string | (() => string | null | Promise<string | null>)
   /** Request timeout in milliseconds */
@@ -237,8 +279,14 @@ export interface RPCOptions {
   /** Enable WebSocket reconnection (default: true for ws/wss URLs) */
   reconnect?: boolean
   /** Middleware chain for request/response hooks */
-  middleware?: RPCClientMiddleware[]
+  middleware?: RpcClientMiddleware[]
 }
+
+/**
+ * Options for RPC client
+ * @deprecated Use `RpcOptions` instead (lowercase 'pc' for consistency with capnweb convention)
+ */
+export interface RPCOptions extends RpcOptions {}
 
 /**
  * Create an RPC proxy
@@ -273,8 +321,8 @@ export interface RPCOptions {
  */
 export function RPC<T = any>(
   urlOrTransport: string | Transport | TransportFactory,
-  options?: RPCOptions
-): RPCProxy<T> & DOClientFeatures {
+  options?: RpcOptions
+): RpcProxy<T> & DOClientFeatures {
   let transport: Transport | TransportFactory
 
   if (typeof urlOrTransport === 'string') {
@@ -304,7 +352,7 @@ export function RPC<T = any>(
   if (options?.middleware !== undefined) doClientOpts.middleware = options.middleware
 
   // Use DOClient which has sql, storage, collection built in
-  return createDOClient<T>(transport, doClientOpts) as RPCProxy<T> & DOClientFeatures
+  return createDOClient<T>(transport, doClientOpts) as RpcProxy<T> & DOClientFeatures
 }
 
 /**
@@ -337,10 +385,10 @@ import type {
 // ============================================================================
 
 /**
- * Options for createRPCClient factory
- * @deprecated Use RPCOptions with RPC() instead
+ * Options for createRpcClient factory
+ * @deprecated Use RpcOptions with RPC() instead
  */
-export interface RPCClientOptions {
+export interface RpcClientOptions {
   /** Base URL for the RPC endpoint */
   baseUrl: string
   /** Custom headers to include (reserved for future use) */
@@ -354,6 +402,12 @@ export interface RPCClientOptions {
   /** Auth token or provider */
   auth?: string | (() => string | null | Promise<string | null>)
 }
+
+/**
+ * Options for createRPCClient factory
+ * @deprecated Use `RpcClientOptions` and then `RpcOptions` with RPC() instead
+ */
+export interface RPCClientOptions extends RpcClientOptions {}
 
 /**
  * Create an RPC client with simplified options.
@@ -372,9 +426,9 @@ export interface RPCClientOptions {
  * const client = createRPCClient({ baseUrl: 'https://api.example.com/rpc' })
  * await client.ai.generate({ prompt: 'hello' })
  */
-export function createRPCClient<T = unknown>(options: RPCClientOptions): RPCProxy<T> & DOClientFeatures {
+export function createRPCClient<T = unknown>(options: RpcClientOptions): RpcProxy<T> & DOClientFeatures {
   // Build options, only adding defined values to satisfy exactOptionalPropertyTypes
-  const rpcOpts: RPCOptions = {}
+  const rpcOpts: RpcOptions = {}
   if (options.auth !== undefined) rpcOpts.auth = options.auth
   if (options.timeout !== undefined) rpcOpts.timeout = options.timeout
   return RPC<T>(options.baseUrl, rpcOpts)

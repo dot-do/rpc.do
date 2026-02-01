@@ -34,7 +34,7 @@
  * @packageDocumentation
  */
 
-import type { RPCProxy, RPCResult, RPCInput } from './index'
+import type { RpcProxy, RpcResult, RpcInput, RPCProxy, RPCResult, RPCInput } from './index'
 
 // ============================================================================
 // Path Utilities
@@ -130,7 +130,7 @@ export interface MutationFnOptions extends QueryFnOptions {
  * ```
  */
 export function getMethod<T, P extends MethodPaths<T> & string>(
-  rpc: RPCProxy<T>,
+  rpc: RpcProxy<T>,
   path: P
 ): PathValue<T, P> {
   const parts = (path as string).split('.')
@@ -169,7 +169,7 @@ export function getMethod<T, P extends MethodPaths<T> & string>(
  * ```
  */
 export function createQueryFn<T, P extends MethodPaths<T> & string>(
-  rpc: RPCProxy<T>,
+  rpc: RpcProxy<T>,
   path: P,
   options?: QueryFnOptions
 ): PathValue<T, P> extends (...args: infer A) => infer R
@@ -218,7 +218,7 @@ export function createQueryFn<T, P extends MethodPaths<T> & string>(
  * ```
  */
 export function createMutationFn<T, P extends MethodPaths<T> & string>(
-  rpc: RPCProxy<T>,
+  rpc: RpcProxy<T>,
   path: P,
   options?: MutationFnOptions
 ): PathValue<T, P> extends (...args: infer A) => infer R
@@ -387,4 +387,5 @@ export interface MutationState<TData, TVariables> {
 // Re-exports for convenience
 // ============================================================================
 
-export type { RPCProxy, RPCResult, RPCInput } from './index'
+// Re-export both Rpc-prefixed (preferred) and RPC-prefixed (deprecated) types
+export type { RpcProxy, RpcResult, RpcInput, RPCProxy, RPCResult, RPCInput } from './index'

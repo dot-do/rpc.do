@@ -7,7 +7,7 @@
  * - TestServer: Simple HTTP server for integration tests
  */
 
-import type { Transport, RPCProxy } from './index'
+import type { Transport, RpcProxy } from './index'
 import { RPCError } from './errors'
 
 // ============================================================================
@@ -65,15 +65,15 @@ type MockHandlers<T> = {
  * })
  * ```
  */
-export function mockRPC<T>(handlers: MockHandlers<T>): RPCProxy<T> {
+export function mockRPC<T>(handlers: MockHandlers<T>): RpcProxy<T> {
   return createMockProxy<T>(handlers, [])
 }
 
 /**
  * Internal: Create a proxy that navigates the handler tree
  */
-function createMockProxy<T>(handlers: unknown, path: string[]): RPCProxy<T> {
-  return new Proxy((() => {}) as unknown as RPCProxy<T>, {
+function createMockProxy<T>(handlers: unknown, path: string[]): RpcProxy<T> {
+  return new Proxy((() => {}) as unknown as RpcProxy<T>, {
     get(_target, prop: string | symbol): unknown {
       // Handle special properties
       if (prop === 'then' || prop === 'catch' || prop === 'finally') {

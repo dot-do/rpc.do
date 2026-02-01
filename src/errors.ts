@@ -312,3 +312,11 @@ export class RPCError extends Error {
     }
   }
 }
+
+/**
+ * RPC error from server
+ *
+ * Preferred alias matching capnweb convention (lowercase 'pc').
+ * This is an alias for RPCError - both names refer to the same class.
+ */
+export { RPCError as RpcError }

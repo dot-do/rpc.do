@@ -36,7 +36,7 @@
  * ```
  */
 
-import type { Transport, TransportFactory, RPCProxy, RPCClientMiddleware } from './index'
+import type { Transport, TransportFactory, RpcProxy, RpcClientMiddleware } from './index'
 import type {
   SqlQueryResult as TypesSqlQueryResult,
   SqlQuery as TypesSqlQuery,
@@ -246,7 +246,7 @@ export type DOClient<T = unknown> = {
   schema: () => Promise<RpcSchema>
   /** Close the connection */
   close: () => Promise<void>
-} & RPCProxy<T>
+} & RpcProxy<T>
 
 // ============================================================================
 // Implementation
@@ -257,13 +257,13 @@ export type DOClient<T = unknown> = {
  */
 export interface CreateDOClientOptions {
   /** Middleware chain for request/response hooks */
-  middleware?: RPCClientMiddleware[]
+  middleware?: RpcClientMiddleware[]
 }
 
 /**
  * Execute middleware chain for onRequest hooks
  */
-async function executeOnRequest(middleware: RPCClientMiddleware[], method: string, args: unknown[]): Promise<void> {
+async function executeOnRequest(middleware: RpcClientMiddleware[], method: string, args: unknown[]): Promise<void> {
   for (const mw of middleware) {
     if (mw.onRequest) {
       await mw.onRequest(method, args)
@@ -274,7 +274,7 @@ async function executeOnRequest(middleware: RPCClientMiddleware[], method: strin
 /**
  * Execute middleware chain for onResponse hooks
  */
-async function executeOnResponse(middleware: RPCClientMiddleware[], method: string, result: unknown): Promise<void> {
+async function executeOnResponse(middleware: RpcClientMiddleware[], method: string, result: unknown): Promise<void> {
   for (const mw of middleware) {
     if (mw.onResponse) {
       await mw.onResponse(method, result)
@@ -285,7 +285,7 @@ async function executeOnResponse(middleware: RPCClientMiddleware[], method: stri
 /**
  * Execute middleware chain for onError hooks
  */
-async function executeOnError(middleware: RPCClientMiddleware[], method: string, error: unknown): Promise<void> {
+async function executeOnError(middleware: RpcClientMiddleware[], method: string, error: unknown): Promise<void> {
   for (const mw of middleware) {
     if (mw.onError) {
       await mw.onError(method, error)
@@ -296,7 +296,7 @@ async function executeOnError(middleware: RPCClientMiddleware[], method: string,
 /**
  * Wrap a transport with middleware support
  */
-function wrapTransportWithMiddleware(transport: Transport, middleware: RPCClientMiddleware[]): Transport {
+function wrapTransportWithMiddleware(transport: Transport, middleware: RpcClientMiddleware[]): Transport {
   if (!middleware.length) {
     return transport
   }
