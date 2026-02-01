@@ -75,7 +75,17 @@ export class ConnectionError extends Error {
   }
 
   /**
-   * Create a connection timeout error
+   * Create a connection timeout error (retryable)
+   *
+   * @param timeoutMs - The timeout duration that was exceeded
+   * @returns ConnectionError with code 'CONNECTION_TIMEOUT'
+   *
+   * @example
+   * ```typescript
+   * const error = ConnectionError.timeout(5000)
+   * // error.message: "Connection timeout after 5000ms"
+   * // error.retryable: true
+   * ```
    */
   static timeout(timeoutMs: number): ConnectionError {
     return new ConnectionError(
@@ -86,7 +96,16 @@ export class ConnectionError extends Error {
   }
 
   /**
-   * Create an authentication failed error
+   * Create an authentication failed error (not retryable)
+   *
+   * @param reason - Optional detailed reason for the auth failure
+   * @returns ConnectionError with code 'AUTH_FAILED'
+   *
+   * @example
+   * ```typescript
+   * const error = ConnectionError.authFailed('Invalid token')
+   * // error.retryable: false (credentials need to be fixed)
+   * ```
    */
   static authFailed(reason?: string): ConnectionError {
     return new ConnectionError(
@@ -97,7 +116,16 @@ export class ConnectionError extends Error {
   }
 
   /**
-   * Create a connection lost error
+   * Create a connection lost error (retryable)
+   *
+   * @param reason - Optional reason why the connection was lost
+   * @returns ConnectionError with code 'CONNECTION_LOST'
+   *
+   * @example
+   * ```typescript
+   * const error = ConnectionError.connectionLost('WebSocket closed unexpectedly')
+   * // error.retryable: true
+   * ```
    */
   static connectionLost(reason?: string): ConnectionError {
     return new ConnectionError(
@@ -108,7 +136,19 @@ export class ConnectionError extends Error {
   }
 
   /**
-   * Create a reconnection failed error
+   * Create a reconnection failed error (not retryable)
+   *
+   * Thrown when the maximum number of reconnection attempts has been reached.
+   *
+   * @param attempts - Number of reconnection attempts made
+   * @returns ConnectionError with code 'RECONNECT_FAILED'
+   *
+   * @example
+   * ```typescript
+   * const error = ConnectionError.reconnectFailed(5)
+   * // error.message: "Failed to reconnect after 5 attempts"
+   * // error.retryable: false (max attempts reached)
+   * ```
    */
   static reconnectFailed(attempts: number): ConnectionError {
     return new ConnectionError(
@@ -119,7 +159,17 @@ export class ConnectionError extends Error {
   }
 
   /**
-   * Create a heartbeat timeout error
+   * Create a heartbeat timeout error (retryable)
+   *
+   * Thrown when the server does not respond to ping messages within the timeout period.
+   *
+   * @returns ConnectionError with code 'HEARTBEAT_TIMEOUT'
+   *
+   * @example
+   * ```typescript
+   * const error = ConnectionError.heartbeatTimeout()
+   * // error.retryable: true (reconnection can be attempted)
+   * ```
    */
   static heartbeatTimeout(): ConnectionError {
     return new ConnectionError(
@@ -130,7 +180,21 @@ export class ConnectionError extends Error {
   }
 
   /**
-   * Create an insecure connection error
+   * Create an insecure connection error (not retryable)
+   *
+   * Thrown when attempting to send auth credentials over an insecure `ws://` connection.
+   * This is a security protection to prevent credential leakage.
+   *
+   * @returns ConnectionError with code 'INSECURE_CONNECTION'
+   *
+   * @example
+   * ```typescript
+   * // This error is thrown automatically when:
+   * const transport = capnweb('ws://api.example.com', {
+   *   auth: 'my-token',  // Trying to send token over insecure connection
+   *   // allowInsecureAuth: true  // Would bypass the check (local dev only!)
+   * })
+   * ```
    */
   static insecureConnection(): ConnectionError {
     return new ConnectionError(
@@ -142,7 +206,27 @@ export class ConnectionError extends Error {
   }
 
   /**
-   * Create a request timeout error
+   * Create a request timeout error (retryable)
+   *
+   * Thrown when an individual RPC request exceeds the configured timeout.
+   * Different from connection timeout - this is for a specific call, not the connection itself.
+   *
+   * @param timeoutMs - The timeout duration that was exceeded
+   * @returns ConnectionError with code 'REQUEST_TIMEOUT'
+   *
+   * @example
+   * ```typescript
+   * // Configure request timeout
+   * const transport = http('https://api.example.com', { timeout: 5000 })
+   *
+   * try {
+   *   await $.slowMethod()  // Takes longer than 5 seconds
+   * } catch (error) {
+   *   if (error instanceof ConnectionError && error.code === 'REQUEST_TIMEOUT') {
+   *     console.log('Request took too long, consider increasing timeout')
+   *   }
+   * }
+   * ```
    */
   static requestTimeout(timeoutMs: number): ConnectionError {
     return new ConnectionError(
@@ -290,17 +374,84 @@ export class RateLimitError extends Error {
 }
 
 /**
- * RPC error from server
+ * RPC error returned by the server in response to an RPC call
  *
- * Represents an error returned by the server in response to an RPC call.
+ * RPCError represents errors that occur during RPC method execution on the server.
+ * The error includes a code for programmatic handling and optional additional data.
+ *
+ * Common error codes:
+ * - `METHOD_NOT_FOUND` - The requested method does not exist
+ * - `INVALID_PATH` - The method path is malformed
+ * - `UNKNOWN_NAMESPACE` - A namespace in the path doesn't exist
+ * - `UNKNOWN_METHOD` - Method exists but is not callable
+ * - `MODULE_ERROR` - Required module (e.g., capnweb) is missing
+ * - Custom codes - Your DO can return custom error codes
+ *
+ * @example Basic error handling
+ * ```typescript
+ * try {
+ *   await $.users.get('invalid-id')
+ * } catch (error) {
+ *   if (error instanceof RPCError) {
+ *     console.error(`RPC Error [${error.code}]: ${error.message}`)
+ *     if (error.data) {
+ *       console.error('Additional data:', error.data)
+ *     }
+ *   }
+ * }
+ * ```
+ *
+ * @example Handling specific error codes
+ * ```typescript
+ * try {
+ *   await $.admin.deleteUser('user-123')
+ * } catch (error) {
+ *   if (error instanceof RPCError) {
+ *     switch (error.code) {
+ *       case 'UNAUTHORIZED':
+ *         redirect('/login')
+ *         break
+ *       case 'NOT_FOUND':
+ *         showError('User not found')
+ *         break
+ *       case 'VALIDATION_ERROR':
+ *         showValidationErrors(error.data as ValidationErrors)
+ *         break
+ *       default:
+ *         showError('An error occurred')
+ *     }
+ *   }
+ * }
+ * ```
+ *
+ * @example Throwing RPCError from your DO
+ * ```typescript
+ * // In your DurableRPC class
+ * async deleteUser(id: string) {
+ *   const user = this.users.get(id)
+ *   if (!user) {
+ *     throw new RPCError('User not found', 'NOT_FOUND', { id })
+ *   }
+ *   if (!this.$.auth?.isAdmin) {
+ *     throw new RPCError('Admin access required', 'UNAUTHORIZED')
+ *   }
+ *   // ... delete user
+ * }
+ * ```
  */
 export class RPCError extends Error {
-  /** Error code from server */
+  /** Error code from server for programmatic handling */
   readonly code: string
 
-  /** Additional error data from server */
+  /** Additional error data from server (validation errors, context, etc.) */
   readonly data?: unknown
 
+  /**
+   * Create an RPC error
+   * @param message - Human-readable error message
+   * @param code - Machine-readable error code
+   * @param data - Optional additional error data
+   */
   constructor(message: string, code: string, data?: unknown) {
     super(message)
     this.name = 'RPCError'

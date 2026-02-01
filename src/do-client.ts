@@ -226,11 +226,86 @@ export interface RpcSchema {
 }
 
 /**
- * DO Client type - combines remote sql/storage/collections with custom methods
+ * Durable Object Client type - combines remote SQL, storage, collections with custom RPC methods
+ *
+ * DOClient provides the same API remotely that you have inside a Durable Object:
+ * - `sql` - Tagged template SQL queries with automatic parameterization
+ * - `storage` - Key-value storage with batch operations
+ * - `collection` - MongoDB-style document store on SQLite
+ * - `dbSchema` - Database introspection (tables, columns, indexes)
+ * - `schema` - Full RPC schema for codegen and tooling
+ * - `close` - Clean up the connection
+ *
+ * Plus all custom RPC methods defined on your DO, accessed via proxy.
  *
  * This extends the DOClient interface from '@dotdo/types/rpc' with
  * rpc.do-specific features like tagged template SQL, collections manager,
  * and schema introspection.
+ *
+ * @typeParam T - The type of custom RPC methods on your Durable Object
+ *
+ * @example SQL queries with tagged templates
+ * ```typescript
+ * const $ = RPC<MyDoApi>('https://my-do.workers.dev')
+ *
+ * // All values are automatically parameterized (SQL injection safe)
+ * const users = await $.sql<User>`SELECT * FROM users WHERE active = ${true}`.all()
+ * const user = await $.sql<User>`SELECT * FROM users WHERE id = ${id}`.first()
+ * const { rowsWritten } = await $.sql`UPDATE users SET name = ${name} WHERE id = ${id}`.run()
+ * ```
+ *
+ * @example Storage operations
+ * ```typescript
+ * // Single key
+ * const value = await $.storage.get<Config>('config')
+ * await $.storage.put('config', { theme: 'dark' })
+ * await $.storage.delete('temp-data')
+ *
+ * // Batch operations
+ * const values = await $.storage.get(['key1', 'key2'])  // Returns Map
+ * await $.storage.put({ key1: 'value1', key2: 'value2' })
+ * const count = await $.storage.delete(['temp1', 'temp2'])
+ *
+ * // List with prefix
+ * const settings = await $.storage.list({ prefix: 'settings:' })
+ * ```
+ *
+ * @example Collection operations (MongoDB-style)
+ * ```typescript
+ * interface User {
+ *   name: string
+ *   email: string
+ *   role: 'admin' | 'user'
+ *   active: boolean
+ * }
+ *
+ * const users = $.collection<User>('users')
+ *
+ * // CRUD
+ * await users.put('user-123', { name: 'John', email: 'john@example.com', role: 'user', active: true })
+ * const user = await users.get('user-123')
+ * await users.delete('user-123')
+ *
+ * // Queries with filters
+ * const admins = await users.find({ role: 'admin', active: true })
+ * const count = await users.count({ active: true })
+ *
+ * // Advanced filters
+ * const recentUsers = await users.find({
+ *   createdAt: { $gt: Date.now() - 86400000 }
+ * }, { limit: 10, sort: '-createdAt' })
+ * ```
+ *
+ * @example Schema introspection
+ * ```typescript
+ * // Get database schema (tables, columns, indexes)
+ * const dbSchema = await $.dbSchema()
+ * console.log(dbSchema.tables)  // [{ name: 'users', columns: [...], indexes: [...] }]
+ *
+ * // Get full RPC schema (methods, namespaces, database)
+ * const schema = await $.schema()
+ * console.log(schema.methods)  // [{ name: 'getUser', path: 'users.get', params: 1 }]
+ * ```
  *
  * @see TypesDOClient from '@dotdo/types/rpc' for the base interface
  */
@@ -457,29 +532,97 @@ function createStorageProxy(transport: Transport): RemoteStorage {
 }
 
 /**
- * Create a DO client with remote sql/storage access
+ * Create a Durable Object client with remote SQL, storage, and collection access
  *
- * Note: For most use cases, use `RPC(url)` instead which is simpler:
+ * Creates a typed RPC client that provides the same API remotely as you have inside the DO:
+ * - `$.sql\`...\`` for SQLite queries (mirrors `this.sql` inside DO)
+ * - `$.storage.get/put/delete` for key-value storage (mirrors `this.storage`)
+ * - `$.collection('name')` for MongoDB-style document operations
+ * - `$.schema()` for API introspection
+ * - Custom RPC method calls via proxy
+ *
+ * For most use cases, prefer `RPC(url)` which is simpler and handles transport creation:
  * ```typescript
  * const $ = RPC('https://my-do.workers.dev')
  * ```
  *
- * @example
+ * Use `createDOClient` directly when you need:
+ * - Custom transport configuration
+ * - Middleware injection
+ * - Service binding transport
+ * - Advanced transport composition
+ *
+ * @typeParam T - The type of the DO's custom RPC methods (optional)
+ * @param transport - A Transport instance or factory function for RPC communication
+ * @param options - Optional configuration including middleware chain
+ * @returns A DOClient proxy with SQL, storage, collection, and custom method access
+ *
+ * @throws {Error} "Transport not initialized" if sync methods (sql, storage, collection)
+ *   are called before any async method when using a TransportFactory
+ *
+ * @example Basic usage with explicit transport
  * ```typescript
  * import { createDOClient, capnweb } from 'rpc.do'
  *
- * // With explicit transport (advanced use)
  * const $ = createDOClient(capnweb('wss://my-do.workers.dev'))
  *
  * // Query SQL (same syntax as inside DO)
- * const users = await $.sql`SELECT * FROM users`.all()
+ * const users = await $.sql`SELECT * FROM users WHERE active = ${true}`.all()
+ * const user = await $.sql`SELECT * FROM users WHERE id = ${id}`.first()
  *
  * // Access storage
- * const config = await $.storage.get('config')
+ * const config = await $.storage.get<Config>('config')
+ * await $.storage.put('config', { theme: 'dark' })
+ *
+ * // Access collections (MongoDB-style)
+ * const admins = await $.collection<User>('users').find({ role: 'admin' })
  *
  * // Call custom RPC methods
  * const result = await $.myMethod({ arg: 'value' })
  * ```
+ *
+ * @example With TypeScript generics for typed methods
+ * ```typescript
+ * interface MyDoApi {
+ *   users: {
+ *     create: (data: { name: string; email: string }) => { id: string }
+ *     get: (id: string) => User | null
+ *   }
+ *   config: {
+ *     get: () => Config
+ *   }
+ * }
+ *
+ * const $ = createDOClient<MyDoApi>(transport)
+ * const user = await $.users.get('123')  // Typed as User | null
+ * ```
+ *
+ * @example With middleware for logging and timing
+ * ```typescript
+ * import { createDOClient, http } from 'rpc.do'
+ * import { loggingMiddleware, timingMiddleware } from 'rpc.do/middleware'
+ *
+ * const $ = createDOClient(http('https://my-do.workers.dev'), {
+ *   middleware: [loggingMiddleware(), timingMiddleware()]
+ * })
+ * ```
+ *
+ * @example With service binding (zero network latency)
+ * ```typescript
+ * import { createDOClient, binding } from 'rpc.do'
+ *
+ * // Inside a Cloudflare Worker
+ * export default {
+ *   async fetch(request: Request, env: Env) {
+ *     const $ = createDOClient(binding(env.MY_DO))
+ *     const data = await $.getData()
+ *     return Response.json(data)
+ *   }
+ * }
+ * ```
+ *
+ * @see RPC - Simpler API for most use cases
+ * @see connectDO - Async convenience wrapper with automatic capnweb transport
  */
 export function createDOClient<T = unknown>(
   transport: Transport | TransportFactory,

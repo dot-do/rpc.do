@@ -109,6 +109,12 @@ export class DurableRPC extends DurableObject {
   private _rpcInterface?: RpcInterface<DurableRPC>
   protected _currentRequest?: Request
 
+  /**
+   * Optional server-side middleware for RPC hooks.
+   * Override in subclass to add middleware.
+   */
+  middleware?: import('./middleware.js').ServerMiddleware[]
+
   // ==========================================================================
   // Storage Accessors
   // ==========================================================================
@@ -134,6 +140,8 @@ export class DurableRPC extends DurableObject {
         instance: this,
         skipProps: SKIP_PROPS_BASE,
         basePrototype: DurableRPC.prototype,
+        getRequest: () => this._currentRequest,
+        getEnv: () => this.env,
       })
     }
     return this._rpcInterface

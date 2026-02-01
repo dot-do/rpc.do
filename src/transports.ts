@@ -170,6 +170,39 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
 
 /**
  * Service binding transport - for Cloudflare Workers RPC
+ *
+ * Creates a transport that calls methods directly on a Cloudflare Workers service binding.
+ * This enables zero-latency RPC between Workers in the same account without network overhead.
+ *
+ * @param b - The service binding object from the Worker's env (e.g., `env.MY_SERVICE`)
+ * @returns A Transport that routes RPC calls through the service binding
+ *
+ * @throws {RPCError} With code 'UNKNOWN_NAMESPACE' if the method path navigates to an undefined namespace
+ * @throws {RPCError} With code 'UNKNOWN_METHOD' if the final method does not exist or is not callable
+ *
+ * @example
+ * ```typescript
+ * // In your Worker
+ * import { RPC, binding } from 'rpc.do'
+ *
+ * export default {
+ *   async fetch(request: Request, env: Env) {
+ *     // Create RPC client using service binding
+ *     const api = RPC(binding(env.MY_SERVICE))
+ *
+ *     // Call methods on the bound service
+ *     const result = await api.users.get('123')
+ *     return Response.json(result)
+ *   }
+ * }
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // With nested namespaces
+ * const api = RPC(binding(env.MY_SERVICE))
+ * await api.admin.users.delete('user-id')  // Calls admin.users.delete on the service
+ * ```
  */
 export function binding(b: unknown): Transport {
   return {
@@ -451,6 +484,48 @@ function createReconnectingCapnwebTransport(
 
 /**
  * Composite transport - try multiple transports with fallback
+ *
+ * Creates a transport that attempts RPC calls through multiple transports in order.
+ * If one transport fails, the next transport is tried. This enables resilient RPC
+ * with automatic fallback between different connection methods.
+ *
+ * @param transports - One or more Transport instances to try in order
+ * @returns A Transport that tries each transport until one succeeds
+ *
+ * @throws The last error encountered if all transports fail
+ *
+ * @example
+ * ```typescript
+ * import { RPC, composite, capnweb, http } from 'rpc.do'
+ *
+ * // Try WebSocket first, fall back to HTTP if WebSocket fails
+ * const transport = composite(
+ *   capnweb('wss://api.example.com/rpc', { reconnect: true }),
+ *   http('https://api.example.com/rpc')
+ * )
+ *
+ * const $ = RPC(transport)
+ * await $.users.get('123')  // Tries WebSocket, falls back to HTTP on error
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Multi-region failover
+ * const transport = composite(
+ *   http('https://us-east.api.example.com/rpc'),
+ *   http('https://eu-west.api.example.com/rpc'),
+ *   http('https://ap-south.api.example.com/rpc')
+ * )
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Local development with production fallback
+ * const transport = composite(
+ *   http('http://localhost:8787/rpc'),  // Local dev server
+ *   http('https://api.example.com/rpc')  // Production fallback
+ * )
+ * ```
  */
 export function composite(...transports: Transport[]): Transport {
   return {

@@ -218,11 +218,93 @@ export interface SerializedSqlQuery {
 /**
  * Base class for RPC-enabled Durable Objects
  *
- * Extends DurableObject with:
- * - Automatic WebSocket hibernation with capnweb RPC
- * - HTTP batch RPC via capnweb
- * - $ context for storage/sql access
- * - Schema reflection
+ * DurableRPC extends Cloudflare's DurableObject with:
+ * - Automatic WebSocket hibernation with capnweb RPC protocol
+ * - HTTP batch RPC via capnweb for efficient request bundling
+ * - Direct accessors: `this.sql`, `this.storage` (same API as inside DO and via RPC)
+ * - Collections: MongoDB-style document store on SQLite
+ * - Schema reflection for typed client generation
+ * - Colo-aware helpers for global deployment
+ *
+ * DurableRPC handles all the RPC protocol details so you can focus on your
+ * business logic. Simply define methods on your class and they become callable
+ * via RPC automatically.
+ *
+ * @example Basic usage
+ * ```typescript
+ * import { DurableRPC } from '@dotdo/rpc'
+ *
+ * export class MyDO extends DurableRPC {
+ *   // Define RPC methods directly on the class
+ *   async getUser(id: string) {
+ *     return this.sql`SELECT * FROM users WHERE id = ${id}`.first()
+ *   }
+ *
+ *   async createUser(data: { name: string; email: string }) {
+ *     this.sql`INSERT INTO users (name, email) VALUES (${data.name}, ${data.email})`.run()
+ *     return { ok: true }
+ *   }
+ *
+ *   // Nested namespaces via object properties
+ *   users = {
+ *     get: async (id: string) => this.sql`SELECT * FROM users WHERE id = ${id}`.first(),
+ *     list: async () => this.sql`SELECT * FROM users`.all(),
+ *   }
+ * }
+ * ```
+ *
+ * @example Using collections (MongoDB-style)
+ * ```typescript
+ * interface User {
+ *   name: string
+ *   email: string
+ *   active: boolean
+ * }
+ *
+ * export class MyDO extends DurableRPC {
+ *   // Create a typed collection
+ *   users = this.collection<User>('users')
+ *
+ *   async createUser(data: User) {
+ *     const id = crypto.randomUUID()
+ *     this.users.put(id, data)
+ *     return { id }
+ *   }
+ *
+ *   async getActiveUsers() {
+ *     return this.users.find({ active: true })
+ *   }
+ * }
+ * ```
+ *
+ * @example Accessing storage
+ * ```typescript
+ * export class MyDO extends DurableRPC {
+ *   async getConfig() {
+ *     return this.storage.get<Config>('config')
+ *   }
+ *
+ *   async setConfig(config: Config) {
+ *     await this.storage.put('config', config)
+ *   }
+ * }
+ * ```
+ *
+ * @example Client-side usage
+ * ```typescript
+ * import { RPC } from 'rpc.do'
+ *
+ * const $ = RPC('https://my-do.workers.dev')
+ *
+ * // Call methods defined on MyDO
+ * const user = await $.getUser('123')
+ * await $.users.list()
+ *
+ * // Access SQL, storage, collections remotely (same API!)
+ * const users = await $.sql`SELECT * FROM users`.all()
+ * const config = await $.storage.get('config')
+ * const admins = await $.collection('users').find({ role: 'admin' })
+ * ```
  */
 /** Header used to pass worker colo to DO */
 const WORKER_COLO_HEADER = 'X-Worker-Colo'
@@ -291,32 +373,72 @@ export class DurableRPC extends DurableObject {
   // ==========================================================================
 
   /**
-   * Get or create a named collection
+   * Get or create a named collection for MongoDB-style document operations
    *
-   * Collections provide MongoDB-style document operations on SQLite:
-   * - get/put/delete by ID
-   * - find with filters ($eq, $gt, $in, etc.)
-   * - count, list, keys, clear
+   * Collections provide a document-oriented interface on top of SQLite:
+   * - **CRUD**: `get(id)`, `put(id, doc)`, `delete(id)`, `has(id)`
+   * - **Queries**: `find(filter, options)` with MongoDB-style operators
+   * - **Aggregation**: `count(filter)`, `list(options)`, `keys()`
+   * - **Bulk**: `clear()` to delete all documents
    *
-   * @example
+   * Supported filter operators:
+   * - `$eq`, `$ne` - Equality/inequality
+   * - `$gt`, `$gte`, `$lt`, `$lte` - Comparisons
+   * - `$in`, `$nin` - Array membership
+   * - `$exists` - Field existence
+   * - `$regex` - Pattern matching
+   * - `$and`, `$or` - Logical operators
+   *
+   * @typeParam T - The document type (must extend `Record<string, unknown>`)
+   * @param name - The collection name (used as SQLite table name)
+   * @returns A Collection instance with typed document operations
+   *
+   * @example Basic CRUD operations
    * ```typescript
-   * // Inside DO
-   * interface User { name: string; email: string; active: boolean }
+   * interface User {
+   *   name: string
+   *   email: string
+   *   active: boolean
+   *   createdAt: number
+   * }
    *
    * export class MyDO extends DurableRPC {
    *   users = this.collection<User>('users')
    *
-   *   async createUser(data: User) {
-   *     this.users.put(data.email, data)
+   *   async createUser(data: Omit<User, 'createdAt'>) {
+   *     const id = crypto.randomUUID()
+   *     this.users.put(id, { ...data, createdAt: Date.now() })
+   *     return { id }
    *   }
    *
-   *   async getActiveUsers() {
-   *     return this.users.find({ active: true })
+   *   async getUser(id: string) {
+   *     return this.users.get(id)  // Returns User | null
    *   }
    * }
+   * ```
    *
-   * // Via RPC (same API)
-   * const users = await $.collection('users').find({ active: true })
+   * @example Queries with filters
+   * ```typescript
+   * // Simple equality
+   * const admins = this.users.find({ role: 'admin' })
+   *
+   * // Comparison operators
+   * const recentUsers = this.users.find({
+   *   createdAt: { $gt: Date.now() - 86400000 }  // Last 24 hours
+   * })
+   *
+   * // With options
+   * const topUsers = this.users.find(
+   *   { active: true },
+   *   { limit: 10, sort: '-createdAt' }  // Descending sort
+   * )
+   * ```
+   *
+   * @example Via RPC (same API)
+   * ```typescript
+   * const $ = RPC('https://my-do.workers.dev')
+   * await $.collection<User>('users').put('user-1', userData)
+   * const admins = await $.collection<User>('users').find({ role: 'admin' })
    * ```
    */
   collection<T extends Record<string, unknown> = Record<string, unknown>>(name: string): Collection<T> {
@@ -559,6 +681,25 @@ export class DurableRPC extends DurableObject {
   private _currentAuth?: Record<string, unknown>
 
   /**
+   * Optional server-side middleware for RPC hooks.
+   * Override in subclass to add middleware.
+   *
+   * @example
+   * ```typescript
+   * import { DurableRPC, serverLoggingMiddleware } from '@dotdo/rpc'
+   *
+   * export class MyDO extends DurableRPC {
+   *   middleware = [serverLoggingMiddleware()]
+   *
+   *   users = {
+   *     get: async (id: string) => this.sql`SELECT * FROM users WHERE id = ${id}`.one()
+   *   }
+   * }
+   * ```
+   */
+  middleware?: import('./middleware.js').ServerMiddleware[]
+
+  /**
    * Get or create the RPC interface wrapper
    */
   private getRpcInterface(): RpcInterface<DurableRPC> {
@@ -567,6 +708,8 @@ export class DurableRPC extends DurableObject {
         instance: this,
         skipProps: SKIP_PROPS_EXTENDED,
         basePrototype: DurableRPC.prototype,
+        getRequest: () => this._currentRequest,
+        getEnv: () => this.env,
       })
     }
     return this._rpcInterface
@@ -819,8 +962,65 @@ export class DurableRPC extends DurableObject {
   // ==========================================================================
 
   /**
-   * Introspect this DO's API and return a schema description.
-   * Used by `npx rpc.do generate` for typed client codegen.
+   * Introspect this DO's API and return a complete schema description
+   *
+   * Returns a schema containing:
+   * - All public RPC methods with parameter counts
+   * - Nested namespaces and their methods
+   * - Database schema (tables, columns, indexes)
+   * - Storage key samples (optional)
+   * - Current colo (datacenter location)
+   *
+   * This is used by:
+   * - `npx rpc.do generate` for typed client codegen
+   * - GET requests to `/__schema` endpoint
+   * - API documentation and tooling
+   *
+   * @returns Complete RPC schema for this Durable Object
+   *
+   * @example Accessing schema remotely
+   * ```typescript
+   * const $ = RPC('https://my-do.workers.dev')
+   * const schema = await $.schema()
+   *
+   * // Inspect available methods
+   * schema.methods.forEach(m => {
+   *   console.log(`${m.path}(${m.params} params)`)
+   * })
+   *
+   * // Inspect database tables
+   * schema.database?.tables.forEach(t => {
+   *   console.log(`Table: ${t.name}`)
+   *   t.columns.forEach(c => console.log(`  - ${c.name}: ${c.type}`))
+   * })
+   * ```
+   *
+   * @example Schema structure
+   * ```typescript
+   * // Returned schema structure:
+   * {
+   *   version: 1,
+   *   methods: [
+   *     { name: 'getUser', path: 'getUser', params: 1 },
+   *     { name: 'get', path: 'users.get', params: 1 },
+   *     { name: 'list', path: 'users.list', params: 0 },
+   *   ],
+   *   namespaces: [
+   *     { name: 'users', methods: [...] }
+   *   ],
+   *   database: {
+   *     tables: [{
+   *       name: 'users',
+   *       columns: [
+   *         { name: 'id', type: 'TEXT', nullable: false, primaryKey: true },
+   *         { name: 'name', type: 'TEXT', nullable: false, primaryKey: false },
+   *       ],
+   *       indexes: []
+   *     }]
+   *   },
+   *   colo: 'SFO'
+   * }
+   * ```
    */
   getSchema(): RpcSchema {
     return introspectDurableRPC(this, {
@@ -1060,3 +1260,16 @@ export {
   INTERNAL_METHOD_NAMES,
   type InternalMethod,
 } from './constants.js'
+
+// ============================================================================
+// Server-side Middleware
+// ============================================================================
+
+export {
+  type ServerMiddleware,
+  type MiddlewareContext,
+  serverLoggingMiddleware,
+  serverTimingMiddleware,
+  type ServerLoggingOptions,
+  type ServerTimingOptions,
+} from './middleware.js'

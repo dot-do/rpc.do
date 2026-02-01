@@ -7,6 +7,11 @@
 
 import { RpcTarget } from '@dotdo/capnweb/server'
 import { INTERNAL_METHOD_NAMES } from './constants.js'
+import {
+  type ServerMiddleware,
+  type MiddlewareContext,
+  wrapWithMiddleware,
+} from './middleware.js'
 
 // ============================================================================
 // Skip Props - Properties to exclude from RPC exposure
@@ -33,6 +38,7 @@ export const SKIP_PROPS_BASE = new Set([
   'state',
   'ctx',
   'env',
+  'middleware', // Server-side middleware hooks
   '_currentRequest',
   '_transportRegistry',
   '_sessions',
@@ -184,6 +190,8 @@ export function defineInstanceProperties(
  */
 export interface RpcWrappable {
   getSchema(): unknown
+  /** Optional middleware array for server-side hooks */
+  middleware?: ServerMiddleware[]
 }
 
 /**
@@ -196,6 +204,10 @@ export interface RpcInterfaceConfig<T extends RpcWrappable> {
   skipProps: Set<string>
   /** The base prototype to stop at when walking the prototype chain */
   basePrototype: object
+  /** Function to get the current request (for middleware context) */
+  getRequest?: () => Request | undefined
+  /** Function to get the environment bindings (for middleware context) */
+  getEnv?: () => unknown
 }
 
 /**
@@ -205,19 +217,63 @@ export interface RpcInterfaceConfig<T extends RpcWrappable> {
  * 1. DurableRPC extends DurableObject, not RpcTarget
  * 2. We need to control which methods are exposed over RPC
  * 3. We want to preserve the $ context access pattern
+ * 4. We need to wrap methods with middleware hooks
  */
 export class RpcInterface<T extends RpcWrappable> extends RpcTarget {
   private durableRpc: T
+  private getRequest?: () => Request | undefined
+  private getEnv?: () => unknown
 
   constructor(config: RpcInterfaceConfig<T>) {
     super()
     this.durableRpc = config.instance
+    this.getRequest = config.getRequest
+    this.getEnv = config.getEnv
     const collected = collectInterfaceProperties(
       config.instance,
       config.skipProps,
       config.basePrototype
     )
-    defineInstanceProperties(this, collected)
+    this.definePropertiesWithMiddleware(collected)
+  }
+
+  /**
+   * Define properties with middleware wrapping if middleware is configured
+   */
+  private definePropertiesWithMiddleware(collected: CollectedInterfaceProperties): void {
+    const middleware = this.durableRpc.middleware ?? []
+    const getContext = (): MiddlewareContext => ({
+      env: this.getEnv?.(),
+      request: this.getRequest?.(),
+    })
+
+    // Define methods (with middleware wrapping if needed)
+    for (const [key, fn] of Object.entries(collected.methods)) {
+      const wrappedFn = middleware.length > 0
+        ? wrapWithMiddleware(key, fn as (...args: unknown[]) => unknown, middleware, getContext)
+        : fn
+      Object.defineProperty(this, key, {
+        value: wrappedFn,
+        enumerable: true,
+        configurable: true,
+      })
+    }
+
+    // Define namespaces (with middleware wrapping for each method)
+    for (const [nsKey, namespace] of Object.entries(collected.namespaces)) {
+      const wrappedNamespace: Record<string, Function> = {}
+      for (const [methodKey, fn] of Object.entries(namespace)) {
+        const fullMethodName = `${nsKey}.${methodKey}`
+        wrappedNamespace[methodKey] = middleware.length > 0
+          ? wrapWithMiddleware(fullMethodName, fn as (...args: unknown[]) => unknown, middleware, getContext)
+          : fn
+      }
+      Object.defineProperty(this, nsKey, {
+        value: wrappedNamespace,
+        enumerable: true,
+        configurable: true,
+      })
+    }
   }
 
   /**
