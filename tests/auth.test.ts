@@ -496,3 +496,306 @@ describe('compositeAuth', () => {
     expect(token).toBe('valid-token')
   })
 })
+
+// ============================================================================
+// Error Recovery Tests
+// ============================================================================
+
+describe('Error Recovery', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  describe('cachedAuth - Cache Refresh After Auth Expiry', () => {
+    it('should successfully refresh token after expiry', async () => {
+      let tokenVersion = 1
+      const mockGetToken = vi.fn().mockImplementation(async () => `token-v${tokenVersion++}`)
+
+      const auth = cachedAuth(mockGetToken, { ttl: 60000, refreshBuffer: 10000 })
+
+      // Initial call
+      const token1 = await auth()
+      expect(token1).toBe('token-v1')
+      expect(mockGetToken).toHaveBeenCalledTimes(1)
+
+      // Advance past TTL (token is now expired)
+      await vi.advanceTimersByTimeAsync(70000)
+
+      // Should fetch new token since cached one is expired
+      const token2 = await auth()
+      expect(token2).toBe('token-v2')
+      expect(mockGetToken).toHaveBeenCalledTimes(2)
+
+      // New token should be cached
+      const token3 = await auth()
+      expect(token3).toBe('token-v2')
+      expect(mockGetToken).toHaveBeenCalledTimes(2)
+    })
+
+    it('should recover from failed background refresh and retry on next call', async () => {
+      let callCount = 0
+      const mockGetToken = vi.fn().mockImplementation(async () => {
+        callCount++
+        if (callCount === 1) {
+          return 'initial-token'
+        }
+        if (callCount === 2) {
+          throw new Error('Refresh failed')
+        }
+        return 'recovered-token'
+      })
+
+      const auth = cachedAuth(mockGetToken, { ttl: 60000, refreshBuffer: 10000 })
+
+      // Initial call
+      const token1 = await auth()
+      expect(token1).toBe('initial-token')
+
+      // Advance to refresh buffer zone (triggers background refresh that fails)
+      await vi.advanceTimersByTimeAsync(55000)
+      const token2 = await auth()
+      expect(token2).toBe('initial-token') // Returns cached while refresh fails
+
+      // Let the failed refresh complete
+      await vi.advanceTimersByTimeAsync(0)
+      expect(mockGetToken).toHaveBeenCalledTimes(2)
+
+      // Advance past TTL (token expired, must fetch new)
+      await vi.advanceTimersByTimeAsync(10000)
+
+      // This should try again and succeed
+      const token3 = await auth()
+      expect(token3).toBe('recovered-token')
+      expect(mockGetToken).toHaveBeenCalledTimes(3)
+    })
+
+    it('should handle multiple sequential calls during refresh window', async () => {
+      let callCount = 0
+
+      const mockGetToken = vi.fn().mockImplementation(async () => {
+        callCount++
+        return `token-v${callCount}`
+      })
+
+      const auth = cachedAuth(mockGetToken, { ttl: 60000, refreshBuffer: 10000 })
+
+      // Initial call
+      const initialToken = await auth()
+      expect(initialToken).toBe('token-v1')
+      expect(mockGetToken).toHaveBeenCalledTimes(1)
+
+      // Advance to refresh zone
+      await vi.advanceTimersByTimeAsync(55000)
+
+      // First call in refresh zone triggers background refresh but returns cached
+      const t1 = await auth()
+      expect(t1).toBe('token-v1') // Returns current cached while refreshing
+      expect(mockGetToken).toHaveBeenCalledTimes(2) // Background refresh triggered
+
+      // Let the background refresh complete
+      await vi.advanceTimersByTimeAsync(0)
+
+      // Next call should get the refreshed token
+      const t2 = await auth()
+      expect(t2).toBe('token-v2')
+      expect(mockGetToken).toHaveBeenCalledTimes(2) // No new call, using refreshed cache
+    })
+
+    it('should recover from expired cache when initial refresh fails', async () => {
+      let callCount = 0
+      const mockGetToken = vi.fn().mockImplementation(async () => {
+        callCount++
+        if (callCount === 2) {
+          throw new Error('First recovery attempt failed')
+        }
+        if (callCount === 3) {
+          throw new Error('Second recovery attempt failed')
+        }
+        return `token-v${callCount}`
+      })
+
+      const auth = cachedAuth(mockGetToken, { ttl: 60000, refreshBuffer: 10000 })
+
+      // Initial call
+      const token1 = await auth()
+      expect(token1).toBe('token-v1')
+
+      // Advance past TTL
+      await vi.advanceTimersByTimeAsync(70000)
+
+      // First attempt to get new token fails
+      await expect(auth()).rejects.toThrow('First recovery attempt failed')
+
+      // Second attempt also fails
+      await expect(auth()).rejects.toThrow('Second recovery attempt failed')
+
+      // Third attempt succeeds
+      const token4 = await auth()
+      expect(token4).toBe('token-v4')
+    })
+  })
+
+  describe('compositeAuth - Provider Retry on Failure', () => {
+    it('should recover by trying next provider when first fails', async () => {
+      let firstProviderCalls = 0
+      const firstProvider = vi.fn().mockImplementation(async () => {
+        firstProviderCalls++
+        throw new Error(`First provider error #${firstProviderCalls}`)
+      })
+      const secondProvider = vi.fn().mockResolvedValue('fallback-token')
+
+      const auth = compositeAuth([firstProvider, secondProvider])
+
+      // First provider fails, second provides token
+      const token = await auth()
+      expect(token).toBe('fallback-token')
+      expect(firstProvider).toHaveBeenCalledTimes(1)
+      expect(secondProvider).toHaveBeenCalledTimes(1)
+
+      // Subsequent calls continue to try first (it might recover)
+      const token2 = await auth()
+      expect(token2).toBe('fallback-token')
+      expect(firstProvider).toHaveBeenCalledTimes(2)
+    })
+
+    it('should handle all providers failing then one recovering', async () => {
+      let attemptCount = 0
+      const flakeyProvider = vi.fn().mockImplementation(async () => {
+        attemptCount++
+        if (attemptCount < 3) {
+          throw new Error('Temporary failure')
+        }
+        return 'recovered-token'
+      })
+      const alwaysFailsProvider = vi.fn().mockRejectedValue(new Error('Always fails'))
+
+      const auth = compositeAuth([flakeyProvider, alwaysFailsProvider])
+
+      // First two attempts: all providers fail
+      const token1 = await auth()
+      expect(token1).toBeNull() // Both failed
+
+      const token2 = await auth()
+      expect(token2).toBeNull() // Both failed again
+
+      // Third attempt: first provider recovers
+      const token3 = await auth()
+      expect(token3).toBe('recovered-token')
+    })
+
+    it('should continue trying providers in order on each call', async () => {
+      const callOrder: string[] = []
+
+      const provider1 = vi.fn().mockImplementation(async () => {
+        callOrder.push('p1')
+        return null
+      })
+      const provider2 = vi.fn().mockImplementation(async () => {
+        callOrder.push('p2')
+        throw new Error('Provider 2 error')
+      })
+      const provider3 = vi.fn().mockImplementation(async () => {
+        callOrder.push('p3')
+        return 'token-from-p3'
+      })
+
+      const auth = compositeAuth([provider1, provider2, provider3])
+
+      // Multiple calls should always try in order
+      await auth()
+      await auth()
+      await auth()
+
+      expect(callOrder).toEqual([
+        'p1', 'p2', 'p3',
+        'p1', 'p2', 'p3',
+        'p1', 'p2', 'p3',
+      ])
+    })
+
+    it('should handle provider recovering mid-session', async () => {
+      let primaryCalls = 0
+      const primaryProvider = vi.fn().mockImplementation(async () => {
+        primaryCalls++
+        if (primaryCalls <= 2) {
+          throw new Error('Primary down')
+        }
+        return 'primary-token'
+      })
+      const backupProvider = vi.fn().mockResolvedValue('backup-token')
+
+      const auth = compositeAuth([primaryProvider, backupProvider])
+
+      // First call: primary fails, uses backup
+      const token1 = await auth()
+      expect(token1).toBe('backup-token')
+
+      // Second call: primary still fails
+      const token2 = await auth()
+      expect(token2).toBe('backup-token')
+
+      // Third call: primary recovered!
+      const token3 = await auth()
+      expect(token3).toBe('primary-token')
+
+      // Fourth call: primary continues working
+      const token4 = await auth()
+      expect(token4).toBe('primary-token')
+      expect(backupProvider).toHaveBeenCalledTimes(2) // Only called when primary failed
+    })
+  })
+
+  describe('cachedAuth + compositeAuth - Combined Recovery', () => {
+    it('should cache recovered token from fallback provider', async () => {
+      const primaryProvider = vi.fn().mockRejectedValue(new Error('Primary down'))
+      const fallbackProvider = vi.fn().mockResolvedValue('fallback-token')
+
+      const composedAuth = compositeAuth([primaryProvider, fallbackProvider])
+      const auth = cachedAuth(composedAuth, { ttl: 60000, refreshBuffer: 10000 })
+
+      // First call: primary fails, fallback works, result cached
+      const token1 = await auth()
+      expect(token1).toBe('fallback-token')
+      expect(primaryProvider).toHaveBeenCalledTimes(1)
+      expect(fallbackProvider).toHaveBeenCalledTimes(1)
+
+      // Second call: uses cached token
+      const token2 = await auth()
+      expect(token2).toBe('fallback-token')
+      expect(primaryProvider).toHaveBeenCalledTimes(1) // Not called again
+      expect(fallbackProvider).toHaveBeenCalledTimes(1) // Not called again
+    })
+
+    it('should refresh with recovered primary after cache expires', async () => {
+      let primaryCalls = 0
+      const primaryProvider = vi.fn().mockImplementation(async () => {
+        primaryCalls++
+        if (primaryCalls === 1) {
+          throw new Error('Primary down initially')
+        }
+        return 'primary-recovered-token'
+      })
+      const fallbackProvider = vi.fn().mockResolvedValue('fallback-token')
+
+      const composedAuth = compositeAuth([primaryProvider, fallbackProvider])
+      const auth = cachedAuth(composedAuth, { ttl: 60000, refreshBuffer: 10000 })
+
+      // First call: primary fails, fallback works
+      const token1 = await auth()
+      expect(token1).toBe('fallback-token')
+
+      // Advance past TTL
+      await vi.advanceTimersByTimeAsync(70000)
+
+      // Second call: primary has recovered
+      const token2 = await auth()
+      expect(token2).toBe('primary-recovered-token')
+      expect(primaryProvider).toHaveBeenCalledTimes(2)
+      // Fallback not called on refresh since primary succeeded
+    })
+  })
+})

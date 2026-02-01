@@ -90,6 +90,48 @@ export type MethodPaths<T, Prefix extends string = ''> = T extends object
   : never
 
 // ============================================================================
+// Function Type Extraction Helpers
+// ============================================================================
+
+/**
+ * Extracts the argument types from a function type.
+ *
+ * @example
+ * ```typescript
+ * type Fn = (id: string, name: string) => Promise<User>
+ * type Args = ExtractFnArgs<Fn> // [id: string, name: string]
+ * ```
+ */
+export type ExtractFnArgs<T> = T extends (...args: infer A) => unknown ? A : never
+
+/**
+ * Extracts the awaited return type from a function type.
+ * Automatically unwraps Promises to get the resolved value type.
+ *
+ * @example
+ * ```typescript
+ * type Fn = (id: string) => Promise<User>
+ * type Return = ExtractFnReturn<Fn> // User (not Promise<User>)
+ * ```
+ */
+export type ExtractFnReturn<T> = T extends (...args: unknown[]) => infer R ? Awaited<R> : never
+
+/**
+ * Wraps a function type to return a Promise of its awaited return type.
+ * This is used to create async wrapper functions that maintain the original
+ * argument types while ensuring the return is always a Promise.
+ *
+ * @example
+ * ```typescript
+ * type Fn = (id: string) => User | Promise<User>
+ * type Wrapped = AsyncWrapperFn<Fn> // (id: string) => Promise<User>
+ * ```
+ */
+export type AsyncWrapperFn<T> = T extends (...args: infer A) => unknown
+  ? (...args: A) => Promise<ExtractFnReturn<T>>
+  : never
+
+// ============================================================================
 // Query Function Helpers
 // ============================================================================
 
@@ -172,9 +214,7 @@ export function createQueryFn<T, P extends MethodPaths<T> & string>(
   rpc: RpcProxy<T>,
   path: P,
   options?: QueryFnOptions
-): PathValue<T, P> extends (...args: infer A) => infer R
-  ? (...args: A) => Promise<Awaited<R>>
-  : never {
+): AsyncWrapperFn<PathValue<T, P>> {
   const method = getMethod(rpc, path)
 
   if (typeof method !== 'function') {
@@ -192,9 +232,7 @@ export function createQueryFn<T, P extends MethodPaths<T> & string>(
     }
   }
 
-  return wrappedFn as PathValue<T, P> extends (...args: infer A) => infer R
-    ? (...args: A) => Promise<Awaited<R>>
-    : never
+  return wrappedFn as AsyncWrapperFn<PathValue<T, P>>
 }
 
 /**
@@ -221,9 +259,7 @@ export function createMutationFn<T, P extends MethodPaths<T> & string>(
   rpc: RpcProxy<T>,
   path: P,
   options?: MutationFnOptions
-): PathValue<T, P> extends (...args: infer A) => infer R
-  ? (...args: A) => Promise<Awaited<R>>
-  : never {
+): AsyncWrapperFn<PathValue<T, P>> {
   const method = getMethod(rpc, path)
 
   if (typeof method !== 'function') {
@@ -244,9 +280,7 @@ export function createMutationFn<T, P extends MethodPaths<T> & string>(
     }
   }
 
-  return wrappedFn as PathValue<T, P> extends (...args: infer A) => infer R
-    ? (...args: A) => Promise<Awaited<R>>
-    : never
+  return wrappedFn as AsyncWrapperFn<PathValue<T, P>>
 }
 
 // ============================================================================

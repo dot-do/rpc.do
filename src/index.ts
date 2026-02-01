@@ -461,6 +461,13 @@ export {
   type RpcSchema,
 } from './do-client'
 
+// Internal method constants (for custom transport implementations)
+export {
+  INTERNAL_METHODS,
+  INTERNAL_METHOD_NAMES,
+  type InternalMethod,
+} from './constants'
+
 // Note: auth() is available via 'rpc.do/auth' for server-side usage
 // It's not exported from main index to avoid oauth.do dependency in browser contexts
 

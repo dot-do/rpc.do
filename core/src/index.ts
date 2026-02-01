@@ -73,6 +73,9 @@ import {
 // Shared RPC interface
 import { RpcInterface, SKIP_PROPS_EXTENDED } from './rpc-interface.js'
 
+// Internal method constants
+import { INTERNAL_METHODS, INTERNAL_METHOD_NAMES, type InternalMethod } from './constants.js'
+
 // Shared WebSocket state machine
 import {
   type WebSocketState,
@@ -1047,3 +1050,13 @@ export {
   type FilterOperator,
   type QueryOptions,
 } from './collections.js'
+
+// ============================================================================
+// Internal Method Constants
+// ============================================================================
+
+export {
+  INTERNAL_METHODS,
+  INTERNAL_METHOD_NAMES,
+  type InternalMethod,
+} from './constants.js'

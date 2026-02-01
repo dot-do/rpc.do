@@ -6,6 +6,7 @@
  */
 
 import { RpcTarget } from '@dotdo/capnweb/server'
+import { INTERNAL_METHOD_NAMES } from './constants.js'
 
 // ============================================================================
 // Skip Props - Properties to exclude from RPC exposure
@@ -60,30 +61,7 @@ export const SKIP_PROPS_EXTENDED = new Set([
   'estimateLatencyTo',
   'distanceTo',
   // RPC internal methods (exposed but not in schema)
-  '__sql',
-  '__sqlFirst',
-  '__sqlRun',
-  '__storageGet',
-  '__storageGetMultiple',
-  '__storagePut',
-  '__storagePutMultiple',
-  '__storageDelete',
-  '__storageDeleteMultiple',
-  '__storageList',
-  '__dbSchema',
-  '__storageKeys',
-  // Collection methods
-  '__collectionGet',
-  '__collectionPut',
-  '__collectionDelete',
-  '__collectionHas',
-  '__collectionFind',
-  '__collectionCount',
-  '__collectionList',
-  '__collectionKeys',
-  '__collectionClear',
-  '__collectionNames',
-  '__collectionStats',
+  ...INTERNAL_METHOD_NAMES,
   'collection',
   '_collections',
 ])

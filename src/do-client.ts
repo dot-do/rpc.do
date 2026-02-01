@@ -45,6 +45,7 @@ import type {
   DOClient as TypesDOClient,
   DOClientOptions as TypesDOClientOptions,
 } from '@dotdo/types/rpc'
+import { INTERNAL_METHODS } from './constants.js'
 
 // ============================================================================
 // Types
@@ -348,17 +349,17 @@ function createSqlQuery<T>(
 
   return {
     async all(): Promise<T[]> {
-      const result = await transport.call('__sql', [serialized]) as SqlQueryResult<T>
+      const result = await transport.call(INTERNAL_METHODS.SQL, [serialized]) as SqlQueryResult<T>
       return result.results
     },
     async first(): Promise<T | null> {
-      return transport.call('__sqlFirst', [serialized]) as Promise<T | null>
+      return transport.call(INTERNAL_METHODS.SQL_FIRST, [serialized]) as Promise<T | null>
     },
     async run(): Promise<{ rowsWritten: number }> {
-      return transport.call('__sqlRun', [serialized]) as Promise<{ rowsWritten: number }>
+      return transport.call(INTERNAL_METHODS.SQL_RUN, [serialized]) as Promise<{ rowsWritten: number }>
     },
     async raw(): Promise<SqlQueryResult<T>> {
-      return transport.call('__sql', [serialized]) as Promise<SqlQueryResult<T>>
+      return transport.call(INTERNAL_METHODS.SQL, [serialized]) as Promise<SqlQueryResult<T>>
     },
   }
 }
@@ -372,31 +373,31 @@ function createCollectionProxy<T extends Record<string, unknown>>(
 ): RemoteCollection<T> {
   return {
     async get(id: string): Promise<T | null> {
-      return transport.call('__collectionGet', [name, id]) as Promise<T | null>
+      return transport.call(INTERNAL_METHODS.COLLECTION_GET, [name, id]) as Promise<T | null>
     },
     async put(id: string, doc: T): Promise<void> {
-      await transport.call('__collectionPut', [name, id, doc])
+      await transport.call(INTERNAL_METHODS.COLLECTION_PUT, [name, id, doc])
     },
     async delete(id: string): Promise<boolean> {
-      return transport.call('__collectionDelete', [name, id]) as Promise<boolean>
+      return transport.call(INTERNAL_METHODS.COLLECTION_DELETE, [name, id]) as Promise<boolean>
     },
     async has(id: string): Promise<boolean> {
-      return transport.call('__collectionHas', [name, id]) as Promise<boolean>
+      return transport.call(INTERNAL_METHODS.COLLECTION_HAS, [name, id]) as Promise<boolean>
     },
     async find(filter?: Filter<T>, options?: QueryOptions): Promise<T[]> {
-      return transport.call('__collectionFind', [name, filter, options]) as Promise<T[]>
+      return transport.call(INTERNAL_METHODS.COLLECTION_FIND, [name, filter, options]) as Promise<T[]>
     },
     async count(filter?: Filter<T>): Promise<number> {
-      return transport.call('__collectionCount', [name, filter]) as Promise<number>
+      return transport.call(INTERNAL_METHODS.COLLECTION_COUNT, [name, filter]) as Promise<number>
     },
     async list(options?: QueryOptions): Promise<T[]> {
-      return transport.call('__collectionList', [name, options]) as Promise<T[]>
+      return transport.call(INTERNAL_METHODS.COLLECTION_LIST, [name, options]) as Promise<T[]>
     },
     async keys(): Promise<string[]> {
-      return transport.call('__collectionKeys', [name]) as Promise<string[]>
+      return transport.call(INTERNAL_METHODS.COLLECTION_KEYS, [name]) as Promise<string[]>
     },
     async clear(): Promise<number> {
-      return transport.call('__collectionClear', [name]) as Promise<number>
+      return transport.call(INTERNAL_METHODS.COLLECTION_CLEAR, [name]) as Promise<number>
     },
   }
 }
@@ -410,11 +411,11 @@ function createCollectionsProxy(getTransport: () => Transport): RemoteCollection
   }
 
   fn.names = async (): Promise<string[]> => {
-    return getTransport().call('__collectionNames', []) as Promise<string[]>
+    return getTransport().call(INTERNAL_METHODS.COLLECTION_NAMES, []) as Promise<string[]>
   }
 
   fn.stats = async (): Promise<Array<{ name: string; count: number; size: number }>> => {
-    return getTransport().call('__collectionStats', []) as Promise<Array<{ name: string; count: number; size: number }>>
+    return getTransport().call(INTERNAL_METHODS.COLLECTION_STATS, []) as Promise<Array<{ name: string; count: number; size: number }>>
   }
 
   return fn as RemoteCollections
@@ -427,30 +428,30 @@ function createStorageProxy(transport: Transport): RemoteStorage {
   return {
     async get<T>(keyOrKeys: string | string[]): Promise<T | undefined | Map<string, T>> {
       if (Array.isArray(keyOrKeys)) {
-        const result = await transport.call('__storageGetMultiple', [keyOrKeys]) as Record<string, T>
+        const result = await transport.call(INTERNAL_METHODS.STORAGE_GET_MULTIPLE, [keyOrKeys]) as Record<string, T>
         return new Map(Object.entries(result))
       }
-      return transport.call('__storageGet', [keyOrKeys]) as Promise<T | undefined>
+      return transport.call(INTERNAL_METHODS.STORAGE_GET, [keyOrKeys]) as Promise<T | undefined>
     },
     async put<T>(keyOrEntries: string | Record<string, T>, value?: T): Promise<void> {
       if (typeof keyOrEntries === 'string') {
-        await transport.call('__storagePut', [keyOrEntries, value])
+        await transport.call(INTERNAL_METHODS.STORAGE_PUT, [keyOrEntries, value])
       } else {
-        await transport.call('__storagePutMultiple', [keyOrEntries])
+        await transport.call(INTERNAL_METHODS.STORAGE_PUT_MULTIPLE, [keyOrEntries])
       }
     },
     async delete(keyOrKeys: string | string[]): Promise<boolean | number> {
       if (Array.isArray(keyOrKeys)) {
-        return transport.call('__storageDeleteMultiple', [keyOrKeys]) as Promise<number>
+        return transport.call(INTERNAL_METHODS.STORAGE_DELETE_MULTIPLE, [keyOrKeys]) as Promise<number>
       }
-      return transport.call('__storageDelete', [keyOrKeys]) as Promise<boolean>
+      return transport.call(INTERNAL_METHODS.STORAGE_DELETE, [keyOrKeys]) as Promise<boolean>
     },
     async list<T>(options?: { prefix?: string; limit?: number; start?: string; end?: string }): Promise<Map<string, T>> {
-      const result = await transport.call('__storageList', [options]) as Record<string, T>
+      const result = await transport.call(INTERNAL_METHODS.STORAGE_LIST, [options]) as Record<string, T>
       return new Map(Object.entries(result))
     },
     async keys(prefix?: string): Promise<string[]> {
-      return transport.call('__storageKeys', [prefix]) as Promise<string[]>
+      return transport.call(INTERNAL_METHODS.STORAGE_KEYS, [prefix]) as Promise<string[]>
     },
   } as RemoteStorage
 }
@@ -564,14 +565,14 @@ export function createDOClient<T = unknown>(
       if (prop === 'dbSchema') {
         return async (): Promise<DatabaseSchema> => {
           const t = await getTransport()
-          return t.call('__dbSchema', []) as Promise<DatabaseSchema>
+          return t.call(INTERNAL_METHODS.DB_SCHEMA, []) as Promise<DatabaseSchema>
         }
       }
 
       if (prop === 'schema') {
         return async (): Promise<RpcSchema> => {
           const t = await getTransport()
-          return t.call('__schema', []) as Promise<RpcSchema>
+          return t.call(INTERNAL_METHODS.SCHEMA, []) as Promise<RpcSchema>
         }
       }
 

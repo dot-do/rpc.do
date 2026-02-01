@@ -105,6 +105,43 @@ function escapeSqlIdentifier(name: string): string {
 }
 
 // ============================================================================
+// Type Guards and Helpers
+// ============================================================================
+
+/**
+ * Type representing an object that can be introspected for properties.
+ * Uses Record<string, unknown> as the base since we don't know the shape at compile time.
+ */
+type IntrospectableObject = Record<string, unknown>
+
+/**
+ * Type guard to check if an object is a non-null, non-array object suitable for introspection.
+ */
+function isIntrospectableObject(value: unknown): value is IntrospectableObject {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
+ * Type guard to check if a value is a callable function.
+ * This narrows to Function which has the `length` property for parameter count.
+ */
+function isFunction(value: unknown): value is Function {
+  return typeof value === 'function'
+}
+
+/**
+ * Safely access a property on an object, returning undefined on error.
+ * Property access can throw for getters or proxies, so we wrap in try/catch.
+ */
+function safeGetProperty(obj: IntrospectableObject, key: string): unknown {
+  try {
+    return obj[key]
+  } catch {
+    return undefined
+  }
+}
+
+// ============================================================================
 // RPC Method/Namespace Collection
 // ============================================================================
 
@@ -115,26 +152,22 @@ function escapeSqlIdentifier(name: string): string {
  * exposed as RPC methods. Skips properties in the skipProps set and
  * private properties (starting with _).
  *
- * @param obj - The object to collect methods from
+ * @param obj - The object to collect methods from (unknown type since we accept any object for reflection)
  * @param skipProps - Set of property names to skip
  * @returns Array of RPC method schemas
  */
-export function collectRpcMethods(obj: any, skipProps: Set<string>): RpcMethodSchema[] {
+export function collectRpcMethods(obj: unknown, skipProps: Set<string>): RpcMethodSchema[] {
   const methods: RpcMethodSchema[] = []
 
-  if (!obj || obj === Object.prototype) return methods
+  if (!isIntrospectableObject(obj) || obj === Object.prototype) return methods
 
   for (const key of Object.getOwnPropertyNames(obj)) {
     if (skipProps.has(key) || key.startsWith('_')) continue
 
-    let value: any
-    try {
-      value = obj[key]
-    } catch {
-      continue
-    }
+    const value = safeGetProperty(obj, key)
+    if (value === undefined) continue
 
-    if (typeof value === 'function') {
+    if (isFunction(value)) {
       methods.push({ name: key, path: key, params: value.length })
     }
   }
@@ -149,34 +182,31 @@ export function collectRpcMethods(obj: any, skipProps: Set<string>): RpcMethodSc
  * For example: `{ users: { get: fn, create: fn } }` would yield a
  * namespace "users" with methods "get" and "create".
  *
- * @param obj - The object to collect namespaces from
+ * @param obj - The object to collect namespaces from (unknown type since we accept any object for reflection)
  * @param skipProps - Set of property names to skip
  * @returns Array of RPC namespace schemas
  */
-export function collectRpcNamespaces(obj: any, skipProps: Set<string>): RpcNamespaceSchema[] {
+export function collectRpcNamespaces(obj: unknown, skipProps: Set<string>): RpcNamespaceSchema[] {
   const namespaces: RpcNamespaceSchema[] = []
 
-  if (!obj || obj === Object.prototype) return namespaces
+  if (!isIntrospectableObject(obj) || obj === Object.prototype) return namespaces
 
   for (const key of Object.getOwnPropertyNames(obj)) {
     if (skipProps.has(key) || key.startsWith('_')) continue
 
-    let value: any
-    try {
-      value = obj[key]
-    } catch {
-      continue
-    }
+    const value = safeGetProperty(obj, key)
+    if (value === undefined) continue
 
     // Check if it's a namespace (object with function properties)
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
+    if (isIntrospectableObject(value)) {
       const nsMethods: RpcMethodSchema[] = []
       for (const nsKey of Object.keys(value)) {
-        if (typeof value[nsKey] === 'function') {
+        const nsValue = safeGetProperty(value, nsKey)
+        if (isFunction(nsValue)) {
           nsMethods.push({
             name: nsKey,
             path: `${key}.${nsKey}`,
-            params: value[nsKey].length,
+            params: nsValue.length,
           })
         }
       }
@@ -311,32 +341,35 @@ export function introspectDurableRPC<T extends IntrospectableRpc>(
   const namespaces: RpcNamespaceSchema[] = []
   const seen = new Set<string>()
 
+  // Cast instance to IntrospectableObject for property access during reflection.
+  // This is safe because we only access properties that exist on the object
+  // (via Object.getOwnPropertyNames) and handle any errors from getters.
+  const instanceObj = instance as unknown as IntrospectableObject
+
   // Helper to collect properties from an object, merging with seen set
-  const collectProps = (obj: any) => {
-    if (!obj || obj === Object.prototype) return
+  const collectProps = (obj: unknown): void => {
+    if (!isIntrospectableObject(obj) || obj === Object.prototype) return
 
     for (const key of Object.getOwnPropertyNames(obj)) {
       if (!seen.has(key) && !config.skipProps.has(key) && !key.startsWith('_')) {
         seen.add(key)
 
-        let value: any
-        try {
-          value = (instance as any)[key]
-        } catch {
-          continue
-        }
+        // Access from the original instance to get bound methods correctly
+        const value = safeGetProperty(instanceObj, key)
+        if (value === undefined) continue
 
-        if (typeof value === 'function') {
+        if (isFunction(value)) {
           methods.push({ name: key, path: key, params: value.length })
-        } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+        } else if (isIntrospectableObject(value)) {
           // Check if it's a namespace (object with function properties)
           const nsMethods: RpcMethodSchema[] = []
           for (const nsKey of Object.keys(value)) {
-            if (typeof value[nsKey] === 'function') {
+            const nsValue = safeGetProperty(value, nsKey)
+            if (isFunction(nsValue)) {
               nsMethods.push({
                 name: nsKey,
                 path: `${key}.${nsKey}`,
-                params: value[nsKey].length,
+                params: nsValue.length,
               })
             }
           }

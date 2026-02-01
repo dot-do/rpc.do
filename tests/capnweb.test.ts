@@ -261,3 +261,242 @@ describe('http() Transport - Real capnweb protocol', () => {
     expect(r2).toBe('simple result')
   })
 })
+
+// ============================================================================
+// Error Recovery Tests - Transport Level
+// ============================================================================
+
+describe('Transport - Error Recovery', () => {
+  describe('composite() Transport - Fallback Recovery', () => {
+    it('should recover from primary transport failure by using fallback', async () => {
+      const { composite } = await import('../src/transports')
+      const http = await getHttpTransport()
+
+      let primaryFailCount = 0
+      const failingPrimary = {
+        async call(method: string, args: unknown[]) {
+          primaryFailCount++
+          throw new Error('Primary transport failed')
+        },
+        close() { /* no-op */ }
+      }
+
+      const fallbackTransport = http('https://api.example.com/rpc')
+
+      const transport = composite(failingPrimary, fallbackTransport)
+
+      // Should use fallback after primary fails
+      const result = await transport.call('simpleMethod', [])
+      expect(result).toBe('simple result')
+      expect(primaryFailCount).toBe(1)
+    })
+
+    it('should try primary first on each call (allowing recovery)', async () => {
+      const { composite } = await import('../src/transports')
+
+      let primaryCallCount = 0
+      const recoveringPrimary = {
+        async call(method: string, args: unknown[]) {
+          primaryCallCount++
+          if (primaryCallCount < 3) {
+            throw new Error('Primary temporarily down')
+          }
+          return 'primary-recovered'
+        },
+        close() { /* no-op */ }
+      }
+
+      const fallbackResults = ['fallback-1', 'fallback-2', 'fallback-3']
+      let fallbackCallCount = 0
+      const fallbackTransport = {
+        async call(method: string, args: unknown[]) {
+          return fallbackResults[fallbackCallCount++]
+        },
+        close() { /* no-op */ }
+      }
+
+      const transport = composite(recoveringPrimary, fallbackTransport)
+
+      // First two calls use fallback
+      const r1 = await transport.call('simpleMethod', [])
+      expect(r1).toBe('fallback-1')
+
+      const r2 = await transport.call('simpleMethod', [])
+      expect(r2).toBe('fallback-2')
+
+      // Third call: primary recovered
+      const r3 = await transport.call('simpleMethod', [])
+      expect(r3).toBe('primary-recovered')
+
+      expect(primaryCallCount).toBe(3)
+      expect(fallbackCallCount).toBe(2) // Fallback only called when primary failed
+    })
+
+    it('should propagate error when all transports fail', async () => {
+      const { composite } = await import('../src/transports')
+
+      const failing1 = {
+        async call() {
+          throw new Error('Transport 1 failed')
+        },
+        close() { /* no-op */ }
+      }
+
+      const failing2 = {
+        async call() {
+          throw new Error('Transport 2 failed')
+        },
+        close() { /* no-op */ }
+      }
+
+      const transport = composite(failing1, failing2)
+
+      // Should throw the last error
+      await expect(transport.call('method', [])).rejects.toThrow('Transport 2 failed')
+    })
+
+    it('should close all transports on close()', async () => {
+      const { composite } = await import('../src/transports')
+
+      const closeTracker: string[] = []
+
+      const t1 = {
+        async call() { return 'result' },
+        close() { closeTracker.push('t1') }
+      }
+
+      const t2 = {
+        async call() { return 'result' },
+        close() { closeTracker.push('t2') }
+      }
+
+      const transport = composite(t1, t2)
+      transport.close!()
+
+      expect(closeTracker).toEqual(['t1', 't2'])
+    })
+  })
+
+  describe('http() Transport - Session Recreation Recovery', () => {
+    it('should recover by creating new session after close()', async () => {
+      const http = await getHttpTransport()
+      const transport = http('https://api.example.com/rpc')
+
+      // First request
+      const r1 = await transport.call('simpleMethod', [])
+      expect(r1).toBe('simple result')
+
+      // Simulate session being closed/corrupted
+      transport.close!()
+
+      // Should automatically recreate session
+      const r2 = await transport.call('simpleMethod', [])
+      expect(r2).toBe('simple result')
+    })
+
+    it('should handle multiple close/recreate cycles', async () => {
+      const http = await getHttpTransport()
+      const transport = http('https://api.example.com/rpc')
+
+      for (let i = 0; i < 3; i++) {
+        const result = await transport.call('simpleMethod', [])
+        expect(result).toBe('simple result')
+        transport.close!()
+      }
+
+      // Final call after multiple cycles
+      const final = await transport.call('simpleMethod', [])
+      expect(final).toBe('simple result')
+    })
+  })
+
+  describe('capnweb() Transport - HTTP Mode Recovery', () => {
+    it('should recover from partial failures in batch mode', async () => {
+      const capnweb = await getCapnwebTransport()
+      const transport = capnweb('https://api.example.com/rpc', { websocket: false })
+
+      // Multiple sequential calls should all work
+      const results = await Promise.all([
+        transport.call('simpleMethod', []),
+        transport.call('users.list', []),
+        transport.call('users.get', ['123']),
+      ])
+
+      expect(results[0]).toBe('simple result')
+      expect(results[1]).toEqual([{ id: '1' }, { id: '2' }])
+      expect(results[2]).toEqual({ id: '123', name: 'Test User' })
+    })
+
+    it('should isolate errors between calls', async () => {
+      const capnweb = await getCapnwebTransport()
+      // Need separate transports since HTTP batch sessions end after a failed path lookup
+      const transport1 = capnweb('https://api.example.com/rpc', { websocket: false })
+      const transport2 = capnweb('https://api.example.com/rpc', { websocket: false })
+
+      // This call should fail
+      await expect(transport1.call('nonexistent.method', [])).rejects.toThrow()
+
+      // A separate transport should still work
+      const result = await transport2.call('simpleMethod', [])
+      expect(result).toBe('simple result')
+
+      transport1.close!()
+      transport2.close!()
+    })
+
+    it('should recover session after close() in HTTP mode', async () => {
+      const capnweb = await getCapnwebTransport()
+      const transport = capnweb('https://api.example.com/rpc', { websocket: false })
+
+      const r1 = await transport.call('simpleMethod', [])
+      expect(r1).toBe('simple result')
+
+      transport.close!()
+
+      // Session should be recreated automatically
+      const r2 = await transport.call('users.get', ['456'])
+      expect(r2).toEqual({ id: '456', name: 'Test User' })
+    })
+  })
+
+  describe('Transport Error Isolation', () => {
+    it('should not affect other transports when one fails', async () => {
+      const http = await getHttpTransport()
+
+      const transport1 = http('https://api.example.com/rpc')
+      const transport2 = http('https://api.example.com/rpc')
+
+      // Call succeeds on transport1
+      const r1 = await transport1.call('simpleMethod', [])
+      expect(r1).toBe('simple result')
+
+      // Close transport1
+      transport1.close!()
+
+      // Transport2 should still work
+      const r2 = await transport2.call('users.list', [])
+      expect(r2).toEqual([{ id: '1' }, { id: '2' }])
+    })
+
+    it('should handle concurrent calls during recovery', async () => {
+      const http = await getHttpTransport()
+      const transport = http('https://api.example.com/rpc')
+
+      // Make initial call
+      await transport.call('simpleMethod', [])
+
+      // Close and immediately make concurrent calls
+      transport.close!()
+
+      const results = await Promise.all([
+        transport.call('simpleMethod', []),
+        transport.call('users.list', []),
+        transport.call('users.get', ['789']),
+      ])
+
+      expect(results[0]).toBe('simple result')
+      expect(results[1]).toEqual([{ id: '1' }, { id: '2' }])
+      expect(results[2]).toEqual({ id: '789', name: 'Test User' })
+    })
+  })
+})

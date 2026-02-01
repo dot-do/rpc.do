@@ -1506,3 +1506,377 @@ describe('ReconnectingWebSocketTransport - Edge Cases', () => {
     expect(socket.sentMessages).toContain('test2')
   })
 })
+
+// ============================================================================
+// Error Recovery Tests
+// ============================================================================
+
+describe('ReconnectingWebSocketTransport - Error Recovery', () => {
+  it('should successfully reconnect after connection is established then lost', async () => {
+    const onConnect = vi.fn()
+    const onReconnecting = vi.fn()
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      onConnect,
+      onReconnecting,
+      reconnectBackoff: 100,
+    })
+
+    // Establish initial connection
+    const sendPromise = transport.send('test-message')
+    await vi.advanceTimersByTimeAsync(0)
+    const firstSocket = getLastWebSocket()
+    firstSocket!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    expect(transport.getState()).toBe('connected')
+    expect(onConnect).toHaveBeenCalledTimes(1)
+
+    // Connection drops unexpectedly
+    firstSocket!.simulateClose(1006, 'Connection lost')
+
+    expect(transport.getState()).toBe('reconnecting')
+    expect(onReconnecting).toHaveBeenCalledWith(1, Infinity)
+
+    // Wait for reconnection attempt
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(0)
+
+    // Second connection succeeds
+    const secondSocket = getLastWebSocket()
+    expect(secondSocket).not.toBe(firstSocket)
+    secondSocket!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(transport.getState()).toBe('connected')
+    expect(transport.isConnected()).toBe(true)
+    expect(onConnect).toHaveBeenCalledTimes(2)
+  })
+
+  it('should automatically retry after timeout with exponential backoff', async () => {
+    const onReconnecting = vi.fn()
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      onReconnecting,
+      reconnectBackoff: 100,
+      backoffMultiplier: 2,
+      maxReconnectBackoff: 800,
+    })
+
+    // Establish initial connection
+    const sendPromise = transport.send('test')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    // Connection drops unexpectedly
+    getLastWebSocket()!.simulateClose(1006, 'Network timeout')
+
+    expect(transport.getState()).toBe('reconnecting')
+    expect(onReconnecting).toHaveBeenCalledWith(1, Infinity)
+
+    // First retry at 100ms - fails
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateClose(1006, 'Still failing')
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(onReconnecting).toHaveBeenCalledWith(2, Infinity)
+
+    // Second retry at 200ms (100 * 2) - fails
+    await vi.advanceTimersByTimeAsync(200)
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateClose(1006, 'Still failing')
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(onReconnecting).toHaveBeenCalledWith(3, Infinity)
+
+    // Third retry at 400ms (200 * 2) - fails
+    await vi.advanceTimersByTimeAsync(400)
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateClose(1006, 'Still failing')
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(onReconnecting).toHaveBeenCalledWith(4, Infinity)
+
+    // Fourth retry at 800ms (400 * 2, capped at max) - succeeds
+    await vi.advanceTimersByTimeAsync(800)
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(transport.getState()).toBe('connected')
+    expect(transport.isConnected()).toBe(true)
+
+    // Verify backoff was capped at maxReconnectBackoff
+    // If we disconnect again, retry should start at initial backoff (reset)
+    getLastWebSocket()!.simulateClose(1006, 'Another disconnect')
+    expect(transport.getState()).toBe('reconnecting')
+    // Reconnecting callback should show reset attempt count
+    // First reconnection after recovery should be attempt 1 again
+  })
+
+  it('should preserve queued messages across multiple reconnection failures', async () => {
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      reconnectBackoff: 50,
+      maxReconnectAttempts: 5,
+    })
+
+    // Establish initial connection
+    const initialSend = transport.send('initial')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await initialSend
+
+    // Connection drops
+    getLastWebSocket()!.simulateClose(1006, 'Lost')
+    expect(transport.getState()).toBe('reconnecting')
+
+    // Queue messages during reconnection
+    const queuedSend1 = transport.send('queued-1')
+    const queuedSend2 = transport.send('queued-2')
+
+    // First reconnection attempt fails
+    await vi.advanceTimersByTimeAsync(50)
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateClose(1006, 'Failed')
+    await vi.advanceTimersByTimeAsync(0)
+
+    // Second reconnection attempt fails
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateClose(1006, 'Failed')
+    await vi.advanceTimersByTimeAsync(0)
+
+    // Third reconnection attempt succeeds
+    await vi.advanceTimersByTimeAsync(200)
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+
+    // Advance timers for internal polling
+    for (let i = 0; i < 10; i++) {
+      await vi.advanceTimersByTimeAsync(50)
+    }
+
+    await Promise.all([queuedSend1, queuedSend2])
+
+    // Queued messages should be sent
+    const socket = getLastWebSocket()!
+    expect(socket.sentMessages).toContain('queued-1')
+    expect(socket.sentMessages).toContain('queued-2')
+  })
+
+  it('should recover from heartbeat timeout and restore connection', async () => {
+    const onError = vi.fn()
+    const onConnect = vi.fn()
+    const onReconnecting = vi.fn()
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      heartbeatInterval: 500,
+      heartbeatTimeout: 200,
+      reconnectBackoff: 100,
+      onError,
+      onConnect,
+      onReconnecting,
+    })
+
+    // Establish connection
+    const sendPromise = transport.send('test')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    expect(onConnect).toHaveBeenCalledTimes(1)
+    const firstSocket = getLastWebSocket()
+
+    // Send heartbeat ping
+    await vi.advanceTimersByTimeAsync(500)
+
+    // Check ping was sent
+    const pingMessages = firstSocket!.sentMessages.filter(m => {
+      try {
+        return JSON.parse(m).type === 'ping'
+      } catch {
+        return false
+      }
+    })
+    expect(pingMessages.length).toBeGreaterThan(0)
+
+    // No pong response - heartbeat times out
+    await vi.advanceTimersByTimeAsync(700) // Wait past heartbeat interval + timeout
+
+    // Should have triggered heartbeat timeout error and closed socket
+    expect(onError).toHaveBeenCalled()
+    const heartbeatError = onError.mock.calls.find(
+      call => call[0] instanceof ConnectionError && call[0].code === 'HEARTBEAT_TIMEOUT'
+    )
+    expect(heartbeatError).toBeTruthy()
+
+    // Should enter reconnecting state
+    expect(onReconnecting).toHaveBeenCalled()
+
+    // Wait for reconnection
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(0)
+
+    // New socket connects successfully
+    const secondSocket = getLastWebSocket()
+    expect(secondSocket).not.toBe(firstSocket)
+    secondSocket!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(transport.isConnected()).toBe(true)
+    expect(onConnect).toHaveBeenCalledTimes(2) // Second connection
+  })
+
+  it('should recover gracefully when auth provider fails then succeeds', async () => {
+    let authCallCount = 0
+    const authProvider = vi.fn().mockImplementation(async () => {
+      authCallCount++
+      if (authCallCount === 1) {
+        throw new Error('Auth service temporarily unavailable')
+      }
+      return 'recovered-token'
+    })
+
+    const onError = vi.fn()
+    const onConnect = vi.fn()
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      auth: authProvider,
+      reconnectBackoff: 100,
+      onError,
+      onConnect,
+    })
+
+    // First connection attempt - auth fails
+    const sendPromise = transport.send('test').catch(e => e)
+    await vi.advanceTimersByTimeAsync(0)
+
+    // Socket opens but auth fails
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+
+    // Auth failure should reject the send
+    const error = await sendPromise
+    expect(error.message).toBe('Auth service temporarily unavailable')
+    expect(authProvider).toHaveBeenCalledTimes(1)
+
+    // Try again - this time auth succeeds
+    const secondSend = transport.send('test-after-recovery')
+    await vi.advanceTimersByTimeAsync(0)
+
+    // Wait for reconnection
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(0)
+
+    // New connection with successful auth
+    getLastWebSocket()!.simulateOpen()
+
+    // Advance timers for internal polling
+    for (let i = 0; i < 10; i++) {
+      await vi.advanceTimersByTimeAsync(50)
+    }
+
+    await secondSend
+
+    expect(authProvider).toHaveBeenCalledTimes(2)
+    const socket = getLastWebSocket()!
+    // Should have auth message
+    const authMessages = socket.sentMessages.filter(m => {
+      try {
+        return JSON.parse(m).type === 'auth'
+      } catch {
+        return false
+      }
+    })
+    expect(authMessages.length).toBeGreaterThan(0)
+    expect(JSON.parse(authMessages[0]).token).toBe('recovered-token')
+  })
+
+  it('should handle recovery when receiving messages during reconnection', async () => {
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      reconnectBackoff: 100,
+    })
+
+    // Establish connection
+    const sendPromise = transport.send('test')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    // Receive some messages
+    const socket = getLastWebSocket()!
+    socket.simulateRawMessage('message-1')
+    socket.simulateRawMessage('message-2')
+
+    // Connection drops before messages are consumed
+    socket.simulateClose(1006, 'Lost')
+
+    // Messages in queue should be retrievable after reconnection
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+
+    // Can now receive queued messages
+    const msg1 = await transport.receive()
+    const msg2 = await transport.receive()
+
+    expect(msg1).toBe('message-1')
+    expect(msg2).toBe('message-2')
+  })
+
+  it('should correctly reset backoff after successful recovery', async () => {
+    const onReconnecting = vi.fn()
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      onReconnecting,
+      reconnectBackoff: 100,
+      backoffMultiplier: 2,
+    })
+
+    // First connection cycle
+    const sendPromise = transport.send('test')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    // Disconnect and fail multiple times
+    getLastWebSocket()!.simulateClose(1006, 'Lost')
+    expect(onReconnecting).toHaveBeenLastCalledWith(1, Infinity)
+
+    // Fail at 100ms
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateClose(1006, 'Failed')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onReconnecting).toHaveBeenLastCalledWith(2, Infinity)
+
+    // Succeed at 200ms
+    await vi.advanceTimersByTimeAsync(200)
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(transport.isConnected()).toBe(true)
+
+    // Clear mock to track next reconnection cycle
+    onReconnecting.mockClear()
+
+    // Disconnect again - backoff should be reset
+    getLastWebSocket()!.simulateClose(1006, 'Lost again')
+
+    // First attempt after recovery should be attempt 1, not 3
+    expect(onReconnecting).toHaveBeenCalledWith(1, Infinity)
+
+    // And backoff should be back to initial 100ms, not 400ms
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(transport.isConnected()).toBe(true)
+  })
+})
