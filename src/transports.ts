@@ -639,3 +639,6 @@ export {
   type ReconnectingWebSocketOptions,
   type RpcSessionOptions,
 } from './transports/reconnecting-ws.js'
+
+// Export middleware wrappers for transport composition
+export { withMiddleware, withRetry, type RetryOptions } from './middleware/index.js'
