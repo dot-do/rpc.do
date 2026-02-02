@@ -19,7 +19,7 @@
  * ```
  */
 
-import type { RpcClientMiddleware } from '../index'
+import type { RpcClientMiddleware } from '../types'
 import type { BaseLoggingOptions } from './types'
 
 /**

@@ -36,7 +36,7 @@
  * ```
  */
 
-import type { Transport, TransportFactory, RpcProxy, RpcClientMiddleware } from './index'
+import type { Transport, TransportFactory, RpcProxy, RpcClientMiddleware } from './types'
 import type {
   SqlQueryResult as TypesSqlQueryResult,
   SqlQuery as TypesSqlQuery,

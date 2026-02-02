@@ -2,7 +2,7 @@
  * Built-in transports for rpc.do
  */
 
-import type { Transport } from './index'
+import type { Transport } from './types'
 import type { ServerMessage as TypesServerMessage } from '@dotdo/types/rpc'
 import { ConnectionError, RPCError } from './errors'
 
@@ -160,10 +160,10 @@ export function wrapTransportError(error: unknown): ConnectionError | RPCError {
     }
 
     // Check for HTTP status code directly on the error object
-    const statusCode = typeof (error as { status?: unknown }).status === 'number'
-      ? (error as { status: number }).status
-      : typeof (error as { statusCode?: unknown }).statusCode === 'number'
-        ? (error as { statusCode: number }).statusCode
+    const statusCode = typeof (error as unknown as { status?: unknown }).status === 'number'
+      ? (error as unknown as { status: number }).status
+      : typeof (error as unknown as { statusCode?: unknown }).statusCode === 'number'
+        ? (error as unknown as { statusCode: number }).statusCode
         : undefined
 
     // Auth failures (401) - use status code or word-boundary regex

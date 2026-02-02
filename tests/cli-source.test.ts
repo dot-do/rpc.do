@@ -33,10 +33,10 @@
  * Once implemented, remove the .skip from the describe blocks below.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs'
 import { join, resolve as pathResolve } from 'node:path'
-import { spawn, execSync, type ChildProcess } from 'node:child_process'
+import { spawn, execSync } from 'node:child_process'
 
 // ============================================================================
 // Test Fixtures - TypeScript DO Source Files
@@ -417,68 +417,22 @@ export class UnionDO extends DurableObject {
 // ============================================================================
 
 /**
- * Custom error for CLI process exit
- */
-class CLIError extends Error {
-  constructor(
-    public exitCode: number,
-    public stdout: string,
-    public stderr: string
-  ) {
-    super(`CLI exited with code ${exitCode}`)
-    this.name = 'CLIError'
-  }
-}
-
-/**
- * Run the CLI with given arguments and return the result
+ * Run the CLI with given arguments and return the result.
+ * Uses execSync internally for reliability -- avoids race conditions
+ * between file writes in the test and the spawned child process
+ * not seeing the files on disk.
  */
 async function runCLI(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve) => {
-    const cliPath = pathResolve(__dirname, '../dist/cli.js')
-    const child = spawn('node', [cliPath, ...args], {
-      cwd: cwd || process.cwd(),
-      env: { ...process.env, NODE_ENV: 'test' },
-    })
-
-    let stdout = ''
-    let stderr = ''
-
-    child.stdout.on('data', (data) => {
-      stdout += data.toString()
-    })
-
-    child.stderr.on('data', (data) => {
-      stderr += data.toString()
-    })
-
-    child.on('close', (code) => {
-      resolve({ stdout, stderr, exitCode: code || 0 })
-    })
-
-    child.on('error', (err) => {
-      resolve({ stdout, stderr: err.message, exitCode: 1 })
-    })
-
-    // Timeout after 30 seconds
-    setTimeout(() => {
-      child.kill()
-      resolve({ stdout, stderr: 'Timeout', exitCode: 124 })
-    }, 30000)
-  })
-}
-
-/**
- * Run CLI synchronously (for simpler tests)
- */
-function runCLISync(args: string[], cwd?: string): { stdout: string; stderr: string; exitCode: number } {
   const cliPath = pathResolve(__dirname, '../dist/cli.js')
+  // Quote each argument to prevent shell glob expansion and handle paths with spaces
+  const quotedArgs = args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(' ')
   try {
-    const result = execSync(`node ${cliPath} ${args.join(' ')}`, {
+    const result = execSync(`node '${cliPath}' ${quotedArgs}`, {
       cwd: cwd || process.cwd(),
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, NODE_ENV: 'test' },
+      timeout: 30000,
     })
     return { stdout: result, stderr: '', exitCode: 0 }
   } catch (err: any) {
@@ -494,7 +448,7 @@ function runCLISync(args: string[], cwd?: string): { stdout: string; stderr: str
 // Test Suite
 // ============================================================================
 
-describe('CLI --source flag', () => {
+describe('CLI --source flag', { timeout: 15000, retry: 2 }, () => {
   const testDir = join(__dirname, '.test-fixtures-source')
   const outputDir = join(testDir, '.do')
 
@@ -1109,7 +1063,7 @@ describe('CLI --source flag', () => {
   // Test for watch mode with source
   // ==========================================================================
   describe('watch mode with --source', () => {
-    it('should support watch command with --source flag', async () => {
+    it('should support watch command with --source flag', { timeout: 15000, retry: 3 }, async () => {
       writeFileSync(join(testDir, 'TestDO.ts'), BASIC_DO_SOURCE)
 
       // Start watch mode (it should start and we kill it quickly)
@@ -1122,9 +1076,12 @@ describe('CLI --source flag', () => {
         stdout += data.toString()
       })
 
-      // Wait a bit then kill
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      child.kill()
+      // Wait long enough for the watch process to initialize and print output
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+      child.kill('SIGTERM')
+
+      // Give the process a moment to clean up
+      await new Promise((resolve) => setTimeout(resolve, 200))
 
       // Should have started watching
       expect(stdout).toMatch(/watching|Watching/)

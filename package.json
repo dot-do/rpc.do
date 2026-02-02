@@ -2,7 +2,7 @@
   "name": "rpc.do",
   "version": "0.2.4",
   "description": "Managed RPC implementation for the .do platform with oauth.do authentication and cli.do tooling",
-  "stability": "production-ready",
+  "stability": "beta",
   "apiStability": "Follows semantic versioning. See docs/VERSIONING.md for stability guarantees.",
   "type": "module",
   "sideEffects": false,
@@ -104,8 +104,10 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "dependencies": {
+    "@dotdo/capnweb": "^0.4.0"
+  },
   "peerDependencies": {
-    "@dotdo/capnweb": "^0.4.0",
     "@dotdo/types": ">=0.1.0",
     "glob": "^13.0.0",
     "oauth.do": "^0.2.0",
@@ -129,6 +131,7 @@
     "@changesets/cli": "^2.29.8",
     "@cloudflare/vitest-pool-workers": "^0.8.0",
     "@cloudflare/workers-types": "^4.20241205.0",
+    "@dotdo/rpc": "file:core",
     "@types/node": "^24.10.1",
     "@types/ws": "^8.5.10",
     "esbuild": "^0.27.1",

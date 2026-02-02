@@ -19,6 +19,19 @@ vi.mock('cloudflare:workers', () => ({
   }
 }))
 
+/**
+ * Type for instances created by expose() — includes the dynamically-added
+ * getRpcTarget method that TypeScript can't infer from the return type.
+ */
+interface ExposedWorkerInstance {
+  getRpcTarget(): RpcTarget & Record<string, unknown>
+}
+
+/** Instantiate an exposed worker class with proper typing */
+function createInstance(Worker: ReturnType<typeof expose>): ExposedWorkerInstance {
+  return new (Worker as unknown as new () => ExposedWorkerInstance)()
+}
+
 describe('expose()', () => {
   describe('simple SDK factory', () => {
     it('should create a WorkerEntrypoint class', () => {
@@ -29,13 +42,13 @@ describe('expose()', () => {
 
     it('should expose getRpcTarget method on instances', () => {
       const Worker = expose(() => ({ test: () => 'ok' }))
-      const instance = new (Worker as any)()
+      const instance = createInstance(Worker)
       expect(typeof instance.getRpcTarget).toBe('function')
     })
 
     it('should return a real RpcTarget', () => {
       const Worker = expose(() => ({ test: () => 'ok' }))
-      const instance = new (Worker as any)()
+      const instance = createInstance(Worker)
       const target = instance.getRpcTarget()
       expect(target).toBeInstanceOf(RpcTarget)
     })
@@ -48,7 +61,7 @@ describe('expose()', () => {
       }
 
       const Worker = expose(factory)
-      const instance = new (Worker as any)()
+      const instance = createInstance(Worker)
 
       expect(initialized).toBe(false)
 
@@ -64,7 +77,7 @@ describe('expose()', () => {
       }
 
       const Worker = expose(() => sdk)
-      const instance = new (Worker as any)()
+      const instance = createInstance(Worker)
       const target = instance.getRpcTarget()
 
       expect(typeof target.greet).toBe('function')
@@ -82,7 +95,7 @@ describe('expose()', () => {
       }
 
       const Worker = expose(() => sdk)
-      const instance = new (Worker as any)()
+      const instance = createInstance(Worker)
       const target = instance.getRpcTarget()
 
       expect(target.users).toBeDefined()
@@ -100,7 +113,7 @@ describe('expose()', () => {
       }
 
       const Worker = expose(() => sdk)
-      const instance = new (Worker as any)()
+      const instance = createInstance(Worker)
       const target = instance.getRpcTarget()
 
       expect(typeof target.publicMethod).toBe('function')
@@ -113,7 +126,7 @@ describe('expose()', () => {
         factoryCallCount++
         return { test: () => 'ok' }
       })
-      const instance = new (Worker as any)()
+      const instance = createInstance(Worker)
 
       const target1 = instance.getRpcTarget()
       const target2 = instance.getRpcTarget()
@@ -135,10 +148,10 @@ describe('expose()', () => {
           customMethod() {
             return { custom: true }
           }
-        } as any
+        } as Record<string, (...args: unknown[]) => unknown>
       })
 
-      const instance = new (Worker as any)()
+      const instance = createInstance(Worker)
       const target = instance.getRpcTarget()
 
       expect(typeof target.customMethod).toBe('function')
@@ -160,10 +173,10 @@ describe('expose()', () => {
             const sdkData = this.sdk.getData()
             return { ...sdkData, enhanced: true }
           }
-        } as any
+        } as Record<string, (...args: unknown[]) => unknown>
       })
 
-      const instance = new (Worker as any)()
+      const instance = createInstance(Worker)
       const target = instance.getRpcTarget()
 
       expect(target.combined()).toEqual({ data: 'from-sdk', enhanced: true })
@@ -191,7 +204,7 @@ describe('expose()', () => {
         }
       })
 
-      const instance = new (Worker as any)()
+      const instance = createInstance(Worker)
       const target = instance.getRpcTarget()
 
       expect(target.cf).toBeDefined()
@@ -220,7 +233,7 @@ describe('expose()', () => {
         }
       })
 
-      const instance = new (Worker as any)()
+      const instance = createInstance(Worker)
       const target = instance.getRpcTarget()
 
       expect(typeof target.healthCheck).toBe('function')

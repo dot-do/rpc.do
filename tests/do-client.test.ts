@@ -1045,7 +1045,7 @@ describe('createDOClient - Remote Collection Operations', () => {
 
       const $ = createDOClient(transport)
 
-      await expect($.collection('users').put('id', {} as any)).rejects.toThrow(
+      await expect($.collection('users').put('id', {})).rejects.toThrow(
         'Invalid document format'
       )
     })

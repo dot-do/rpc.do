@@ -9,6 +9,15 @@ import { env, SELF, runInDurableObject } from 'cloudflare:test'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { TestDO } from '../src/index'
 
+/** Shape of the RPC schema response from GET /do/:name */
+interface RpcSchemaResponse {
+  version: number
+  methods: Array<{ name: string; [key: string]: unknown }>
+  namespaces: Array<{ name: string; methods: Array<{ name: string; [key: string]: unknown }>; [key: string]: unknown }>
+  database?: { tables: unknown[] }
+  [key: string]: unknown
+}
+
 describe('DurableRPC E2E Tests', () => {
   // ============================================================================
   // Schema Introspection (GET request)
@@ -19,7 +28,7 @@ describe('DurableRPC E2E Tests', () => {
       const response = await SELF.fetch('http://localhost/do/test')
       expect(response.status).toBe(200)
 
-      const schema = await response.json() as any
+      const schema = await response.json() as RpcSchemaResponse
       expect(schema.version).toBe(1)
       expect(schema.methods).toBeDefined()
       expect(schema.namespaces).toBeDefined()
@@ -27,19 +36,19 @@ describe('DurableRPC E2E Tests', () => {
 
     it('schema includes user-defined methods', async () => {
       const response = await SELF.fetch('http://localhost/do/test')
-      const schema = await response.json() as any
+      const schema = await response.json() as RpcSchemaResponse
 
       // Check for echo method
-      const echoMethod = schema.methods.find((m: any) => m.name === 'echo')
+      const echoMethod = schema.methods.find((m) => m.name === 'echo')
       expect(echoMethod).toBeDefined()
 
       // Check for users namespace
-      const usersNs = schema.namespaces.find((n: any) => n.name === 'users')
+      const usersNs = schema.namespaces.find((n) => n.name === 'users')
       expect(usersNs).toBeDefined()
-      expect(usersNs.methods.some((m: any) => m.name === 'create')).toBe(true)
+      expect(usersNs!.methods.some((m) => m.name === 'create')).toBe(true)
 
       // Check for tasks namespace (collection-backed)
-      const tasksNs = schema.namespaces.find((n: any) => n.name === 'tasks')
+      const tasksNs = schema.namespaces.find((n) => n.name === 'tasks')
       expect(tasksNs).toBeDefined()
     })
   })
@@ -253,11 +262,11 @@ describe('DurableRPC E2E Tests', () => {
 
       // Now test via HTTP
       const response = await SELF.fetch('http://localhost/do/schema-test')
-      const schema = await response.json() as any
+      const schema = await response.json() as RpcSchemaResponse
 
       expect(schema.database).toBeDefined()
-      expect(schema.database.tables).toBeDefined()
-      expect(Array.isArray(schema.database.tables)).toBe(true)
+      expect(schema.database!.tables).toBeDefined()
+      expect(Array.isArray(schema.database!.tables)).toBe(true)
     })
   })
 

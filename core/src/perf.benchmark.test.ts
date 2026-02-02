@@ -66,6 +66,15 @@ let createCollection: typeof import('./collections').createCollection
 let Collections: typeof import('./collections').Collections
 type Collection<T extends Record<string, unknown>> = import('./collections').Collection<T>
 
+/**
+ * Returns mockSql typed as SqlStorage for use with createCollection/Collections.
+ * MockSqlStorage only implements the exec() subset needed by collections,
+ * not the full SqlStorage interface — hence the cast through unknown.
+ */
+function asSql(): SqlStorage {
+  return mockSql as unknown as SqlStorage
+}
+
 beforeEach(async () => {
   // Reset module cache to reset the schemaInitialized flag
   vi.resetModules()
@@ -119,7 +128,7 @@ interface Product {
 describe('Performance Benchmarks', () => {
   describe('Collection Write Performance', () => {
     it('should handle 10K put() operations under 2s', () => {
-      const collection = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const collection = createCollection<User>(asSql(), 'users')
       const operationCount = 10000
 
       const { duration } = measureTime(() => {
@@ -143,7 +152,7 @@ describe('Performance Benchmarks', () => {
     })
 
     it('should handle 5K update operations efficiently', () => {
-      const collection = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const collection = createCollection<User>(asSql(), 'users')
       const recordCount = 1000
       const updateCount = 5000
 
@@ -177,7 +186,7 @@ describe('Performance Benchmarks', () => {
     })
 
     it('should handle 5K delete operations efficiently', () => {
-      const collection = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const collection = createCollection<User>(asSql(), 'users')
       const recordCount = 5000
 
       // Insert records
@@ -209,7 +218,7 @@ describe('Performance Benchmarks', () => {
 
   describe('Collection Read Performance', () => {
     it('should handle 10K get() operations under 1s', () => {
-      const collection = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const collection = createCollection<User>(asSql(), 'users')
       const recordCount = 1000
 
       // Insert records
@@ -238,7 +247,7 @@ describe('Performance Benchmarks', () => {
     })
 
     it('should handle find() with filter on 5K records efficiently', () => {
-      const collection = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const collection = createCollection<User>(asSql(), 'users')
       const recordCount = 5000
 
       // Insert records with varied data
@@ -284,7 +293,7 @@ describe('Performance Benchmarks', () => {
     })
 
     it('should handle list() with pagination on 5K records efficiently', () => {
-      const collection = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const collection = createCollection<User>(asSql(), 'users')
       const recordCount = 5000
       const pageSize = 50
 
@@ -317,7 +326,7 @@ describe('Performance Benchmarks', () => {
 
   describe('Collection Mixed Workload', () => {
     it('should handle mixed read/write workload efficiently', () => {
-      const collection = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const collection = createCollection<User>(asSql(), 'users')
       const operationCount = 5000
 
       // 70% reads, 20% writes, 10% deletes
@@ -351,7 +360,7 @@ describe('Performance Benchmarks', () => {
     })
 
     it('should handle concurrent collection access efficiently', () => {
-      const collections = new Collections(mockSql as unknown as SqlStorage)
+      const collections = new Collections(asSql())
       const operationCount = 3000
       const collectionNames = ['users', 'products', 'orders', 'logs', 'events']
 
@@ -387,7 +396,7 @@ describe('Performance Benchmarks', () => {
         return
       }
 
-      const collection = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const collection = createCollection<User>(asSql(), 'users')
       const operationCount = 1000
 
       // Perform many operations with varied data sizes
@@ -417,8 +426,9 @@ describe('Performance Benchmarks', () => {
       }
 
       // Force GC if available
-      if (typeof global !== 'undefined' && (global as any).gc) {
-        ;(global as any).gc()
+      // Force GC if available (requires --expose-gc flag)
+      if (typeof global !== 'undefined' && 'gc' in global && typeof (global as unknown as Record<string, unknown>).gc === 'function') {
+        ;((global as unknown as Record<string, unknown>).gc as () => void)()
       }
 
       const finalMemory = getMemoryUsage()!
@@ -440,7 +450,7 @@ describe('Performance Benchmarks', () => {
         return
       }
 
-      const collections = new Collections(mockSql as unknown as SqlStorage)
+      const collections = new Collections(asSql())
       const cycles = 50
 
       for (let i = 0; i < cycles; i++) {
@@ -457,8 +467,9 @@ describe('Performance Benchmarks', () => {
       }
 
       // Force GC if available
-      if (typeof global !== 'undefined' && (global as any).gc) {
-        ;(global as any).gc()
+      // Force GC if available (requires --expose-gc flag)
+      if (typeof global !== 'undefined' && 'gc' in global && typeof (global as unknown as Record<string, unknown>).gc === 'function') {
+        ;((global as unknown as Record<string, unknown>).gc as () => void)()
       }
 
       const finalMemory = getMemoryUsage()!
@@ -474,7 +485,7 @@ describe('Performance Benchmarks', () => {
 
   describe('Large Document Handling', () => {
     it('should handle large documents efficiently', () => {
-      const collection = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'docs')
+      const collection = createCollection<Record<string, unknown>>(asSql(), 'docs')
       const docCount = 100
 
       // Create documents with varying sizes
@@ -509,7 +520,7 @@ describe('Performance Benchmarks', () => {
     })
 
     it('should handle deeply nested documents', () => {
-      const collection = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'nested')
+      const collection = createCollection<Record<string, unknown>>(asSql(), 'nested')
       const docCount = 500
 
       // Create deeply nested documents
@@ -544,7 +555,7 @@ describe('Performance Benchmarks', () => {
 
   describe('Query Performance', () => {
     it('should handle complex filters on large dataset', () => {
-      const collection = createCollection<Product>(mockSql as unknown as SqlStorage, 'products')
+      const collection = createCollection<Product>(asSql(), 'products')
       const recordCount = 3000
 
       // Insert diverse data
@@ -581,7 +592,7 @@ describe('Performance Benchmarks', () => {
     })
 
     it('should handle $or queries efficiently', () => {
-      const collection = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const collection = createCollection<User>(asSql(), 'users')
       const recordCount = 2000
 
       // Insert data
@@ -617,7 +628,7 @@ describe('Performance Benchmarks', () => {
 
   describe('Stress Testing', () => {
     it('should survive high-volume operations', () => {
-      const collection = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'stress')
+      const collection = createCollection<Record<string, unknown>>(asSql(), 'stress')
       const totalOps = 10000
 
       // Mix of operations
@@ -662,7 +673,7 @@ describe('Performance Benchmarks', () => {
     })
 
     it('should maintain data integrity under stress', () => {
-      const collection = createCollection<{ counter: number }>(mockSql as unknown as SqlStorage, 'counters')
+      const collection = createCollection<{ counter: number }>(asSql(), 'counters')
       const recordCount = 100
       const incrementsPerRecord = 50
 

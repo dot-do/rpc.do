@@ -21,7 +21,7 @@
  * ```
  */
 
-import type { RpcClientMiddleware } from '../index'
+import type { RpcClientMiddleware } from '../types'
 import { ConnectionError, RPCError } from '../errors'
 
 /**

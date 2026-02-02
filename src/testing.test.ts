@@ -108,9 +108,9 @@ describe('mockRPC', () => {
 
   it('should not be thenable (not a promise)', () => {
     const mock = mockRPC({})
-    expect((mock as any).then).toBeUndefined()
-    expect((mock as any).catch).toBeUndefined()
-    expect((mock as any).finally).toBeUndefined()
+    expect((mock as unknown as Record<string, unknown>).then).toBeUndefined()
+    expect((mock as unknown as Record<string, unknown>).catch).toBeUndefined()
+    expect((mock as unknown as Record<string, unknown>).finally).toBeUndefined()
   })
 
   it('should handle handlers with multiple arguments', async () => {

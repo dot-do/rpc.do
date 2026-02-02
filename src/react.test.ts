@@ -251,7 +251,7 @@ describe('createQueryFn', () => {
 
     expect(typeof queryFn).toBe('function')
     // Should not be thenable itself
-    expect((queryFn as any).then).toBeUndefined()
+    expect((queryFn as unknown as Record<string, unknown>).then).toBeUndefined()
   })
 })
 
@@ -417,7 +417,7 @@ describe('createMutationFn', () => {
     const mutationFn = createMutationFn(rpc, 'users.create')
 
     expect(typeof mutationFn).toBe('function')
-    expect((mutationFn as any).then).toBeUndefined()
+    expect((mutationFn as unknown as Record<string, unknown>).then).toBeUndefined()
   })
 })
 
@@ -465,7 +465,7 @@ describe('error cases', () => {
       } as unknown as RpcProxy<{ config: { value: () => number } }>
 
       expect(() => {
-        createQueryFn(plainObj, 'config.value' as any)
+        createQueryFn(plainObj, 'config.value')
       }).toThrow('does not resolve to a method')
     })
   })
@@ -479,7 +479,7 @@ describe('error cases', () => {
       } as unknown as RpcProxy<{ config: { setting: () => string } }>
 
       expect(() => {
-        createMutationFn(plainObj, 'config.setting' as any)
+        createMutationFn(plainObj, 'config.setting')
       }).toThrow('does not resolve to a method')
     })
   })
@@ -491,7 +491,7 @@ describe('error cases', () => {
       } as unknown as RpcProxy<{ level1: { level2: { method: () => void } } }>
 
       expect(() => {
-        getMethod(rpc, 'level1.level2.method' as any)
+        getMethod(rpc, 'level1.level2.method')
       }).toThrow('Invalid RPC path: level1.level2.method')
     })
 
@@ -501,7 +501,7 @@ describe('error cases', () => {
       } as unknown as RpcProxy<{ level1: { level2: { method: () => void } } }>
 
       expect(() => {
-        getMethod(rpc, 'level1.level2.method' as any)
+        getMethod(rpc, 'level1.level2.method')
       }).toThrow('Invalid RPC path: level1.level2.method')
     })
   })

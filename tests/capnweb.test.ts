@@ -96,7 +96,7 @@ describe('capnweb() Transport - HTTP Batch Session', () => {
     const capnweb = await getCapnwebTransport()
     const transport = capnweb('https://api.example.com/rpc', { websocket: false })
 
-    const result = await transport.call('posts.create', [{ title: 'Test' }, { author: 'user1' }]) as any
+    const result = await transport.call('posts.create', [{ title: 'Test' }, { author: 'user1' }]) as { id: string; args: unknown[] }
 
     expect(result.id).toBe('new-post')
     expect(result.args).toEqual([{ title: 'Test' }, { author: 'user1' }])

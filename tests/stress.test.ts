@@ -209,9 +209,9 @@ describe('Connection Pooling', () => {
 
     // All should have used the same transport
     expect(callCount).toBe(3)
-    expect((r1 as any).method).toBe('method1')
-    expect((r2 as any).method).toBe('method2')
-    expect((r3 as any).method).toBe('method3')
+    expect((r1 as { method: string }).method).toBe('method1')
+    expect((r2 as { method: string }).method).toBe('method2')
+    expect((r3 as { method: string }).method).toBe('method3')
   })
 
   it('should verify transport reuse across sequential calls', async () => {

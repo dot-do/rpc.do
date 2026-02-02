@@ -7,7 +7,7 @@
  * - TestServer: Simple HTTP server for integration tests
  */
 
-import type { Transport, RpcProxy } from './index'
+import type { Transport, RpcProxy } from './types'
 import { RPCError } from './errors'
 
 // ============================================================================

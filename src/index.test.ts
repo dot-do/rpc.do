@@ -131,9 +131,9 @@ describe('RPC Proxy', () => {
     const rpc = RPC(mockTransport)
 
     // Accessing .then should return undefined, not continue the chain
-    expect((rpc as any).then).toBeUndefined()
-    expect((rpc as any).catch).toBeUndefined()
-    expect((rpc as any).finally).toBeUndefined()
+    expect((rpc as unknown as Record<string, unknown>).then).toBeUndefined()
+    expect((rpc as unknown as Record<string, unknown>).catch).toBeUndefined()
+    expect((rpc as unknown as Record<string, unknown>).finally).toBeUndefined()
   })
 })
 
@@ -531,7 +531,8 @@ describe('Binding Transport', () => {
   it('should throw UNKNOWN_NAMESPACE for intermediate null value', async () => {
     const mockBinding = {
       parent: {
-        child: null as any
+        // Intentionally null to test error handling when traversing null intermediate values
+        child: null as unknown as Record<string, unknown>
       }
     }
 
@@ -1083,9 +1084,9 @@ describe('createRPCClient Factory', () => {
   it('should return an RPC proxy', async () => {
     const createRPCClient = await getCreateRPCClient()
 
-    const client = createRPCClient<any>({ baseUrl: 'https://api.example.com/rpc' })
+    const client = createRPCClient<Record<string, Record<string, () => unknown>>>({ baseUrl: 'https://api.example.com/rpc' })
 
-    expect((client as any).then).toBeUndefined()
+    expect((client as unknown as Record<string, unknown>).then).toBeUndefined()
 
     const result = await client.test.method()
     expect(result).toEqual({ result: 'ok' })
@@ -1203,29 +1204,32 @@ describe('createRPCClient Factory', () => {
 // ============================================================================
 
 describe('Auth Provider', () => {
+  // Type-safe accessor for globalThis token properties used by auth()
+  const globals = globalThis as unknown as Record<string, string | undefined>
+
   // Store original values
-  const originalAdminToken = (globalThis as any).DO_ADMIN_TOKEN
-  const originalToken = (globalThis as any).DO_TOKEN
+  const originalAdminToken = globals.DO_ADMIN_TOKEN
+  const originalToken = globals.DO_TOKEN
   const originalEnvAdmin = process.env.DO_ADMIN_TOKEN
   const originalEnvToken = process.env.DO_TOKEN
 
   beforeEach(() => {
-    delete (globalThis as any).DO_ADMIN_TOKEN
-    delete (globalThis as any).DO_TOKEN
+    delete globals.DO_ADMIN_TOKEN
+    delete globals.DO_TOKEN
     delete process.env.DO_ADMIN_TOKEN
     delete process.env.DO_TOKEN
   })
 
   afterEach(() => {
     if (originalAdminToken !== undefined) {
-      (globalThis as any).DO_ADMIN_TOKEN = originalAdminToken
+      globals.DO_ADMIN_TOKEN = originalAdminToken
     } else {
-      delete (globalThis as any).DO_ADMIN_TOKEN
+      delete globals.DO_ADMIN_TOKEN
     }
     if (originalToken !== undefined) {
-      (globalThis as any).DO_TOKEN = originalToken
+      globals.DO_TOKEN = originalToken
     } else {
-      delete (globalThis as any).DO_TOKEN
+      delete globals.DO_TOKEN
     }
     if (originalEnvAdmin !== undefined) {
       process.env.DO_ADMIN_TOKEN = originalEnvAdmin
@@ -1240,7 +1244,7 @@ describe('Auth Provider', () => {
   })
 
   it('should return token from globalThis.DO_ADMIN_TOKEN', async () => {
-    (globalThis as any).DO_ADMIN_TOKEN = 'admin-token-from-global'
+    globals.DO_ADMIN_TOKEN = 'admin-token-from-global'
 
     const authProvider = auth()
     const token = await authProvider()
@@ -1249,7 +1253,7 @@ describe('Auth Provider', () => {
   })
 
   it('should return token from globalThis.DO_TOKEN', async () => {
-    (globalThis as any).DO_TOKEN = 'token-from-global'
+    globals.DO_TOKEN = 'token-from-global'
 
     const authProvider = auth()
     const token = await authProvider()

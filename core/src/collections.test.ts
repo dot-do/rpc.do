@@ -165,9 +165,19 @@ let createCollection: typeof import('./collections').createCollection
 let Collections: typeof import('./collections').Collections
 type Collection<T extends Record<string, unknown>> = import('./collections').Collection<T>
 type Filter<T> = import('./collections').Filter<T>
+type FilterOperator = import('./collections').FilterOperator
 
 let mockSql: MockSqlStorage
 let db: Database
+
+/**
+ * Returns mockSql typed as SqlStorage for use with createCollection/Collections.
+ * MockSqlStorage only implements the exec() subset needed by collections,
+ * not the full SqlStorage interface — hence the cast through unknown.
+ */
+function asSql(): SqlStorage {
+  return mockSql as unknown as SqlStorage
+}
 
 beforeEach(async () => {
   // Reset module cache to reset the schemaInitialized flag
@@ -199,7 +209,7 @@ afterEach(() => {
 describe('Collection CRUD Operations', () => {
   describe('put() - insert new document', () => {
     it('should insert a new document with the given ID', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user1', { name: 'Alice', email: 'alice@example.com', age: 30, active: true })
 
@@ -208,7 +218,7 @@ describe('Collection CRUD Operations', () => {
     })
 
     it('should insert multiple documents with different IDs', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user1', { name: 'Alice', email: 'alice@example.com', age: 30, active: true })
       users.put('user2', { name: 'Bob', email: 'bob@example.com', age: 25, active: false })
@@ -218,7 +228,7 @@ describe('Collection CRUD Operations', () => {
     })
 
     it('should store complex nested objects', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user1', {
         name: 'Alice',
@@ -235,7 +245,7 @@ describe('Collection CRUD Operations', () => {
 
   describe('put() - update existing document', () => {
     it('should update an existing document', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user1', { name: 'Alice', email: 'alice@example.com', age: 30, active: true })
       users.put('user1', { name: 'Alice Updated', email: 'alice.new@example.com', age: 31, active: false })
@@ -245,7 +255,7 @@ describe('Collection CRUD Operations', () => {
     })
 
     it('should only update the specified document', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user1', { name: 'Alice', email: 'alice@example.com', age: 30, active: true })
       users.put('user2', { name: 'Bob', email: 'bob@example.com', age: 25, active: true })
@@ -256,7 +266,7 @@ describe('Collection CRUD Operations', () => {
     })
 
     it('should completely replace the document on update', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user1', { name: 'Alice', email: 'alice@example.com', age: 30, active: true, role: 'admin' })
       users.put('user1', { name: 'Alice', email: 'alice@example.com', age: 30, active: true })
@@ -268,7 +278,7 @@ describe('Collection CRUD Operations', () => {
 
   describe('get() - retrieve existing document', () => {
     it('should retrieve an existing document by ID', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user1', { name: 'Alice', email: 'alice@example.com', age: 30, active: true })
 
@@ -278,7 +288,7 @@ describe('Collection CRUD Operations', () => {
     })
 
     it('should return the complete document structure', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
       const originalDoc = { name: 'Alice', email: 'alice@example.com', age: 30, active: true }
 
       users.put('user1', originalDoc)
@@ -290,14 +300,14 @@ describe('Collection CRUD Operations', () => {
 
   describe('get() - return null for non-existent document', () => {
     it('should return null for non-existent document', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       const retrieved = users.get('nonexistent')
       expect(retrieved).toBeNull()
     })
 
     it('should return null for deleted document', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user1', { name: 'Alice', email: 'alice@example.com', age: 30, active: true })
       users.delete('user1')
@@ -308,7 +318,7 @@ describe('Collection CRUD Operations', () => {
 
   describe('delete() - delete existing document', () => {
     it('should return true when deleting existing document', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user1', { name: 'Alice', email: 'alice@example.com', age: 30, active: true })
 
@@ -317,7 +327,7 @@ describe('Collection CRUD Operations', () => {
     })
 
     it('should actually remove the document', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user1', { name: 'Alice', email: 'alice@example.com', age: 30, active: true })
       users.delete('user1')
@@ -327,7 +337,7 @@ describe('Collection CRUD Operations', () => {
     })
 
     it('should not affect other documents', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user1', { name: 'Alice', email: 'alice@example.com', age: 30, active: true })
       users.put('user2', { name: 'Bob', email: 'bob@example.com', age: 25, active: true })
@@ -339,14 +349,14 @@ describe('Collection CRUD Operations', () => {
 
   describe('delete() - delete non-existent document', () => {
     it('should return false when deleting non-existent document', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       const result = users.delete('nonexistent')
       expect(result).toBe(false)
     })
 
     it('should return false when deleting already deleted document', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user1', { name: 'Alice', email: 'alice@example.com', age: 30, active: true })
       users.delete('user1')
@@ -358,7 +368,7 @@ describe('Collection CRUD Operations', () => {
 
   describe('has() - check existence', () => {
     it('should return true for existing document', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user1', { name: 'Alice', email: 'alice@example.com', age: 30, active: true })
 
@@ -366,13 +376,13 @@ describe('Collection CRUD Operations', () => {
     })
 
     it('should return false for non-existent document', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       expect(users.has('nonexistent')).toBe(false)
     })
 
     it('should return false after document is deleted', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user1', { name: 'Alice', email: 'alice@example.com', age: 30, active: true })
       users.delete('user1')
@@ -390,7 +400,7 @@ describe('Filter Operations', () => {
   let products: Collection<Product>
 
   beforeEach(() => {
-    products = createCollection<Product>(mockSql as unknown as SqlStorage, 'products')
+    products = createCollection<Product>(asSql(), 'products')
 
     // Seed test data
     products.put('p1', { name: 'Laptop', price: 999, category: 'electronics', inStock: true, tags: ['computer', 'portable'] })
@@ -522,7 +532,7 @@ describe('Filter Operations', () => {
 
   describe('$exists - field existence operator', () => {
     it('should find documents where field exists', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true, role: 'admin' })
       users.put('u2', { name: 'Bob', email: 'b@test.com', age: 25, active: true })
 
@@ -532,7 +542,7 @@ describe('Filter Operations', () => {
     })
 
     it('should find documents where field does not exist', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true, role: 'admin' })
       users.put('u2', { name: 'Bob', email: 'b@test.com', age: 25, active: true })
 
@@ -623,7 +633,7 @@ describe('Filter Operations', () => {
 
   describe('Nested field queries', () => {
     it('should query nested object fields', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true, metadata: { level: 5, verified: true } })
       users.put('u2', { name: 'Bob', email: 'b@test.com', age: 25, active: true, metadata: { level: 3, verified: false } })
 
@@ -631,7 +641,8 @@ describe('Filter Operations', () => {
       // For nested fields, you'd use 'metadata.level' but SQLite json_extract expects '$.metadata.level'
       // The implementation does: json_extract(data, '$.metadata')
       // So we test what's currently supported
-      const results = users.find({ 'metadata.level': 5 } as any)
+      // Cast needed: dot-notation keys are a runtime feature not reflected in Filter<User> types
+      const results = users.find({ 'metadata.level': 5 } as Filter<User>)
       expect(results.length).toBe(1)
       expect(results[0]!.name).toBe('Alice')
     })
@@ -639,11 +650,12 @@ describe('Filter Operations', () => {
 
   describe('Plain object value matching', () => {
     it('should match plain object values exactly', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true, metadata: { role: 'admin', level: 5 } })
       users.put('u2', { name: 'Bob', email: 'b@test.com', age: 25, active: true, metadata: { role: 'user', level: 1 } })
 
-      const results = users.find({ metadata: { role: 'admin', level: 5 } } as any)
+      // Cast needed: nested object matching is a runtime feature not reflected in Filter<User> types
+      const results = users.find({ metadata: { role: 'admin', level: 5 } } as Filter<User>)
       expect(results.length).toBe(1)
       expect(results[0]!.name).toBe('Alice')
     })
@@ -677,7 +689,7 @@ describe('Query Options', () => {
   let products: Collection<Product>
 
   beforeEach(() => {
-    products = createCollection<Product>(mockSql as unknown as SqlStorage, 'products')
+    products = createCollection<Product>(asSql(), 'products')
 
     // Seed in specific order for testing
     products.put('p1', { name: 'Alpha', price: 100, category: 'a', inStock: true })
@@ -782,7 +794,7 @@ describe('Query Options', () => {
 describe('Collection Management', () => {
   describe('list() - list all documents', () => {
     it('should return all documents in collection', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
       users.put('u2', { name: 'Bob', email: 'b@test.com', age: 25, active: true })
@@ -793,14 +805,14 @@ describe('Collection Management', () => {
     })
 
     it('should return empty array for empty collection', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       const results = users.list()
       expect(results).toEqual([])
     })
 
     it('should support query options', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
       users.put('u2', { name: 'Bob', email: 'b@test.com', age: 25, active: true })
@@ -814,7 +826,7 @@ describe('Collection Management', () => {
 
   describe('keys() - get all IDs', () => {
     it('should return all document IDs', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
       users.put('u2', { name: 'Bob', email: 'b@test.com', age: 25, active: true })
@@ -825,14 +837,14 @@ describe('Collection Management', () => {
     })
 
     it('should return empty array for empty collection', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       const keys = users.keys()
       expect(keys).toEqual([])
     })
 
     it('should return sorted keys', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('c', { name: 'C', email: 'c@test.com', age: 30, active: true })
       users.put('a', { name: 'A', email: 'a@test.com', age: 25, active: true })
@@ -845,7 +857,7 @@ describe('Collection Management', () => {
 
   describe('count() - count documents', () => {
     it('should return total count without filter', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
       users.put('u2', { name: 'Bob', email: 'b@test.com', age: 25, active: true })
@@ -855,13 +867,13 @@ describe('Collection Management', () => {
     })
 
     it('should return 0 for empty collection', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       expect(users.count()).toBe(0)
     })
 
     it('should return count with filter', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
       users.put('u2', { name: 'Bob', email: 'b@test.com', age: 25, active: true })
@@ -875,7 +887,7 @@ describe('Collection Management', () => {
 
   describe('clear() - delete all documents', () => {
     it('should delete all documents and return count', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
       users.put('u2', { name: 'Bob', email: 'b@test.com', age: 25, active: true })
@@ -887,15 +899,15 @@ describe('Collection Management', () => {
     })
 
     it('should return 0 for empty collection', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       const deleted = users.clear()
       expect(deleted).toBe(0)
     })
 
     it('should not affect other collections', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
-      const products = createCollection<Product>(mockSql as unknown as SqlStorage, 'products')
+      const users = createCollection<User>(asSql(), 'users')
+      const products = createCollection<Product>(asSql(), 'products')
 
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
       products.put('p1', { name: 'Laptop', price: 999, category: 'electronics', inStock: true })
@@ -909,7 +921,7 @@ describe('Collection Management', () => {
 
   describe('Collections.names() - list collection names', () => {
     it('should return all collection names', () => {
-      const collections = new Collections(mockSql as unknown as SqlStorage)
+      const collections = new Collections(asSql())
 
       collections.collection('users').put('u1', { name: 'Alice' })
       collections.collection('products').put('p1', { name: 'Laptop' })
@@ -920,7 +932,7 @@ describe('Collection Management', () => {
     })
 
     it('should return empty array when no collections exist', () => {
-      const collections = new Collections(mockSql as unknown as SqlStorage)
+      const collections = new Collections(asSql())
 
       // Need to initialize schema first
       collections.collection('temp').put('t1', {})
@@ -931,7 +943,7 @@ describe('Collection Management', () => {
     })
 
     it('should return sorted collection names', () => {
-      const collections = new Collections(mockSql as unknown as SqlStorage)
+      const collections = new Collections(asSql())
 
       collections.collection('zebra').put('z1', {})
       collections.collection('alpha').put('a1', {})
@@ -944,7 +956,7 @@ describe('Collection Management', () => {
 
   describe('Collections.stats() - get collection statistics', () => {
     it('should return stats for all collections', () => {
-      const collections = new Collections(mockSql as unknown as SqlStorage)
+      const collections = new Collections(asSql())
 
       collections.collection('users').put('u1', { name: 'Alice', email: 'alice@example.com' })
       collections.collection('users').put('u2', { name: 'Bob', email: 'bob@example.com' })
@@ -965,13 +977,13 @@ describe('Collection Management', () => {
     })
 
     it('should return empty array when no collections exist', () => {
-      const collections = new Collections(mockSql as unknown as SqlStorage)
+      const collections = new Collections(asSql())
 
       // Initialize schema by accessing a collection but not adding docs
       // Actually, need to trigger schema init somehow
       // The names() and stats() methods query the table, so if table doesn't exist...
       // createCollection initializes schema, so let's do that
-      createCollection(mockSql as unknown as SqlStorage, 'temp')
+      createCollection(asSql(), 'temp')
 
       const stats = collections.stats()
       expect(stats).toEqual([])
@@ -980,7 +992,7 @@ describe('Collection Management', () => {
 
   describe('Collections.drop() - drop a collection', () => {
     it('should delete all documents in collection and return count', () => {
-      const collections = new Collections(mockSql as unknown as SqlStorage)
+      const collections = new Collections(asSql())
 
       collections.collection('users').put('u1', { name: 'Alice' })
       collections.collection('users').put('u2', { name: 'Bob' })
@@ -990,17 +1002,17 @@ describe('Collection Management', () => {
     })
 
     it('should return 0 when collection does not exist', () => {
-      const collections = new Collections(mockSql as unknown as SqlStorage)
+      const collections = new Collections(asSql())
 
       // Initialize schema
-      createCollection(mockSql as unknown as SqlStorage, 'temp')
+      createCollection(asSql(), 'temp')
 
       const deleted = collections.drop('nonexistent')
       expect(deleted).toBe(0)
     })
 
     it('should remove collection from cache', () => {
-      const collections = new Collections(mockSql as unknown as SqlStorage)
+      const collections = new Collections(asSql())
 
       const users1 = collections.collection('users')
       users1.put('u1', { name: 'Alice' })
@@ -1013,7 +1025,7 @@ describe('Collection Management', () => {
     })
 
     it('should not affect other collections', () => {
-      const collections = new Collections(mockSql as unknown as SqlStorage)
+      const collections = new Collections(asSql())
 
       collections.collection('users').put('u1', { name: 'Alice' })
       collections.collection('products').put('p1', { name: 'Laptop' })
@@ -1032,33 +1044,33 @@ describe('Collection Management', () => {
 describe('Edge Cases', () => {
   describe('Empty collection operations', () => {
     it('should handle find on empty collection', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       const results = users.find({ active: true })
       expect(results).toEqual([])
     })
 
     it('should handle count on empty collection', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       expect(users.count()).toBe(0)
       expect(users.count({ active: true })).toBe(0)
     })
 
     it('should handle list on empty collection', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       expect(users.list()).toEqual([])
     })
 
     it('should handle keys on empty collection', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       expect(users.keys()).toEqual([])
     })
 
     it('should handle clear on empty collection', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       expect(users.clear()).toBe(0)
     })
@@ -1066,19 +1078,19 @@ describe('Edge Cases', () => {
 
   describe('Multiple collections isolation', () => {
     it('should isolate data between collections', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
-      const products = createCollection<Product>(mockSql as unknown as SqlStorage, 'products')
+      const users = createCollection<User>(asSql(), 'users')
+      const products = createCollection<Product>(asSql(), 'products')
 
       users.put('id1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
       products.put('id1', { name: 'Laptop', price: 999, category: 'electronics', inStock: true })
 
       expect(users.get('id1')?.name).toBe('Alice')
-      expect((products.get('id1') as any)?.name).toBe('Laptop')
+      expect(products.get('id1')?.name).toBe('Laptop')
     })
 
     it('should have independent counts', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
-      const products = createCollection<Product>(mockSql as unknown as SqlStorage, 'products')
+      const users = createCollection<User>(asSql(), 'users')
+      const products = createCollection<Product>(asSql(), 'products')
 
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
       users.put('u2', { name: 'Bob', email: 'b@test.com', age: 25, active: true })
@@ -1089,8 +1101,8 @@ describe('Edge Cases', () => {
     })
 
     it('should have independent clear operations', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
-      const products = createCollection<Product>(mockSql as unknown as SqlStorage, 'products')
+      const users = createCollection<User>(asSql(), 'users')
+      const products = createCollection<Product>(asSql(), 'products')
 
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
       products.put('p1', { name: 'Laptop', price: 999, category: 'electronics', inStock: true })
@@ -1104,7 +1116,7 @@ describe('Edge Cases', () => {
 
   describe('Large documents', () => {
     it('should handle documents with many fields', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       const largeDoc: Record<string, unknown> = {}
       for (let i = 0; i < 100; i++) {
@@ -1120,7 +1132,7 @@ describe('Edge Cases', () => {
     })
 
     it('should handle documents with large string values', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       const largeString = 'x'.repeat(100000)
       users.put('large', { content: largeString })
@@ -1131,7 +1143,7 @@ describe('Edge Cases', () => {
     })
 
     it('should handle deeply nested documents', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       const deepDoc = {
         level1: {
@@ -1151,13 +1163,14 @@ describe('Edge Cases', () => {
 
       const retrieved = users.get('deep')
       expect(retrieved).not.toBeNull()
-      expect((retrieved as any).level1.level2.level3.level4.level5.value).toBe('deep')
+      // Deep property access requires type assertion since collection type is Record<string, unknown>
+      expect((retrieved as typeof deepDoc).level1.level2.level3.level4.level5.value).toBe('deep')
     })
   })
 
   describe('Special characters in IDs', () => {
     it('should handle IDs with spaces', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user with spaces', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
 
@@ -1166,7 +1179,7 @@ describe('Edge Cases', () => {
     })
 
     it('should handle IDs with special characters', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       const specialIds = [
         'user-with-dashes',
@@ -1189,7 +1202,7 @@ describe('Edge Cases', () => {
     })
 
     it('should handle IDs with unicode characters', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('user-emoji-:rocket:', { name: 'Rocket User', email: 'rocket@test.com', age: 30, active: true })
       users.put('user-kanji-:Japanese_castle:', { name: 'Japanese User', email: 'jp@test.com', age: 25, active: true })
@@ -1199,7 +1212,7 @@ describe('Edge Cases', () => {
     })
 
     it('should reject empty string ID', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       expect(() => {
         users.put('', { name: 'Empty ID', email: 'empty@test.com', age: 30, active: true })
@@ -1209,7 +1222,7 @@ describe('Edge Cases', () => {
 
   describe('NULL values in documents', () => {
     it('should store and retrieve null field values', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', middleName: null, age: 30 })
 
@@ -1219,7 +1232,7 @@ describe('Edge Cases', () => {
     })
 
     it('should distinguish between null and undefined/missing fields', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', middleName: null })
       users.put('u2', { name: 'Bob' })
@@ -1232,7 +1245,7 @@ describe('Edge Cases', () => {
     })
 
     it('should filter on null values with $exists false', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', role: null })
       users.put('u2', { name: 'Bob', role: 'admin' })
@@ -1248,7 +1261,7 @@ describe('Edge Cases', () => {
 
   describe('Empty filter handling', () => {
     it('should return all documents with empty filter object', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
       users.put('u2', { name: 'Bob', email: 'b@test.com', age: 25, active: false })
@@ -1258,7 +1271,7 @@ describe('Edge Cases', () => {
     })
 
     it('should return all documents with undefined filter', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
       users.put('u2', { name: 'Bob', email: 'b@test.com', age: 25, active: false })
@@ -1270,7 +1283,7 @@ describe('Edge Cases', () => {
 
   describe('Array field handling', () => {
     it('should store and retrieve array fields', () => {
-      const products = createCollection<Product>(mockSql as unknown as SqlStorage, 'products')
+      const products = createCollection<Product>(asSql(), 'products')
 
       products.put('p1', { name: 'Laptop', price: 999, category: 'electronics', inStock: true, tags: ['computer', 'portable', 'work'] })
 
@@ -1279,7 +1292,7 @@ describe('Edge Cases', () => {
     })
 
     it('should handle empty arrays', () => {
-      const products = createCollection<Product>(mockSql as unknown as SqlStorage, 'products')
+      const products = createCollection<Product>(asSql(), 'products')
 
       products.put('p1', { name: 'Laptop', price: 999, category: 'electronics', inStock: true, tags: [] })
 
@@ -1290,7 +1303,7 @@ describe('Edge Cases', () => {
 
   describe('Collections class caching', () => {
     it('should return the same collection instance for same name', () => {
-      const collections = new Collections(mockSql as unknown as SqlStorage)
+      const collections = new Collections(asSql())
 
       const users1 = collections.collection('users')
       const users2 = collections.collection('users')
@@ -1299,7 +1312,7 @@ describe('Edge Cases', () => {
     })
 
     it('should return different instances for different names', () => {
-      const collections = new Collections(mockSql as unknown as SqlStorage)
+      const collections = new Collections(asSql())
 
       const users = collections.collection('users')
       const products = collections.collection('products')
@@ -1310,7 +1323,7 @@ describe('Edge Cases', () => {
 
   describe('Concurrent operations', () => {
     it('should handle rapid put/get operations', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       // Rapid puts
       for (let i = 0; i < 100; i++) {
@@ -1337,12 +1350,13 @@ describe('Edge Cases', () => {
 describe('Error Cases', () => {
   describe('Invalid filter operators', () => {
     it('should handle unknown operator gracefully (treated as object match)', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
 
       // Unknown operator should be treated as plain object match
-      const results = users.find({ age: { $unknown: 30 } as any })
+      // Cast needed: testing runtime behavior with an unknown operator not in FilterOperator type
+      const results = users.find({ age: { $unknown: 30 } as unknown as FilterOperator })
       // This will try to match the object { $unknown: 30 } which won't match
       expect(results.length).toBe(0)
     })
@@ -1350,7 +1364,7 @@ describe('Error Cases', () => {
 
   describe('Empty $and and $or arrays', () => {
     it('should handle empty $and array', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
 
@@ -1360,7 +1374,7 @@ describe('Error Cases', () => {
     })
 
     it('should handle empty $or array', () => {
-      const users = createCollection<User>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<User>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', email: 'a@test.com', age: 30, active: true })
 
@@ -1372,7 +1386,7 @@ describe('Error Cases', () => {
 
   describe('Numeric comparison edge cases', () => {
     it('should handle comparison with zero', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', score: 0 })
       users.put('u2', { name: 'Bob', score: 5 })
@@ -1391,7 +1405,7 @@ describe('Error Cases', () => {
     })
 
     it('should handle negative numbers', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', balance: -100 })
       users.put('u2', { name: 'Bob', balance: -50 })
@@ -1405,7 +1419,7 @@ describe('Error Cases', () => {
     })
 
     it('should handle floating point numbers', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       users.put('u1', { name: 'Alice', rating: 4.5 })
       users.put('u2', { name: 'Bob', rating: 3.7 })
@@ -1424,44 +1438,44 @@ describe('Error Cases', () => {
 describe('Security and Validation', () => {
   describe('SQL injection prevention - field names', () => {
     it('should reject field names with SQL injection attempts', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice', age: 30 })
 
       // Attempt SQL injection via field name
       expect(() => {
-        users.find({ "name'); DROP TABLE _collections; --": 'test' } as any)
+        users.find({ "name'); DROP TABLE _collections; --": 'test' })
       }).toThrow('Invalid field name')
     })
 
     it('should reject field names with quotes', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice', age: 30 })
 
       expect(() => {
-        users.find({ "field'test": 'value' } as any)
+        users.find({ "field'test": 'value' })
       }).toThrow('Invalid field name')
     })
 
     it('should reject field names with parentheses', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice', age: 30 })
 
       expect(() => {
-        users.find({ "field()": 'value' } as any)
+        users.find({ "field()": 'value' })
       }).toThrow('Invalid field name')
     })
 
     it('should reject field names with spaces', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice', age: 30 })
 
       expect(() => {
-        users.find({ "field name": 'value' } as any)
+        users.find({ "field name": 'value' })
       }).toThrow('Invalid field name')
     })
 
     it('should allow valid field names with underscores', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { first_name: 'Alice', last_name: 'Smith' })
 
       const results = users.find({ first_name: 'Alice' })
@@ -1469,15 +1483,15 @@ describe('Security and Validation', () => {
     })
 
     it('should allow nested field names with dots', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice', metadata: { level: 5 } })
 
-      const results = users.find({ 'metadata.level': 5 } as any)
+      const results = users.find({ 'metadata.level': 5 })
       expect(results.length).toBe(1)
     })
 
     it('should allow alphanumeric field names', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { field123: 'value', Field456: 'value2' })
 
       const results = users.find({ field123: 'value' })
@@ -1487,7 +1501,7 @@ describe('Security and Validation', () => {
 
   describe('SQL injection prevention - sort field', () => {
     it('should reject sort field with SQL injection attempts', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice', age: 30 })
 
       expect(() => {
@@ -1496,7 +1510,7 @@ describe('Security and Validation', () => {
     })
 
     it('should reject sort field with quotes', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice', age: 30 })
 
       expect(() => {
@@ -1505,7 +1519,7 @@ describe('Security and Validation', () => {
     })
 
     it('should allow valid sort field with descending prefix', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice', age: 30 })
       users.put('u2', { name: 'Bob', age: 25 })
 
@@ -1516,56 +1530,60 @@ describe('Security and Validation', () => {
   })
 
   describe('Input validation - put()', () => {
+    // These tests intentionally pass invalid types to verify runtime validation.
+    // The `as any` casts are required to bypass TypeScript's type checking
+    // so we can test that the runtime guards correctly reject bad inputs.
+
     it('should reject null document', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       expect(() => {
-        users.put('u1', null as any)
+        users.put('u1', null as any) // eslint-disable-line @typescript-eslint/no-explicit-any -- testing invalid input
       }).toThrow('Document must be a non-null object')
     })
 
     it('should reject array as document', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       expect(() => {
-        users.put('u1', ['item1', 'item2'] as any)
+        users.put('u1', ['item1', 'item2'] as any) // eslint-disable-line @typescript-eslint/no-explicit-any -- testing invalid input
       }).toThrow('Document must be a non-null object')
     })
 
     it('should reject primitive values as document', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       expect(() => {
-        users.put('u1', 'string' as any)
+        users.put('u1', 'string' as any) // eslint-disable-line @typescript-eslint/no-explicit-any -- testing invalid input
       }).toThrow('Document must be a non-null object')
 
       expect(() => {
-        users.put('u1', 123 as any)
+        users.put('u1', 123 as any) // eslint-disable-line @typescript-eslint/no-explicit-any -- testing invalid input
       }).toThrow('Document must be a non-null object')
 
       expect(() => {
-        users.put('u1', true as any)
+        users.put('u1', true as any) // eslint-disable-line @typescript-eslint/no-explicit-any -- testing invalid input
       }).toThrow('Document must be a non-null object')
     })
 
     it('should reject non-string ID', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       expect(() => {
-        users.put(123 as any, { name: 'Alice' })
+        users.put(123 as any, { name: 'Alice' }) // eslint-disable-line @typescript-eslint/no-explicit-any -- testing invalid input
       }).toThrow('Document ID must be a non-empty string')
 
       expect(() => {
-        users.put(null as any, { name: 'Alice' })
+        users.put(null as any, { name: 'Alice' }) // eslint-disable-line @typescript-eslint/no-explicit-any -- testing invalid input
       }).toThrow('Document ID must be a non-empty string')
 
       expect(() => {
-        users.put(undefined as any, { name: 'Alice' })
+        users.put(undefined as any, { name: 'Alice' }) // eslint-disable-line @typescript-eslint/no-explicit-any -- testing invalid input
       }).toThrow('Document ID must be a non-empty string')
     })
 
     it('should accept valid document and ID', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       // Should not throw
       users.put('u1', { name: 'Alice' })
@@ -1575,7 +1593,7 @@ describe('Security and Validation', () => {
 
   describe('Query options validation', () => {
     it('should reject offset without limit', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice' })
       users.put('u2', { name: 'Bob' })
 
@@ -1585,7 +1603,7 @@ describe('Security and Validation', () => {
     })
 
     it('should allow offset with limit', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice' })
       users.put('u2', { name: 'Bob' })
       users.put('u3', { name: 'Charlie' })
@@ -1595,7 +1613,7 @@ describe('Security and Validation', () => {
     })
 
     it('should allow limit without offset', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice' })
       users.put('u2', { name: 'Bob' })
 
@@ -1604,7 +1622,7 @@ describe('Security and Validation', () => {
     })
 
     it('should reject offset without limit in list()', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice' })
 
       expect(() => {
@@ -1615,7 +1633,7 @@ describe('Security and Validation', () => {
 
   describe('SQL injection via filter operators', () => {
     it('should handle $eq with SQL injection values safely via parameterization', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice', role: 'admin' })
 
       // The value itself is safe because it's parameterized
@@ -1627,7 +1645,7 @@ describe('Security and Validation', () => {
     })
 
     it('should handle $regex with malicious patterns safely', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice', role: 'admin' })
 
       // The pattern is parameterized, so SQL injection isn't possible
@@ -1639,7 +1657,7 @@ describe('Security and Validation', () => {
     })
 
     it('should handle $in with SQL injection values safely', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
       users.put('u1', { name: 'Alice' })
 
       const results = users.find({ name: { $in: ["'; DROP TABLE _collections; --", 'test'] } })
@@ -1658,7 +1676,7 @@ describe('Security and Validation', () => {
 describe('Concurrency Tests', () => {
   describe('Rapid concurrent put() with same ID', () => {
     it('should handle multiple rapid puts to the same ID', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       // Simulate rapid concurrent puts to the same ID
       const iterations = 100
@@ -1674,7 +1692,7 @@ describe('Concurrency Tests', () => {
     })
 
     it('should handle alternating puts between two documents', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       const iterations = 50
       for (let i = 0; i < iterations; i++) {
@@ -1688,7 +1706,7 @@ describe('Concurrency Tests', () => {
     })
 
     it('should maintain data integrity under rapid put/delete cycles', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       // Create, update, delete pattern
       for (let i = 0; i < 50; i++) {
@@ -1702,9 +1720,9 @@ describe('Concurrency Tests', () => {
     })
 
     it('should handle interleaved operations on multiple collections', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
-      const products = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'products')
-      const orders = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'orders')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
+      const products = createCollection<Record<string, unknown>>(asSql(), 'products')
+      const orders = createCollection<Record<string, unknown>>(asSql(), 'orders')
 
       for (let i = 0; i < 30; i++) {
         users.put(`u${i}`, { type: 'user', index: i })
@@ -1727,7 +1745,7 @@ describe('Concurrency Tests', () => {
 
   describe('Version increment consistency', () => {
     it('should not lose updates when rapidly updating the same document', () => {
-      const counters = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'counters')
+      const counters = createCollection<Record<string, unknown>>(asSql(), 'counters')
 
       // Initialize counter
       counters.put('counter1', { value: 0 })
@@ -1745,7 +1763,7 @@ describe('Concurrency Tests', () => {
     })
 
     it('should maintain consistent state through update cycles', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       users.put('user1', { version: 1, data: 'initial' })
 
@@ -1762,7 +1780,7 @@ describe('Concurrency Tests', () => {
     })
 
     it('should handle batch updates without data loss', () => {
-      const items = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'items')
+      const items = createCollection<Record<string, unknown>>(asSql(), 'items')
 
       // Create 100 items
       for (let i = 0; i < 100; i++) {
@@ -1787,7 +1805,7 @@ describe('Concurrency Tests', () => {
 
   describe('Relationship modification during traversal', () => {
     it('should handle modification while listing documents', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       // Create initial set
       for (let i = 0; i < 20; i++) {
@@ -1822,7 +1840,7 @@ describe('Concurrency Tests', () => {
     })
 
     it('should handle deletion while traversing', () => {
-      const users = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'users')
+      const users = createCollection<Record<string, unknown>>(asSql(), 'users')
 
       // Create items
       for (let i = 0; i < 30; i++) {
@@ -1852,7 +1870,7 @@ describe('Concurrency Tests', () => {
     })
 
     it('should handle find while modifying matching documents', () => {
-      const products = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'products')
+      const products = createCollection<Record<string, unknown>>(asSql(), 'products')
 
       // Create products with different categories
       for (let i = 0; i < 20; i++) {
@@ -1883,7 +1901,7 @@ describe('Concurrency Tests', () => {
     })
 
     it('should maintain consistency when updating based on filter results', () => {
-      const orders = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'orders')
+      const orders = createCollection<Record<string, unknown>>(asSql(), 'orders')
 
       // Create orders with different statuses
       for (let i = 0; i < 30; i++) {
@@ -1918,7 +1936,7 @@ describe('Concurrency Tests', () => {
 
   describe('Stress tests', () => {
     it('should handle 1000 rapid operations without data corruption', () => {
-      const data = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'data')
+      const data = createCollection<Record<string, unknown>>(asSql(), 'data')
 
       // Mix of operations
       for (let i = 0; i < 1000; i++) {
@@ -1947,7 +1965,7 @@ describe('Concurrency Tests', () => {
     })
 
     it('should maintain count consistency under heavy load', () => {
-      const items = createCollection<Record<string, unknown>>(mockSql as unknown as SqlStorage, 'items')
+      const items = createCollection<Record<string, unknown>>(asSql(), 'items')
 
       let expectedCount = 0
 

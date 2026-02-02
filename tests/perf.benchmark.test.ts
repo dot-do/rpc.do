@@ -12,6 +12,14 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { RPC } from '../src/index'
 import type { Transport } from '../src/index'
 
+/**
+ * Recursive proxy type for testing deeply nested RPC paths.
+ * RPC proxies allow any depth of property access; this type reflects that.
+ */
+type DeepRpcProxy = {
+  [key: string]: ((...args: unknown[]) => Promise<unknown>) & DeepRpcProxy
+}
+
 // ============================================================================
 // Performance Utilities
 // ============================================================================
@@ -195,7 +203,7 @@ describe('Performance Benchmarks', () => {
       const { duration } = await measureTime(async () => {
         for (let i = 0; i < callCount; i++) {
           // Deeply nested path resolution
-          await (rpc as any).namespace.subnamespace.module.method({ index: i })
+          await (rpc as unknown as DeepRpcProxy).namespace.subnamespace.module.method({ index: i })
         }
       })
 
@@ -215,19 +223,19 @@ describe('Performance Benchmarks', () => {
           const depth = i % 5
           switch (depth) {
             case 0:
-              await (rpc as any).method({ i })
+              await (rpc as unknown as DeepRpcProxy).method({ i })
               break
             case 1:
-              await (rpc as any).ns.method({ i })
+              await (rpc as unknown as DeepRpcProxy).ns.method({ i })
               break
             case 2:
-              await (rpc as any).ns.sub.method({ i })
+              await (rpc as unknown as DeepRpcProxy).ns.sub.method({ i })
               break
             case 3:
-              await (rpc as any).ns.sub.deep.method({ i })
+              await (rpc as unknown as DeepRpcProxy).ns.sub.deep.method({ i })
               break
             case 4:
-              await (rpc as any).ns.sub.deep.very.method({ i })
+              await (rpc as unknown as DeepRpcProxy).ns.sub.deep.very.method({ i })
               break
           }
         }
@@ -258,8 +266,9 @@ describe('Performance Benchmarks', () => {
       }
 
       // Force GC if available
-      if (typeof global !== 'undefined' && (global as any).gc) {
-        ;(global as any).gc()
+      // Force GC if available (requires --expose-gc flag)
+      if (typeof global !== 'undefined' && 'gc' in global && typeof (global as unknown as Record<string, unknown>).gc === 'function') {
+        ;((global as unknown as Record<string, unknown>).gc as () => void)()
       }
 
       const finalMemory = getMemoryUsage()!
@@ -291,8 +300,9 @@ describe('Performance Benchmarks', () => {
       }
 
       // Force GC if available
-      if (typeof global !== 'undefined' && (global as any).gc) {
-        ;(global as any).gc()
+      // Force GC if available (requires --expose-gc flag)
+      if (typeof global !== 'undefined' && 'gc' in global && typeof (global as unknown as Record<string, unknown>).gc === 'function') {
+        ;((global as unknown as Record<string, unknown>).gc as () => void)()
       }
 
       const finalMemory = getMemoryUsage()!

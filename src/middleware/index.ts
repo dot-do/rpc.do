@@ -33,7 +33,7 @@ export type {
 // Transport Wrappers
 // ============================================================================
 
-import type { RpcClientMiddleware } from '../index'
+import type { RpcClientMiddleware } from '../types'
 
 /**
  * Wrap a transport with middleware support

@@ -152,6 +152,15 @@ let mockSql: MockSqlStorage
 let db: Database
 let doCollections: DOCollectionsType
 
+/**
+ * Returns mockSql typed as SqlStorage for use with DOCollections.
+ * MockSqlStorage only implements the exec() subset needed by collections,
+ * not the full SqlStorage interface — hence the cast through unknown.
+ */
+function asSql(): SqlStorage {
+  return mockSql as unknown as SqlStorage
+}
+
 beforeEach(async () => {
   // Reset module cache to reset module state
   vi.resetModules()
@@ -166,7 +175,7 @@ beforeEach(async () => {
   }
   db = new SQL.Database()
   mockSql = new MockSqlStorage(db)
-  doCollections = new DOCollections(mockSql as unknown as SqlStorage)
+  doCollections = new DOCollections(asSql())
 })
 
 afterEach(() => {
@@ -678,7 +687,7 @@ describe('Things (Entity Instances)', () => {
 
     it('should find things with data filter without type', () => {
       // When type is not specified, we can still filter by data fields
-      const things = doCollections.things.find(undefined, { name: 'Alice' } as any)
+      const things = doCollections.things.find(undefined, { name: 'Alice' })
 
       expect(things.length).toBe(1)
       expect(things[0]!.data['name']).toBe('Alice')
@@ -1390,7 +1399,7 @@ describe('fuzzyRelate()', () => {
       }
 
       // Create a new DOCollections with the matcher
-      matcherDb = new DOCollections(mockSql as unknown as SqlStorage, {
+      matcherDb = new DOCollections(asSql(), {
         semanticMatcher: mockMatcher,
         defaultThreshold: 0.8
       })

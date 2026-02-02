@@ -307,8 +307,8 @@ describe('Events Integration', () => {
       expect(pending.length).toBe(1)
       expect(pending[0]!.type).toBe('custom.event')
       expect(pending[0]!['data']).toBe(123)
-      expect((pending[0]!['do'] as any).id).toBe('test-do-id-123')
-      expect((pending[0]!['do'] as any).name).toBe('test-do')
+      expect((pending[0]!['do'] as { id: string; name: string }).id).toBe('test-do-id-123')
+      expect((pending[0]!['do'] as { id: string; name: string }).name).toBe('test-do')
     })
 
     it('should emit multiple events in batch', () => {

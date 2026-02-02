@@ -34,7 +34,7 @@
  * @packageDocumentation
  */
 
-import type { RpcProxy, RpcResult, RpcInput, RPCProxy, RPCResult, RPCInput } from './index'
+import type { RpcProxy, RpcResult, RpcInput, RPCProxy, RPCResult, RPCInput } from './types'
 
 // ============================================================================
 // Path Utilities
@@ -429,4 +429,4 @@ export interface MutationState<TData, TVariables> {
 // ============================================================================
 
 // Re-export both Rpc-prefixed (preferred) and RPC-prefixed (deprecated) types
-export type { RpcProxy, RpcResult, RpcInput, RPCProxy, RPCResult, RPCInput } from './index'
+export type { RpcProxy, RpcResult, RpcInput, RPCProxy, RPCResult, RPCInput } from './types'

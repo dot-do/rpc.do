@@ -131,9 +131,9 @@ describe('definePrototypeProperties', () => {
 
     definePrototypeProperties(TestClass, methods, {})
 
-    const instance = new TestClass() as any
+    const instance = new TestClass() as Record<string, unknown>
     expect(typeof instance.test).toBe('function')
-    expect(instance.test()).toBe('result')
+    expect((instance.test as () => string)()).toBe('result')
   })
 
   it('should define namespace getters on prototype', () => {
@@ -145,7 +145,7 @@ describe('definePrototypeProperties', () => {
 
     definePrototypeProperties(TestClass, {}, namespaces)
 
-    const instance = new TestClass() as any
+    const instance = new TestClass() as Record<string, unknown>
     expect(instance.sub).toBe(mockTarget)
   })
 })
@@ -164,12 +164,12 @@ describe('wrapObjectAsTarget', () => {
       add: (a: number, b: number) => a + b,
     }
 
-    const target = wrapObjectAsTarget(obj) as any
+    const target = wrapObjectAsTarget(obj) as RpcTarget & Record<string, unknown>
 
     expect(typeof target.greet).toBe('function')
     expect(typeof target.add).toBe('function')
-    expect(target.greet('World')).toBe('Hello, World!')
-    expect(target.add(2, 3)).toBe(5)
+    expect((target.greet as (name: string) => string)('World')).toBe('Hello, World!')
+    expect((target.add as (a: number, b: number) => number)(2, 3)).toBe(5)
   })
 
   it('should expose nested namespaces', () => {
@@ -180,22 +180,22 @@ describe('wrapObjectAsTarget', () => {
       }
     }
 
-    const target = wrapObjectAsTarget(obj) as any
+    const target = wrapObjectAsTarget(obj) as RpcTarget & Record<string, RpcTarget & Record<string, unknown>>
 
     expect(target.users).toBeInstanceOf(RpcTarget)
     expect(typeof target.users.list).toBe('function')
     expect(typeof target.users.get).toBe('function')
-    expect(target.users.list()).toEqual([{ id: '1' }])
+    expect((target.users.list as () => unknown)()).toEqual([{ id: '1' }])
   })
 
   it('should handle circular references', () => {
-    const obj: Record<string, any> = {
+    const obj: Record<string, unknown> = {
       method: () => 'test',
     }
     obj.self = obj
 
     // Should not throw
-    const target = wrapObjectAsTarget(obj) as any
+    const target = wrapObjectAsTarget(obj) as RpcTarget & Record<string, unknown>
     expect(target).toBeInstanceOf(RpcTarget)
     expect(typeof target.method).toBe('function')
   })
@@ -207,7 +207,7 @@ describe('wrapObjectAsTarget', () => {
     }
 
     const skip = new Set([...DEFAULT_SKIP_PROPS, 'secret'])
-    const target = wrapObjectAsTarget(obj, { skip }) as any
+    const target = wrapObjectAsTarget(obj, { skip }) as RpcTarget & Record<string, unknown>
 
     expect(typeof target.allowed).toBe('function')
     expect(target.secret).toBeUndefined()
@@ -220,10 +220,10 @@ describe('wrapObjectWithCustomMethods', () => {
       apiCall: () => ({ status: 'ok' }),
     }
 
-    const target = wrapObjectWithCustomMethods(sdk) as any
+    const target = wrapObjectWithCustomMethods(sdk) as RpcTarget & Record<string, unknown>
 
     expect(typeof target.apiCall).toBe('function')
-    expect(target.apiCall()).toEqual({ status: 'ok' })
+    expect((target.apiCall as () => unknown)()).toEqual({ status: 'ok' })
   })
 
   it('should include custom methods', () => {
@@ -232,14 +232,14 @@ describe('wrapObjectWithCustomMethods', () => {
     }
 
     const customMethods = {
-      custom: function(this: any) { return { custom: true } },
+      custom: function(this: Record<string, unknown>) { return { custom: true } },
     }
 
     const ctx = { sdk }
-    const target = wrapObjectWithCustomMethods(sdk, customMethods, ctx) as any
+    const target = wrapObjectWithCustomMethods(sdk, customMethods, ctx) as RpcTarget & Record<string, unknown>
 
     expect(typeof target.custom).toBe('function')
-    expect(target.custom()).toEqual({ custom: true })
+    expect((target.custom as () => unknown)()).toEqual({ custom: true })
   })
 
   it('should bind custom methods to context', () => {
@@ -255,9 +255,9 @@ describe('wrapObjectWithCustomMethods', () => {
     }
 
     const ctx = { sdk }
-    const target = wrapObjectWithCustomMethods(sdk, customMethods, ctx) as any
+    const target = wrapObjectWithCustomMethods(sdk, customMethods, ctx) as RpcTarget & Record<string, unknown>
 
-    expect(target.enhanced()).toEqual({ data: 'from-sdk', enhanced: true })
+    expect((target.enhanced as () => unknown)()).toEqual({ data: 'from-sdk', enhanced: true })
   })
 
   it('should work without custom methods', () => {
@@ -265,10 +265,10 @@ describe('wrapObjectWithCustomMethods', () => {
       test: () => 'ok',
     }
 
-    const target = wrapObjectWithCustomMethods(sdk) as any
+    const target = wrapObjectWithCustomMethods(sdk) as RpcTarget & Record<string, unknown>
 
     expect(typeof target.test).toBe('function')
-    expect(target.test()).toBe('ok')
+    expect((target.test as () => string)()).toBe('ok')
   })
 })
 

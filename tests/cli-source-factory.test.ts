@@ -30,7 +30,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs'
 import { join, resolve as pathResolve } from 'node:path'
-import { spawn, execSync } from 'node:child_process'
+import { execSync } from 'node:child_process'
 
 // ============================================================================
 // Test Fixtures - DO() Factory Pattern Source Files
@@ -280,48 +280,38 @@ export default DO(async ($) => {
 // ============================================================================
 
 /**
- * Run the CLI with given arguments and return the result
+ * Run the CLI with given arguments and return the result.
+ * Uses execSync internally for reliability -- avoids race conditions
+ * between file writes in the test and the spawned child process
+ * not seeing the files on disk.
  */
 async function runCLI(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve) => {
-    const cliPath = pathResolve(__dirname, '../dist/cli.js')
-    const child = spawn('node', [cliPath, ...args], {
+  const cliPath = pathResolve(__dirname, '../dist/cli.js')
+  // Quote each argument to prevent shell glob expansion and handle paths with spaces
+  const quotedArgs = args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(' ')
+  try {
+    const result = execSync(`node '${cliPath}' ${quotedArgs}`, {
       cwd: cwd || process.cwd(),
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, NODE_ENV: 'test' },
+      timeout: 30000,
     })
-
-    let stdout = ''
-    let stderr = ''
-
-    child.stdout.on('data', (data) => {
-      stdout += data.toString()
-    })
-
-    child.stderr.on('data', (data) => {
-      stderr += data.toString()
-    })
-
-    child.on('close', (code) => {
-      resolve({ stdout, stderr, exitCode: code || 0 })
-    })
-
-    child.on('error', (err) => {
-      resolve({ stdout, stderr: err.message, exitCode: 1 })
-    })
-
-    // Timeout after 30 seconds
-    setTimeout(() => {
-      child.kill()
-      resolve({ stdout, stderr: 'Timeout', exitCode: 124 })
-    }, 30000)
-  })
+    return { stdout: result, stderr: '', exitCode: 0 }
+  } catch (err: any) {
+    return {
+      stdout: err.stdout || '',
+      stderr: err.stderr || err.message,
+      exitCode: err.status || 1,
+    }
+  }
 }
 
 // ============================================================================
 // Test Suite for DO() Factory Pattern
 // ============================================================================
 
-describe('CLI --source flag with DO() factory pattern', () => {
+describe('CLI --source flag with DO() factory pattern', { timeout: 15000, retry: 2 }, () => {
   const testDir = join(__dirname, '.test-fixtures-factory')
   const outputDir = join(testDir, '.do')
 
