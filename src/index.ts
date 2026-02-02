@@ -138,7 +138,7 @@ export type AsyncFunction<T extends (...args: unknown[]) => unknown> = T extends
  * @example
  * type Generate = RpcFunction<{ prompt: string }, { text: string }>
  */
-export type RpcFunction<TInput = any, TOutput = any> = (input: TInput) => TOutput
+export type RpcFunction<TInput = unknown, TOutput = unknown> = (input: TInput) => TOutput
 
 /**
  * Defines a single RPC function signature
@@ -146,7 +146,7 @@ export type RpcFunction<TInput = any, TOutput = any> = (input: TInput) => TOutpu
  * @example
  * type Generate = RPCFunction<{ prompt: string }, { text: string }>
  */
-export type RPCFunction<TInput = any, TOutput = any> = RpcFunction<TInput, TOutput>
+export type RPCFunction<TInput = unknown, TOutput = unknown> = RpcFunction<TInput, TOutput>
 
 /**
  * Recursively converts an API definition to async proxy type
@@ -381,7 +381,7 @@ export function RPC<T extends object = Record<string, unknown>>(
  */
 export interface DOClientFeatures {
   /** Tagged template SQL query */
-  sql: <R = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]) => SqlQuery<R>
+  sql: <R extends Record<string, unknown> = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]) => SqlQuery<R>
   /** Remote storage access */
   storage: RemoteStorage
   /** Remote collection access (MongoDB-style) */
@@ -481,6 +481,8 @@ export {
   type ColumnSchema,
   type IndexSchema,
   type RpcSchema,
+  type RpcMethodSchema,
+  type RpcNamespaceSchema,
 } from './do-client'
 
 // Internal method constants (for custom transport implementations)

@@ -78,7 +78,7 @@ export type {
  * This is rpc.do's fluent query builder interface.
  * For the simpler parameterized query type, see SqlQuery from '@dotdo/types/rpc'.
  */
-export interface SqlQuery<T = Record<string, unknown>> {
+export interface SqlQuery<T extends Record<string, unknown> = Record<string, unknown>> {
   /** Execute and return all rows */
   all(): Promise<T[]>
   /** Execute and return first row */
@@ -276,7 +276,7 @@ export interface RemoteCollections {
  */
 export type DOClient<T extends object = Record<string, unknown>> = {
   /** Tagged template SQL query */
-  sql: <R = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]) => SqlQuery<R>
+  sql: <R extends Record<string, unknown> = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]) => SqlQuery<R>
   /** Remote storage access */
   storage: RemoteStorage
   /** Remote collection access (MongoDB-style) */
@@ -380,7 +380,7 @@ function serializeSql(strings: TemplateStringsArray, values: unknown[]): { strin
 /**
  * Create a SQL query builder
  */
-function createSqlQuery<T>(
+function createSqlQuery<T extends Record<string, unknown>>(
   transport: Transport,
   strings: TemplateStringsArray,
   values: unknown[]
@@ -656,7 +656,7 @@ export function createDOClient<T extends object = Record<string, unknown>>(
     get(_, prop: string) {
       // Special properties
       if (prop === 'sql') {
-        return <R = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): SqlQuery<R> => {
+        return <R extends Record<string, unknown> = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): SqlQuery<R> => {
           const t = getTransportSync()
           return createSqlQuery<R>(t, strings, values)
         }

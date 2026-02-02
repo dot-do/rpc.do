@@ -5,11 +5,9 @@
  * Includes caching, automatic token refresh, and flexible provider patterns.
  */
 
-/**
- * Auth provider function type for HTTP clients
- * Returns a token string or null/undefined
- */
-export type AuthProvider = () => string | null | undefined | Promise<string | null | undefined>
+// Import AuthProvider from transports (canonical definition) and re-export
+import type { AuthProvider } from './transports'
+export type { AuthProvider }
 
 /**
  * Options for cached auth provider
@@ -256,8 +254,9 @@ export function compositeAuth(providers: AuthProvider[]): AuthProvider {
  */
 export async function getToken(): Promise<string | null> {
   // Check global tokens first (works in browser and Node.js)
-  const globalToken = (globalThis as any).DO_ADMIN_TOKEN ?? (globalThis as any).DO_TOKEN
-  if (globalToken) {
+  const g = globalThis as Record<string, unknown>
+  const globalToken = g['DO_ADMIN_TOKEN'] ?? g['DO_TOKEN']
+  if (typeof globalToken === 'string') {
     return globalToken
   }
 

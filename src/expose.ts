@@ -62,7 +62,7 @@ export type MethodImpl<Env extends object, SDK extends object> = (
 ) => Promise<unknown> | unknown
 
 /** Options for expose() with a single SDK + optional custom methods */
-export interface ExposeOptions<Env, SDK extends object> {
+export interface ExposeOptions<Env extends object, SDK extends object> {
   sdk: SDKFactory<Env, SDK>
   methods?: Record<string, MethodImpl<Env, SDK>>
 }
