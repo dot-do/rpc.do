@@ -5,6 +5,7 @@
 import type { Transport } from './types'
 import type { ServerMessage as TypesServerMessage } from '@dotdo/types/rpc'
 import { ConnectionError, RPCError } from './errors'
+import { loadCapnweb } from './capnweb-loader.js'
 
 // ============================================================================
 // Type Guards
@@ -299,13 +300,9 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
   async function getSession(): Promise<unknown> {
     if (!sessionPromise) {
       sessionPromise = (async () => {
-        // Dynamic import capnweb (optional dependency)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const capnwebModule: Record<string, unknown> = await import('@dotdo/capnweb')
-
-        const createSession = capnwebModule['newHttpBatchRpcSession'] as ((url: string) => unknown) | undefined
-        if (!createSession) throw new RPCError('capnweb.newHttpBatchRpcSession not found', 'MODULE_ERROR')
-        return createSession(url)
+        // Load capnweb via centralized loader
+        const capnwebModule = await loadCapnweb()
+        return capnwebModule.newHttpBatchRpcSession(url)
       })()
     }
     return sessionPromise
@@ -536,20 +533,14 @@ export function capnweb(
   async function getSession(): Promise<unknown> {
     if (!sessionPromise) {
       sessionPromise = (async () => {
-        // Dynamic import capnweb (optional dependency)
-        // capnweb types are not available at compile time, so we use Record<string, unknown>
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const capnwebModule: Record<string, unknown> = await import('@dotdo/capnweb')
+        // Load capnweb via centralized loader
+        const capnwebModule = await loadCapnweb()
 
         if (useWebSocket) {
           const wsUrl = url.replace(/^http/, 'ws')
-          const createSession = capnwebModule['newWebSocketRpcSession'] as ((url: string) => unknown) | undefined
-          if (!createSession) throw new RPCError('capnweb.newWebSocketRpcSession not found', 'MODULE_ERROR')
-          return createSession(wsUrl)
+          return capnwebModule.newWebSocketRpcSession(wsUrl)
         } else {
-          const createSession = capnwebModule['newHttpBatchRpcSession'] as ((url: string) => unknown) | undefined
-          if (!createSession) throw new RPCError('capnweb.newHttpBatchRpcSession not found', 'MODULE_ERROR')
-          return createSession(url)
+          return capnwebModule.newHttpBatchRpcSession(url)
         }
       })()
     }
@@ -602,17 +593,11 @@ function createReconnectingCapnwebTransport(
   async function getSession(): Promise<unknown> {
     if (!sessionPromise) {
       sessionPromise = (async () => {
-        // Dynamic imports
+        // Load modules in parallel via centralized loader
         const [capnwebModule, { ReconnectingWebSocketTransport }] = await Promise.all([
-          import('@dotdo/capnweb'),
+          loadCapnweb(),
           import('./transports/reconnecting-ws.js')
         ])
-
-        const RpcSessionCtor = (capnwebModule as Record<string, unknown>)['RpcSession'] as
-          (new (transport: unknown, localMain?: unknown) => { getRemoteMain(): unknown }) | undefined
-        if (!RpcSessionCtor) {
-          throw new RPCError('capnweb.RpcSession not found', 'MODULE_ERROR')
-        }
 
         // Create reconnecting transport with first-message auth
         const wsUrl = url.replace(/^http/, 'ws')
@@ -631,7 +616,7 @@ function createReconnectingCapnwebTransport(
         transport = reconnectTransport
 
         // Create RpcSession with the transport
-        const rpcSession = new RpcSessionCtor(reconnectTransport, options?.localMain)
+        const rpcSession = new capnwebModule.RpcSession(reconnectTransport, options?.localMain)
         return rpcSession.getRemoteMain()
       })()
     }
@@ -747,3 +732,238 @@ export {
 
 // Export middleware wrappers for transport composition
 export { withMiddleware, withRetry, type RetryOptions } from './middleware/index.js'
+export {
+  withBatching,
+  withDebouncedBatching,
+  type BatchingOptions,
+  type BatchedRequest,
+  type BatchedResponse,
+} from './middleware/batching.js'
+
+// ============================================================================
+// Transport Factory Pattern
+// ============================================================================
+
+/**
+ * Transport type discriminator for factory pattern
+ */
+export type TransportType = 'http' | 'capnweb' | 'binding' | 'composite'
+
+/**
+ * Base transport configuration
+ */
+interface TransportConfigBase {
+  type: TransportType
+}
+
+/**
+ * HTTP transport configuration
+ */
+export interface HttpTransportConfig extends TransportConfigBase {
+  type: 'http'
+  url: string
+  auth?: string | AuthProvider
+  timeout?: number
+}
+
+/**
+ * Capnweb transport configuration
+ */
+export interface CapnwebTransportConfig extends TransportConfigBase {
+  type: 'capnweb'
+  url: string
+  websocket?: boolean
+  auth?: string | AuthProvider
+  reconnect?: boolean
+  reconnectOptions?: CapnwebTransportOptions['reconnectOptions']
+  localMain?: unknown
+  allowInsecureAuth?: boolean
+}
+
+/**
+ * Binding transport configuration
+ */
+export interface BindingTransportConfig extends TransportConfigBase {
+  type: 'binding'
+  binding: unknown
+}
+
+/**
+ * Composite transport configuration
+ */
+export interface CompositeTransportConfig extends TransportConfigBase {
+  type: 'composite'
+  transports: Transport[]
+}
+
+/**
+ * Union of all transport configurations
+ */
+export type TransportConfig =
+  | HttpTransportConfig
+  | CapnwebTransportConfig
+  | BindingTransportConfig
+  | CompositeTransportConfig
+
+/**
+ * Transport factory namespace - unified transport creation
+ *
+ * Provides a cleaner, unified API for creating transports. All existing
+ * factory functions (http, capnweb, binding, composite) continue to work
+ * and are the underlying implementation.
+ *
+ * @example
+ * ```typescript
+ * import { Transports } from 'rpc.do'
+ *
+ * // Create HTTP transport
+ * const httpTransport = Transports.create({
+ *   type: 'http',
+ *   url: 'https://api.example.com/rpc',
+ *   auth: 'my-token',
+ *   timeout: 5000,
+ * })
+ *
+ * // Create capnweb WebSocket transport with reconnection
+ * const wsTransport = Transports.create({
+ *   type: 'capnweb',
+ *   url: 'wss://api.example.com/rpc',
+ *   auth: () => getToken(),
+ *   reconnect: true,
+ * })
+ *
+ * // Create binding transport (Cloudflare Workers)
+ * const bindingTransport = Transports.create({
+ *   type: 'binding',
+ *   binding: env.MY_SERVICE,
+ * })
+ *
+ * // Create composite transport with fallback
+ * const compositeTransport = Transports.create({
+ *   type: 'composite',
+ *   transports: [wsTransport, httpTransport],
+ * })
+ *
+ * // Use with RPC
+ * const $ = RPC(httpTransport)
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Shorthand factory methods
+ * const t1 = Transports.http('https://api.example.com/rpc', { timeout: 5000 })
+ * const t2 = Transports.capnweb('wss://api.example.com/rpc', { reconnect: true })
+ * const t3 = Transports.binding(env.MY_SERVICE)
+ * const t4 = Transports.composite(t1, t2)
+ * ```
+ */
+export const Transports = {
+  /**
+   * Create a transport from a configuration object
+   *
+   * @param config - Transport configuration with type discriminator
+   * @returns A Transport instance
+   *
+   * @example
+   * ```typescript
+   * const transport = Transports.create({
+   *   type: 'http',
+   *   url: 'https://api.example.com/rpc',
+   *   timeout: 5000,
+   * })
+   * ```
+   */
+  create(config: TransportConfig): import('./types').Transport {
+    switch (config.type) {
+      case 'http': {
+        const opts: HttpTransportOptions = {}
+        if (config.auth !== undefined) opts.auth = config.auth
+        if (config.timeout !== undefined) opts.timeout = config.timeout
+        return http(config.url, Object.keys(opts).length > 0 ? opts : undefined)
+      }
+
+      case 'capnweb': {
+        const opts: CapnwebTransportOptions = {}
+        if (config.websocket !== undefined) opts.websocket = config.websocket
+        if (config.auth !== undefined) opts.auth = config.auth
+        if (config.reconnect !== undefined) opts.reconnect = config.reconnect
+        if (config.reconnectOptions !== undefined) opts.reconnectOptions = config.reconnectOptions
+        if (config.localMain !== undefined) opts.localMain = config.localMain
+        if (config.allowInsecureAuth !== undefined) opts.allowInsecureAuth = config.allowInsecureAuth
+        return capnweb(config.url, Object.keys(opts).length > 0 ? opts : undefined)
+      }
+
+      case 'binding':
+        return binding(config.binding)
+
+      case 'composite':
+        return composite(...config.transports)
+
+      default: {
+        // Exhaustive type check
+        const _exhaustive: never = config
+        throw new RPCError(`Unknown transport type: ${(_exhaustive as TransportConfig).type}`, 'INVALID_TRANSPORT')
+      }
+    }
+  },
+
+  /**
+   * Create an HTTP transport
+   *
+   * Shorthand for `Transports.create({ type: 'http', ... })`
+   *
+   * @param url - The RPC endpoint URL
+   * @param options - Optional HTTP transport options
+   * @returns A Transport instance
+   */
+  http(url: string, options?: HttpTransportOptions): import('./types').Transport {
+    return http(url, options)
+  },
+
+  /**
+   * Create a capnweb transport (WebSocket or HTTP batch)
+   *
+   * Shorthand for `Transports.create({ type: 'capnweb', ... })`
+   *
+   * @param url - The RPC endpoint URL
+   * @param options - Optional capnweb transport options
+   * @returns A Transport instance
+   */
+  capnweb(url: string, options?: CapnwebTransportOptions): import('./types').Transport {
+    return capnweb(url, options)
+  },
+
+  /**
+   * Create a binding transport for Cloudflare Workers
+   *
+   * Shorthand for `Transports.create({ type: 'binding', ... })`
+   *
+   * @param b - The service binding object
+   * @returns A Transport instance
+   */
+  binding(b: unknown): import('./types').Transport {
+    return binding(b)
+  },
+
+  /**
+   * Create a composite transport with fallback support
+   *
+   * Shorthand for `Transports.create({ type: 'composite', ... })`
+   *
+   * @param transports - Transports to try in order
+   * @returns A Transport instance
+   */
+  composite(...transports: import('./types').Transport[]): import('./types').Transport {
+    return composite(...transports)
+  },
+
+  /**
+   * Type guard to check if a value is a Transport
+   *
+   * @param value - Value to check
+   * @returns true if value has a `call` method (minimal Transport interface)
+   */
+  isTransport(value: unknown): value is import('./types').Transport {
+    return isNonNullObject(value) && typeof (value as Record<string, unknown>)['call'] === 'function'
+  },
+} as const

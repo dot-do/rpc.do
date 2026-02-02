@@ -318,6 +318,8 @@ export {
   capnweb,
   binding,
   composite,
+  // Unified transport factory
+  Transports,
   // Type guards (public API)
   isFunction,
   isServerMessage,
@@ -329,6 +331,13 @@ export type {
   ServerMessage,
   HttpTransportOptions,
   CapnwebTransportOptions,
+  // Transport factory types
+  TransportType,
+  TransportConfig,
+  HttpTransportConfig,
+  CapnwebTransportConfig,
+  BindingTransportConfig,
+  CompositeTransportConfig,
 } from './transports'
 
 // Re-export reconnecting transport and middleware (from transports sub-modules)
@@ -373,6 +382,15 @@ export {
   INTERNAL_METHOD_NAMES,
   type InternalMethod,
 } from './constants'
+
+// Capnweb loader testing utilities
+export {
+  setCapnwebMock,
+  clearCapnwebCache,
+  hasCapnwebMock,
+  getCapnwebMock,
+  type CapnwebModule,
+} from './capnweb-loader'
 
 // Note: auth() is available via 'rpc.do/auth' for server-side usage
 // It's not exported from main index to avoid oauth.do dependency in browser contexts

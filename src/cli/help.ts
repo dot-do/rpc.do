@@ -25,6 +25,8 @@ USAGE:
   npx rpc.do generate --url X      Runtime schema (weak types)
   npx rpc.do watch                 Watch mode
   npx rpc.do init [name]           Create new project
+  npx rpc.do doctor                Diagnose RPC connection issues
+  npx rpc.do doctor --url X        Check specific endpoint
 
 EXAMPLE:
   # wrangler.toml
@@ -64,5 +66,16 @@ WATCH MODE:
 
 INIT:
   npx rpc.do init [project-name]   Create new project with examples
+
+DOCTOR:
+  npx rpc.do doctor                Diagnose connection and config issues
+  npx rpc.do doctor --url <url>    Check a specific RPC endpoint
+
+  Checks performed:
+    - Configuration file detection
+    - Basic connectivity to endpoint
+    - Schema endpoint accessibility
+    - Schema format validation
+    - Wrangler config detection
 `)
 }

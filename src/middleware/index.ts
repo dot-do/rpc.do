@@ -21,6 +21,13 @@
 export { loggingMiddleware, type LoggingOptions } from './logging'
 export { timingMiddleware, type TimingOptions } from './timing'
 export { retryObserver, retryMiddleware, withRetry, type RetryOptions } from './retry'
+export {
+  withBatching,
+  withDebouncedBatching,
+  type BatchingOptions,
+  type BatchedRequest,
+  type BatchedResponse,
+} from './batching'
 
 // Re-export shared base types for ecosystem compatibility
 export type {

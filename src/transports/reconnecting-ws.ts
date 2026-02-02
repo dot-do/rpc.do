@@ -43,6 +43,7 @@
 import type { RpcTransport } from '@dotdo/capnweb'
 import { ConnectionError } from '../errors.js'
 import type { AuthProvider } from '../auth.js'
+import { loadCapnweb } from '../capnweb-loader.js'
 
 // ============================================================================
 // Types
@@ -776,12 +777,11 @@ export async function createRpcSession<T = unknown>(
   // Create transport
   const transport = new ReconnectingWebSocketTransport(url, transportOptions)
 
-  // Dynamic import capnweb (using @dotdo/capnweb fork)
-  const capnwebModule = await import('@dotdo/capnweb') as Record<string, unknown>
-  const RpcSession = capnwebModule['RpcSession'] as new (transport: unknown, localMain?: unknown) => { getRemoteMain(): unknown }
+  // Load capnweb via centralized loader
+  const capnwebModule = await loadCapnweb()
 
   // Create session with optional local target for bidirectional RPC
-  const session = new RpcSession(transport, localMain)
+  const session = new capnwebModule.RpcSession(transport, localMain)
 
   // Get remote API stub
   const api = session.getRemoteMain() as T

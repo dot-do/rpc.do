@@ -19,6 +19,7 @@ import { loadConfig } from './config.js'
 import { runZeroConfigCommand, generateFromSource, generateFromUrl } from './generate.js'
 import { initProject } from './init.js'
 import { watchCommand } from './watch.js'
+import { doctorCommand } from './doctor.js'
 import { printHelp } from './help.js'
 
 /**
@@ -55,6 +56,11 @@ export async function main(argv?: string[]): Promise<void> {
 
   if (command === 'watch') {
     await watchCommand(args.slice(1))
+    return
+  }
+
+  if (command === 'doctor') {
+    await doctorCommand(args.slice(1))
     return
   }
 
