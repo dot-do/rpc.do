@@ -494,7 +494,7 @@ function runCLISync(args: string[], cwd?: string): { stdout: string; stderr: str
 // Test Suite
 // ============================================================================
 
-describe.skip('CLI --source flag', () => {
+describe('CLI --source flag', () => {
   const testDir = join(__dirname, '.test-fixtures-source')
   const outputDir = join(testDir, '.do')
 

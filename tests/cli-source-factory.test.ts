@@ -321,7 +321,7 @@ async function runCLI(args: string[], cwd?: string): Promise<{ stdout: string; s
 // Test Suite for DO() Factory Pattern
 // ============================================================================
 
-describe.skip('CLI --source flag with DO() factory pattern', () => {
+describe('CLI --source flag with DO() factory pattern', () => {
   const testDir = join(__dirname, '.test-fixtures-factory')
   const outputDir = join(testDir, '.do')
 
