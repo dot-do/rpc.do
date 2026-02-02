@@ -20,6 +20,8 @@ import { runZeroConfigCommand, generateFromSource, generateFromUrl } from './gen
 import { initProject } from './init.js'
 import { watchCommand } from './watch.js'
 import { doctorCommand } from './doctor.js'
+import { introspectCommand } from './introspect.js'
+import { openAPICommand } from './openapi.js'
 import { printHelp } from './help.js'
 
 /**
@@ -61,6 +63,16 @@ export async function main(argv?: string[]): Promise<void> {
 
   if (command === 'doctor') {
     await doctorCommand(args.slice(1))
+    return
+  }
+
+  if (command === 'introspect') {
+    await introspectCommand(args.slice(1))
+    return
+  }
+
+  if (command === 'openapi') {
+    await openAPICommand(args.slice(1))
     return
   }
 

@@ -26,6 +26,13 @@ export default defineConfig([
     dts: true,
     external: ['capnweb', 'oauth.do', 'cloudflare:workers', 'ts-morph', 'glob'],
   },
+  // OpenAPI export utilities (can be used in Node.js or browser)
+  {
+    entry: ['src/openapi.ts'],
+    format: ['esm'],
+    dts: true,
+    external: ['capnweb', 'oauth.do', 'cloudflare:workers', 'ts-morph', 'glob'],
+  },
   // Testing utilities (Node.js only, uses node:http for TestServer)
   {
     entry: ['src/testing.ts'],

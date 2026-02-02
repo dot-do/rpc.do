@@ -32,6 +32,10 @@
       "types": "./dist/extract.d.ts",
       "import": "./dist/extract.js"
     },
+    "./openapi": {
+      "types": "./dist/openapi.d.ts",
+      "import": "./dist/openapi.js"
+    },
     "./server": {
       "types": "./dist/server.d.ts",
       "import": "./dist/server.js"
@@ -59,6 +63,10 @@
     "./middleware/timing": {
       "types": "./dist/middleware/timing.d.ts",
       "import": "./dist/middleware/timing.js"
+    },
+    "./middleware/validation": {
+      "types": "./dist/middleware/validation.d.ts",
+      "import": "./dist/middleware/validation.js"
     }
   },
   "files": [
@@ -111,7 +119,8 @@
     "@dotdo/types": ">=0.1.0",
     "glob": "^13.0.0",
     "oauth.do": "^0.2.0",
-    "ts-morph": "^27.0.2"
+    "ts-morph": "^27.0.2",
+    "zod": "^3.0.0"
   },
   "peerDependenciesMeta": {
     "@dotdo/types": {
@@ -124,6 +133,9 @@
       "optional": true
     },
     "ts-morph": {
+      "optional": true
+    },
+    "zod": {
       "optional": true
     }
   },

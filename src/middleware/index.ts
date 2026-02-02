@@ -28,6 +28,17 @@ export {
   type BatchedRequest,
   type BatchedResponse,
 } from './batching'
+export {
+  withValidation,
+  ValidationError,
+  prefixSchemas,
+  mergeSchemas,
+  type ValidationSchemas,
+  type ValidationOptions,
+  type MethodSchema,
+  type ZodLikeSchema,
+  type ZodLikeError,
+} from './validation'
 
 // Re-export shared base types for ecosystem compatibility
 export type {
