@@ -89,6 +89,13 @@ export type MethodPaths<T, Prefix extends string = ''> = T extends object
     }[keyof T & string]
   : never
 
+/**
+ * Extracts the function type from PathValue, using Extract to satisfy
+ * TypeScript's constraint checking when PathValue can't be statically proven
+ * to resolve to a function type.
+ */
+type PathFn<T, P extends string> = Extract<PathValue<T, P>, (...args: any[]) => any>
+
 // ============================================================================
 // Function Type Extraction Helpers
 // ============================================================================
@@ -174,7 +181,7 @@ export interface MutationFnOptions extends QueryFnOptions {
 export function getMethod<T extends object, P extends MethodPaths<T> & string>(
   rpc: RpcProxy<T>,
   path: P
-): PathValue<T, P> {
+): PathFn<T, P> {
   const parts = (path as string).split('.')
   let target: unknown = rpc
 
@@ -185,7 +192,7 @@ export function getMethod<T extends object, P extends MethodPaths<T> & string>(
     target = (target as Record<string, unknown>)[part]
   }
 
-  return target as PathValue<T, P>
+  return target as PathFn<T, P>
 }
 
 /**
@@ -214,7 +221,7 @@ export function createQueryFn<T extends object, P extends MethodPaths<T> & strin
   rpc: RpcProxy<T>,
   path: P,
   options?: QueryFnOptions
-): AsyncWrapperFn<PathValue<T, P>> {
+): AsyncWrapperFn<PathFn<T, P>> {
   const method = getMethod(rpc, path)
 
   if (typeof method !== 'function') {
@@ -232,7 +239,7 @@ export function createQueryFn<T extends object, P extends MethodPaths<T> & strin
     }
   }
 
-  return wrappedFn as AsyncWrapperFn<PathValue<T, P>>
+  return wrappedFn as AsyncWrapperFn<PathFn<T, P>>
 }
 
 /**
@@ -259,7 +266,7 @@ export function createMutationFn<T extends object, P extends MethodPaths<T> & st
   rpc: RpcProxy<T>,
   path: P,
   options?: MutationFnOptions
-): AsyncWrapperFn<PathValue<T, P>> {
+): AsyncWrapperFn<PathFn<T, P>> {
   const method = getMethod(rpc, path)
 
   if (typeof method !== 'function') {
@@ -280,7 +287,7 @@ export function createMutationFn<T extends object, P extends MethodPaths<T> & st
     }
   }
 
-  return wrappedFn as AsyncWrapperFn<PathValue<T, P>>
+  return wrappedFn as AsyncWrapperFn<PathFn<T, P>>
 }
 
 // ============================================================================

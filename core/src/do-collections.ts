@@ -155,8 +155,6 @@ export interface Relationship {
 // ID Generation
 // ============================================================================
 
-let counter = 0
-
 /**
  * Custom epoch for ID generation (2024-01-01T00:00:00.000Z).
  * Using a custom epoch reduces ID length by omitting the leading digits
@@ -164,12 +162,19 @@ let counter = 0
  */
 const EPOCH_2024 = 1704067200000
 
-/** Generate a short, sortable ID */
+/** Generate a sortable, collision-resistant ID.
+ *
+ * Uses a base-36 timestamp prefix (milliseconds since EPOCH_2024) for
+ * chronological sortability, followed by a crypto.randomUUID() suffix
+ * for uniqueness. This avoids the shared module-level counter that could
+ * drift across Durable Object instances sharing the same isolate and
+ * replaces the weak 4-character Math.random() suffix (~1.6M possibilities)
+ * with a full 128-bit UUID (>3.4 x 10^38 possibilities).
+ */
 function generateId(prefix?: string): string {
   const now = Date.now() - EPOCH_2024
-  const c = (counter++ % 1000).toString().padStart(3, '0')
-  const r = Math.random().toString(36).slice(2, 6)
-  const id = `${now.toString(36)}${c}${r}`
+  const uuid = crypto.randomUUID().replace(/-/g, '')
+  const id = `${now.toString(36)}${uuid}`
   return prefix ? `${prefix}_${id}` : id
 }
 

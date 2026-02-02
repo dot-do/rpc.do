@@ -755,7 +755,7 @@ function extractNamespaceFromType(name: string, type: Type, annotatedTypeName?: 
           return {
             name: param.getName(),
             type: getTypeText(paramDecl?.getType() ?? (firstDecl ? param.getTypeAtLocation(firstDecl) : undefined), undefined),
-            optional: (paramDecl && 'hasQuestionToken' in paramDecl) ? (paramDecl as any).hasQuestionToken() : false,
+            optional: (paramDecl && 'hasQuestionToken' in paramDecl) ? (paramDecl as unknown as { hasQuestionToken(): boolean }).hasQuestionToken() : false,
           }
         })
 
@@ -832,38 +832,43 @@ function extractTypeNames(typeStr: string, usedTypes: Set<string>): void {
 }
 
 /**
+ * Built-in type names that should not be extracted as user-defined types.
+ * Defined at module scope so the Set is created once rather than on every call.
+ */
+const BUILT_IN_TYPES = new Set([
+  'String',
+  'Number',
+  'Boolean',
+  'Object',
+  'Array',
+  'Promise',
+  'Date',
+  'Error',
+  'Map',
+  'Set',
+  'WeakMap',
+  'WeakSet',
+  'Request',
+  'Response',
+  'WebSocket',
+  'Partial',
+  'Required',
+  'Readonly',
+  'Pick',
+  'Omit',
+  'Record',
+  'Exclude',
+  'Extract',
+  'ReturnType',
+  'Parameters',
+  'Awaited',
+])
+
+/**
  * Check if a type name is a built-in type
  */
 function isBuiltInType(name: string): boolean {
-  const builtIns = new Set([
-    'String',
-    'Number',
-    'Boolean',
-    'Object',
-    'Array',
-    'Promise',
-    'Date',
-    'Error',
-    'Map',
-    'Set',
-    'WeakMap',
-    'WeakSet',
-    'Request',
-    'Response',
-    'WebSocket',
-    'Partial',
-    'Required',
-    'Readonly',
-    'Pick',
-    'Omit',
-    'Record',
-    'Exclude',
-    'Extract',
-    'ReturnType',
-    'Parameters',
-    'Awaited',
-  ])
-  return builtIns.has(name)
+  return BUILT_IN_TYPES.has(name)
 }
 
 /**

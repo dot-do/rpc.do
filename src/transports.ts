@@ -79,23 +79,33 @@ export function wrapTransportError(error: unknown): ConnectionError | RPCError {
       return new ConnectionError(error.message, 'CONNECTION_FAILED', true)
     }
 
-    // Auth failures (401)
-    if (message.includes('401') || message.includes('unauthorized') || message.includes('authentication failed')) {
+    // Check for HTTP status code directly on the error object
+    const statusCode = typeof (error as { status?: unknown }).status === 'number'
+      ? (error as { status: number }).status
+      : typeof (error as { statusCode?: unknown }).statusCode === 'number'
+        ? (error as { statusCode: number }).statusCode
+        : undefined
+
+    // Auth failures (401) - use status code or word-boundary regex
+    if (statusCode === 401 || /\b401\b/.test(message) || message.includes('unauthorized') || message.includes('authentication failed')) {
       return ConnectionError.authFailed(error.message)
     }
 
-    // Rate limiting (429)
-    if (message.includes('429') || message.includes('rate limit') || message.includes('too many requests')) {
+    // Rate limiting (429) - use status code or word-boundary regex
+    if (statusCode === 429 || /\b429\b/.test(message) || message.includes('rate limit') || message.includes('too many requests')) {
       return new ConnectionError(error.message, 'CONNECTION_FAILED', true)
     }
 
-    // Server errors (5xx) - retryable
-    if (message.includes('500') || message.includes('502') || message.includes('503') || message.includes('504') || message.includes('internal server error')) {
+    // Server errors (5xx) - retryable; use status code or word-boundary regex
+    if ((statusCode !== undefined && statusCode >= 500 && statusCode < 600) || /\b5\d{2}\b/.test(message) || message.includes('internal server error')) {
       return new ConnectionError(error.message, 'CONNECTION_FAILED', true)
     }
 
     // Client errors (4xx except 401, 429) - typically not retryable, treat as RPC error
-    if (/\b4\d{2}\b/.test(message) && !message.includes('401') && !message.includes('429')) {
+    if (
+      (statusCode !== undefined && statusCode >= 400 && statusCode < 500 && statusCode !== 401 && statusCode !== 429) ||
+      (/\b4\d{2}\b/.test(message) && !/\b401\b/.test(message) && !/\b429\b/.test(message))
+    ) {
       return new RPCError(error.message, 'REQUEST_ERROR')
     }
 
@@ -502,9 +512,9 @@ function createReconnectingCapnwebTransport(
           import('./transports/reconnecting-ws.js')
         ])
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const RpcSession = (capnwebModule as any).RpcSession
-        if (!RpcSession) {
+        const RpcSessionCtor = (capnwebModule as Record<string, unknown>)['RpcSession'] as
+          (new (transport: unknown, localMain?: unknown) => { getRemoteMain(): unknown }) | undefined
+        if (!RpcSessionCtor) {
           throw new RPCError('capnweb.RpcSession not found', 'MODULE_ERROR')
         }
 
@@ -525,7 +535,7 @@ function createReconnectingCapnwebTransport(
         transport = reconnectTransport
 
         // Create RpcSession with the transport
-        const rpcSession = new RpcSession(reconnectTransport, options?.localMain)
+        const rpcSession = new RpcSessionCtor(reconnectTransport, options?.localMain)
         session = rpcSession.getRemoteMain()
       }
 

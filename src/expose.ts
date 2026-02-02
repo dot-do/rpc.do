@@ -85,7 +85,7 @@ const SKIP_PROPS = new Set([...DEFAULT_SKIP_PROPS])
  */
 function createMultiTarget(
   sdkInstances: Record<string, object>,
-  methods?: Record<string, Function>,
+  methods?: Record<string, (...args: unknown[]) => unknown>,
   ctx?: { sdks: Record<string, object>; env: unknown }
 ): RpcTarget {
   const subTargets: Record<string, RpcTarget> = {}
@@ -103,7 +103,7 @@ function createMultiTarget(
   if (methods && ctx) {
     for (const [name, method] of Object.entries(methods)) {
       Object.defineProperty(MultiTarget.prototype, name, {
-        value: (method as Function).bind(ctx),
+        value: (method as (...args: unknown[]) => unknown).bind(ctx),
         enumerable: true,
         configurable: true,
         writable: true,
@@ -119,7 +119,7 @@ function createMultiTarget(
  */
 function createSingleTarget(
   sdk: object,
-  methods?: Record<string, Function>,
+  methods?: Record<string, (...args: unknown[]) => unknown>,
   ctx?: { sdk: object; env: unknown }
 ): RpcTarget {
   return wrapObjectWithCustomMethods(sdk, methods, ctx, { skip: SKIP_PROPS })

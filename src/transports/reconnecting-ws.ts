@@ -718,8 +718,8 @@ export async function createRpcSession<T = unknown>(
   const transport = new ReconnectingWebSocketTransport(url, transportOptions)
 
   // Dynamic import capnweb (using @dotdo/capnweb fork)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { RpcSession } = await import('@dotdo/capnweb') as any
+  const capnwebModule = await import('@dotdo/capnweb') as Record<string, unknown>
+  const RpcSession = capnwebModule['RpcSession'] as new (transport: unknown, localMain?: unknown) => { getRemoteMain(): unknown }
 
   // Create session with optional local target for bidirectional RPC
   const session = new RpcSession(transport, localMain)

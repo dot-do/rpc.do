@@ -300,6 +300,14 @@ interface TsConfig {
 // Valid base classes for DOs
 const DO_BASE_CLASSES = ['DurableObject', 'DurableRPC', 'DigitalObject']
 
+/**
+ * Escape special regex characters in a string so it can be safely
+ * interpolated into a `new RegExp()` pattern as a literal.
+ */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 // ============================================================================
 // Wrangler Config Detection
 // ============================================================================
@@ -346,17 +354,62 @@ function parseWranglerJsonc(filePath: string): WranglerBinding[] {
 }
 
 /**
- * Strip JSONC features (comments, trailing commas) to get valid JSON
+ * Strip JSONC features (comments, trailing commas) to get valid JSON.
+ *
+ * Uses a character-by-character state machine so that comment tokens
+ * inside quoted strings (e.g. URLs) are preserved correctly.
  */
 function stripJsoncFeatures(content: string): string {
-  let result = content
+  let result = ''
+  let i = 0
+  let inString = false
 
-  // Remove multi-line comments /* ... */
-  result = result.replace(/\/\*[\s\S]*?\*\//g, '')
+  while (i < content.length) {
+    const ch = content[i]
 
-  // Remove single-line comments // ...
-  // Be careful not to remove // inside strings
-  result = result.replace(/(?<!["'])\/\/[^\n]*/g, '')
+    if (inString) {
+      result += ch
+      if (ch === '\\') {
+        i++
+        if (i < content.length) {
+          result += content[i]
+        }
+      } else if (ch === '"') {
+        inString = false
+      }
+      i++
+      continue
+    }
+
+    if (ch === '"') {
+      inString = true
+      result += ch
+      i++
+      continue
+    }
+
+    if (ch === '/' && i + 1 < content.length) {
+      const next = content[i + 1]
+      if (next === '/') {
+        i += 2
+        while (i < content.length && content[i] !== '\n') {
+          i++
+        }
+        continue
+      }
+      if (next === '*') {
+        i += 2
+        while (i + 1 < content.length && !(content[i] === '*' && content[i + 1] === '/')) {
+          i++
+        }
+        i += 2
+        continue
+      }
+    }
+
+    result += ch
+    i++
+  }
 
   // Remove trailing commas before ] or }
   result = result.replace(/,(\s*[}\]])/g, '$1')
@@ -478,7 +531,7 @@ export async function findClassSource(
 
     // Look for class {className} extends (DurableObject|DurableRPC|DigitalObject)
     for (const baseClass of DO_BASE_CLASSES) {
-      const regex = new RegExp(`class\\s+${className}\\s+extends\\s+${baseClass}\\b`)
+      const regex = new RegExp(`class\\s+${escapeRegExp(className)}\\s+extends\\s+${escapeRegExp(baseClass)}\\b`)
       if (regex.test(content)) {
         return {
           className,
@@ -517,7 +570,7 @@ export async function detectFromScan(dir: string, pattern?: string): Promise<Sca
 
     // Find class-based DOs: class X extends DurableObject/DurableRPC/DigitalObject
     for (const baseClass of DO_BASE_CLASSES) {
-      const classRegex = new RegExp(`class\\s+(\\w+)\\s+extends\\s+${baseClass}\\b`)
+      const classRegex = new RegExp(`class\\s+(\\w+)\\s+extends\\s+${escapeRegExp(baseClass)}\\b`)
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]
         if (!line) continue

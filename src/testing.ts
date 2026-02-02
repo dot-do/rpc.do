@@ -72,7 +72,7 @@ export function mockRPC<T extends object>(handlers: MockHandlers<T>): RpcProxy<T
 /**
  * Internal: Create a proxy that navigates the handler tree
  */
-function createMockProxy<T>(handlers: unknown, path: string[]): RpcProxy<T> {
+function createMockProxy<T extends object>(handlers: unknown, path: string[]): RpcProxy<T> {
   return new Proxy((() => {}) as unknown as RpcProxy<T>, {
     get(_target, prop: string | symbol): unknown {
       // Handle special properties
@@ -157,9 +157,14 @@ function getNestedValue(obj: unknown, path: string[]): unknown {
  * Response definition for mockTransport
  */
 export type MockResponse =
-  | unknown
   | { error: string | { message: string; code?: string; data?: unknown } }
   | ((...args: unknown[]) => unknown | Promise<unknown>)
+  | Record<string, unknown>
+  | string
+  | number
+  | boolean
+  | null
+  | unknown[]
 
 /**
  * Create a mock transport that returns predefined responses.

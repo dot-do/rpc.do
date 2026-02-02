@@ -25,6 +25,13 @@ export const SECURITY_BLOCKLIST = new Set([
   '__defineSetter__',
   '__lookupGetter__',
   '__lookupSetter__',
+  // Dangerous globals and evaluation - could enable code injection or sandbox escape
+  'eval',
+  'globalThis',
+  'process',
+  'require',
+  'import',
+  'Function',
 ])
 
 /** Default properties to skip when wrapping a plain object as an RpcTarget */
@@ -54,7 +61,7 @@ export interface WrapAsTargetOptions {
 
 export interface CollectedProperties {
   /** Methods bound to the source object */
-  methods: Record<string, Function>
+  methods: Record<string, (...args: unknown[]) => unknown>
   /** Namespace objects wrapped as sub-RpcTargets */
   namespaces: Record<string, RpcTarget>
 }
@@ -96,7 +103,7 @@ export function collectObjectProperties(
   skip: Set<string>,
   seen: WeakSet<object>
 ): CollectedProperties {
-  const methods: Record<string, Function> = {}
+  const methods: Record<string, (...args: unknown[]) => unknown> = {}
   const namespaces: Record<string, RpcTarget> = {}
   const visited = new Set<string>()
 
@@ -118,7 +125,7 @@ export function collectObjectProperties(
 
       if (typeof value === 'function') {
         // Bind method to original object
-        methods[key] = (value as Function).bind(obj)
+        methods[key] = (value as (...args: unknown[]) => unknown).bind(obj)
       } else if (value && typeof value === 'object' && !Array.isArray(value)) {
         // Check if it's a namespace (object with function properties or nested namespaces)
         const valueObj = value as Record<string, unknown>
@@ -152,7 +159,7 @@ export function collectObjectProperties(
  */
 export function definePrototypeProperties(
   TargetClass: { prototype: object },
-  methods: Record<string, Function>,
+  methods: Record<string, (...args: unknown[]) => unknown>,
   namespaces: Record<string, RpcTarget>
 ): void {
   // Define methods on the prototype
@@ -231,7 +238,7 @@ export function wrapObjectAsTarget(obj: object, options: WrapAsTargetOptions = {
  */
 export function wrapObjectWithCustomMethods(
   obj: object,
-  customMethods?: Record<string, Function>,
+  customMethods?: Record<string, (...args: unknown[]) => unknown>,
   ctx?: object,
   options: WrapAsTargetOptions = {}
 ): RpcTarget {
