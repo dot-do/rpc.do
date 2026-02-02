@@ -290,35 +290,38 @@ export function serverTimingMiddleware(options: ServerTimingOptions = {}): Serve
     onTiming,
   } = options
 
-  // Use a Map to track start times per call
-  // Key: method + counter for uniqueness
-  const timings = new Map<string, number>()
-  let callId = 0
+  // Map keyed by auto-incrementing request ID to avoid race conditions.
+  // When concurrent calls to the same method are in-flight, we find the
+  // OLDEST entry (lowest ID) matching the method name (FIFO ordering).
+  const timings = new Map<number, { method: string; startTime: number }>()
+  let nextRequestId = 0
+
+  // Find and remove the oldest timing entry for a given method (FIFO).
+  // Map iteration order is insertion order, so the first match is the oldest.
+  const findAndRemoveTiming = (method: string): { method: string; startTime: number } | undefined => {
+    for (const [id, entry] of timings) {
+      if (entry.method === method) {
+        timings.delete(id)
+        return entry
+      }
+    }
+    return undefined
+  }
 
   return {
     onRequest(method: string): void {
-      // Store start time with unique key
-      timings.set(`${method}:${++callId}`, performance.now())
+      const id = nextRequestId++
+      timings.set(id, { method, startTime: performance.now() })
     },
 
     onResponse(method: string): void {
       const endTime = performance.now()
 
-      // Find the timing entry for this method
-      let startTime: number | undefined
-      let keyToDelete: string | undefined
+      // Find the oldest timing entry for this method (FIFO)
+      const entry = findAndRemoveTiming(method)
 
-      for (const [key, time] of timings) {
-        if (key.startsWith(`${method}:`)) {
-          startTime = time
-          keyToDelete = key
-          break
-        }
-      }
-
-      if (startTime !== undefined && keyToDelete) {
-        const durationMs = endTime - startTime
-        timings.delete(keyToDelete)
+      if (entry) {
+        const durationMs = endTime - entry.startTime
 
         if (onTiming) {
           onTiming(method, durationMs)
@@ -333,21 +336,11 @@ export function serverTimingMiddleware(options: ServerTimingOptions = {}): Serve
     onError(method: string): void {
       const endTime = performance.now()
 
-      // Find and clean up the timing entry
-      let startTime: number | undefined
-      let keyToDelete: string | undefined
+      // Find the oldest timing entry for this method (FIFO)
+      const entry = findAndRemoveTiming(method)
 
-      for (const [key, time] of timings) {
-        if (key.startsWith(`${method}:`)) {
-          startTime = time
-          keyToDelete = key
-          break
-        }
-      }
-
-      if (startTime !== undefined && keyToDelete) {
-        const durationMs = endTime - startTime
-        timings.delete(keyToDelete)
+      if (entry) {
+        const durationMs = endTime - entry.startTime
 
         if (onTiming) {
           onTiming(method, durationMs)

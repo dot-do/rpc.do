@@ -744,17 +744,23 @@ export class DurableRPC extends DurableObject {
     if (request.method === 'GET') {
       const url = new URL(request.url)
       if (url.pathname === '/__schema' || url.pathname === '/') {
-        return Response.json(this.getSchema())
+        const response = Response.json(this.getSchema())
+        this._currentRequest = undefined
+        return response
       }
     }
 
     // WebSocket upgrade -> hibernation-aware handler with capnweb
     if (request.headers.get('Upgrade') === 'websocket') {
-      return this.handleWebSocketUpgrade(request)
+      return this.handleWebSocketUpgrade()
     }
 
     // HTTP RPC via capnweb batch
-    return this.handleHttpRpc(request)
+    try {
+      return await this.handleHttpRpc(request)
+    } finally {
+      this._currentRequest = undefined
+    }
   }
 
   // ==========================================================================
@@ -770,7 +776,7 @@ export class DurableRPC extends DurableObject {
    * hibernation API, and sets up the RPC session. The WebSocket starts
    * in 'connecting' state and immediately transitions to 'active'.
    */
-  private handleWebSocketUpgrade(request: Request): Response {
+  private handleWebSocketUpgrade(): Response {
     const pair = new WebSocketPair()
     const client = pair[0]
     const server = pair[1]

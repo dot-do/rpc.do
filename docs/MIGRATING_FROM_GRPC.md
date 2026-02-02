@@ -97,11 +97,11 @@ rpc.do uses simple transport functions:
 
 ```typescript
 // rpc.do: Simple transport selection
-import { RPC, http, ws, binding } from 'rpc.do'
+import { RPC, http, capnweb, binding } from 'rpc.do'
 
 const rpc = RPC<API>(http('https://api.example.com'))
 // or
-const rpc = RPC<API>(ws('wss://api.example.com'))
+const rpc = RPC<API>(capnweb('wss://api.example.com'))
 // or
 const rpc = RPC<API>(binding(env.MY_SERVICE))
 ```
@@ -353,7 +353,7 @@ const rpc = RPC<API>(capnweb('wss://api.example.com'))
 const orders = await rpc.getUser({ id: '123' }).getOrders()
 
 // For real-time updates, use WebSocket transport
-const rpc = RPC<API>(ws('wss://api.example.com'))
+const rpc = RPC<API>(capnweb('wss://api.example.com'))
 
 // Implement pub/sub pattern in your dispatch
 await rpc.subscribe({ channel: 'user-updates' })

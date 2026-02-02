@@ -163,7 +163,7 @@ All transports implement the same interface but use different protocols:
 | Transport | Protocol | Best For |
 |-----------|----------|----------|
 | `http()` | HTTP POST (capnweb batch) | Request/response, serverless |
-| `ws()` | WebSocket | Real-time, bidirectional |
+| `capnweb()` | WebSocket | Real-time, bidirectional |
 | `capnweb()` | capnweb protocol | Full RPC features, pipelining |
 | `binding()` | CF Service Bindings | Worker-to-DO, zero latency |
 | `composite()` | Multiple | Fallback chains |
@@ -377,7 +377,7 @@ class DurableRPC extends DurableObject {
   private _sessions = new Map<WebSocket, RpcSession>()
 
   // Initial WebSocket setup
-  handleWebSocketUpgrade(request: Request): Response {
+  handleWebSocketUpgrade(): Response {
     const pair = new WebSocketPair()
     const server = pair[1]
 

@@ -1,20 +1,23 @@
 /**
- * Retry middleware for RPC client
+ * Retry observer middleware and retry transport wrapper for RPC client.
  *
- * Automatically retries failed RPC calls with configurable backoff.
- * Retries only happen for retryable errors (network failures, timeouts, 5xx errors).
+ * IMPORTANT: The middleware (`retryObserver`) provides observability hooks only
+ * (onRetry callbacks, attempt tracking). It does NOT perform actual retries.
+ *
+ * For actual retry behavior, use the `withRetry()` transport wrapper instead.
  *
  * @example
  * ```typescript
  * import { RPC } from 'rpc.do'
- * import { retryMiddleware } from 'rpc.do/middleware'
+ * import { withRetry } from 'rpc.do/middleware'
+ * import { http } from 'rpc.do/transports'
  *
- * const $ = RPC('https://my-do.workers.dev', {
- *   middleware: [retryMiddleware()]
+ * // Actual retry behavior via transport wrapper:
+ * const transport = withRetry(http('https://my-do.workers.dev'), {
+ *   maxAttempts: 3,
+ *   onRetry: (method, error, attempt) => console.log(`Retry ${attempt}`)
  * })
- *
- * // Will automatically retry on network failures
- * await $.users.list()
+ * const $ = RPC(transport)
  * ```
  */
 
@@ -124,46 +127,33 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Create a retry middleware
+ * Create a retry observer middleware.
  *
- * Note: This middleware implements retry logic by storing context in onRequest
- * and throwing a special error in onError that triggers the retry in the caller.
- * The actual retry loop happens in the wrapped transport call.
+ * This middleware provides **observability only** -- it tracks retry-related
+ * state (attempt counts) and fires the `onRetry` callback, but it does NOT
+ * actually re-issue failed requests.  Middleware hooks (`onRequest`, `onError`,
+ * `onResponse`) run around a single transport call and cannot initiate new ones.
  *
- * @param options - Retry options
- * @returns RpcClientMiddleware that handles retry logic
+ * For actual retry behavior, use the {@link withRetry} transport wrapper which
+ * implements a real retry loop with exponential backoff.
+ *
+ * @param options - Retry options (shared with `withRetry`)
+ * @returns RpcClientMiddleware that observes retry-eligible errors
  *
  * @example
  * ```typescript
- * // Default retry (3 attempts, exponential backoff)
- * const $ = RPC('https://my-do.workers.dev', {
- *   middleware: [retryMiddleware()]
- * })
+ * import { retryObserver } from 'rpc.do/middleware'
  *
- * // Custom retry configuration
  * const $ = RPC('https://my-do.workers.dev', {
- *   middleware: [retryMiddleware({
- *     maxAttempts: 5,
- *     initialDelay: 200,
- *     maxDelay: 10000,
- *     onRetry: (method, error, attempt) => {
- *       console.log(`Retrying ${method}, attempt ${attempt}`)
- *     }
- *   })]
- * })
- *
- * // Custom retry logic
- * const $ = RPC('https://my-do.workers.dev', {
- *   middleware: [retryMiddleware({
- *     shouldRetry: (error, attempt) => {
- *       // Only retry network errors, max 2 attempts
- *       return attempt < 2 && error instanceof Error && error.message.includes('network')
+ *   middleware: [retryObserver({
+ *     onRetry: (method, error, attempt, delay) => {
+ *       console.log(`[observer] ${method} attempt ${attempt}, delay ${delay}ms`)
  *     }
  *   })]
  * })
  * ```
  */
-export function retryMiddleware(options: RetryOptions = {}): RpcClientMiddleware {
+export function retryObserver(options: RetryOptions = {}): RpcClientMiddleware {
   const {
     maxAttempts = 3,
     initialDelay = 100,
@@ -234,9 +224,8 @@ export function retryMiddleware(options: RetryOptions = {}): RpcClientMiddleware
           onRetry(method, error, context.attempts, delay)
         }
 
-        // Note: We can't actually retry from middleware alone
-        // The retry logic needs to be in the transport wrapper
-        // This middleware just tracks state and calls callbacks
+        // Middleware hooks cannot re-issue requests. This observer only
+        // tracks state and fires callbacks. Use withRetry() for real retries.
       } else {
         // Clean up on final failure
         retryState.delete(contextKey)
@@ -343,6 +332,30 @@ export function withRetry(
   }
 
   return wrapped
+}
+
+/**
+ * @deprecated Renamed to {@link retryObserver}. This middleware provides
+ * observability hooks only and does **not** perform actual retries. For real
+ * retry behavior, use the {@link withRetry} transport wrapper from
+ * `'rpc.do/middleware'`.
+ *
+ * @example
+ * ```typescript
+ * // BEFORE (misleading -- no retries happen):
+ * middleware: [retryMiddleware({ maxAttempts: 3 })]
+ *
+ * // AFTER (actual retries via transport wrapper):
+ * import { withRetry } from 'rpc.do/middleware'
+ * const transport = withRetry(http('https://api.example.com'), { maxAttempts: 3 })
+ * const $ = RPC(transport)
+ *
+ * // If you only need the observer callbacks, use the new name:
+ * middleware: [retryObserver({ onRetry: ... })]
+ * ```
+ */
+export function retryMiddleware(options: RetryOptions = {}): RpcClientMiddleware {
+  return retryObserver(options)
 }
 
 export default retryMiddleware

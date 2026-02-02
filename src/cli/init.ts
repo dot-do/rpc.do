@@ -216,13 +216,13 @@ function generateIndexTs(options: InitOptions): string {
   const transportImports: string[] = []
 
   if (options.transport === 'http' || options.transport === 'both') {
-    transportImports.push('createHTTPTransport')
+    transportImports.push('http')
   }
   if (options.transport === 'capnweb' || options.transport === 'both') {
-    transportImports.push('createCapnwebTransport')
+    transportImports.push('capnweb')
   }
 
-  return `import { DurableRPC${transportImports.length > 0 ? ', ' + transportImports.join(', ') : ''} } from 'rpc.do'
+  return `import { DurableRPC } from '@dotdo/rpc'
 ${options.includeExamples ? "import { exampleMethods } from './rpc/example'" : ''}
 
 export interface Env {
@@ -232,24 +232,33 @@ export interface Env {
 /**
  * RPC Durable Object
  *
- * Exposes methods via HTTP and/or WebSocket transports.
+ * Define methods directly on the class - they become callable via RPC automatically.
  * Schema available at /__schema endpoint.
  */
 export class RpcDurableObject extends DurableRPC {
-  constructor(state: DurableObjectState, env: Env) {
-    super(state, env)
 ${
   options.includeExamples
-    ? `
-    // Register example methods
-    this.register(exampleMethods)`
-    : `
-    // Register your RPC methods here
-    // this.register({
-    //   hello: (name: string) => \`Hello, \${name}!\`,
-    // })`
-}
+    ? `  // Example methods (from ./rpc/example.ts)
+  // Define RPC methods directly as class methods or properties:
+
+  async hello(name: string): Promise<string> {
+    return exampleMethods.hello(name)
   }
+
+  async add(a: number, b: number): Promise<number> {
+    return exampleMethods.add(a, b)
+  }
+
+  math = exampleMethods.math`
+    : `  // Define your RPC methods here as class methods or properties:
+  // hello(name: string) { return \\\`Hello, \\\${name}!\\\` }
+  //
+  // Or use nested namespaces:
+  // users = {
+  //   get: async (id: string) => this.sql\\\`SELECT * FROM users WHERE id = \\\${id}\\\`.one(),
+  //   list: async () => this.sql\\\`SELECT * FROM users\\\`.all(),
+  // }`
+}
 }
 
 export default {

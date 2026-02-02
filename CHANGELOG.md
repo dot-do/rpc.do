@@ -87,8 +87,8 @@ See [VERSIONING.md](./docs/VERSIONING.md) for the migration guide template.
 1. **Transport unification**: All transports now use capnweb protocol
    ```typescript
    // Before (v0.1.x)
-   import { ws } from 'rpc.do/transports'
-   const transport = ws('wss://example.com')
+   import { capnweb } from 'rpc.do/transports'
+   const transport = capnweb('wss://example.com')
 
    // After (v0.2.x)
    import { capnweb } from 'rpc.do/transports'

@@ -117,7 +117,7 @@ const $ = RPC('https://example.com', { auth: 'token' })
 
 ```typescript
 // Before (v0.1.x)
-import { ws, http } from 'rpc.do/transports'
+import { capnweb, http } from 'rpc.do/transports'
 
 // After (v0.2.x+)
 import { capnweb, http } from 'rpc.do/transports'

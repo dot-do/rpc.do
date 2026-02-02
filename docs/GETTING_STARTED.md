@@ -85,7 +85,7 @@ A **transport** is how rpc.do sends your calls to the server. rpc.do supports mu
 | Transport | Best For | Example |
 |-----------|----------|---------|
 | `http()` | Simple request/response | REST-like APIs |
-| `ws()` | Real-time, many small calls | Chat, live updates |
+| `capnweb()` | Real-time, many small calls | Chat, live updates |
 | `binding()` | Cloudflare Workers | Zero-latency worker-to-worker |
 | `composite()` | Fallback chains | Try WebSocket, fall back to HTTP |
 
@@ -94,7 +94,7 @@ All transports use the same client code:
 ```typescript
 // Same client code, different transports
 const httpClient = RPC(http('https://api.example.com/rpc'))
-const wsClient = RPC(ws('wss://api.example.com/rpc'))
+const wsClient = RPC(capnweb('wss://api.example.com/rpc'))
 
 // Both work the same way
 await httpClient.users.list()
@@ -433,11 +433,11 @@ export default {
 **Composite Transports (Fallback):**
 
 ```typescript
-import { RPC, composite, ws, http } from 'rpc.do'
+import { RPC, composite, capnweb, http } from 'rpc.do'
 
 // Try WebSocket first, fall back to HTTP
 const rpc = RPC(composite(
-  ws('wss://api.example.com/rpc'),
+  capnweb('wss://api.example.com/rpc'),
   http('https://api.example.com/rpc')
 ))
 ```

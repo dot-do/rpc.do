@@ -127,6 +127,20 @@ export interface ReconnectingWebSocketOptions extends ConnectionEventHandlers {
   allowInsecureAuth?: boolean
 
   /**
+   * Maximum number of messages to queue while disconnected
+   * When the limit is reached, the oldest queued messages are rejected
+   * @default 1000
+   */
+  maxQueueSize?: number
+
+  /**
+   * Timeout in ms for ensureConnected to wait for a connection
+   * If the connection is not established within this time, the promise is rejected
+   * @default 30000
+   */
+  connectionTimeout?: number
+
+  /**
    * Enable debug logging
    * @default false
    */
@@ -150,6 +164,8 @@ const DEFAULT_MAX_RECONNECT_BACKOFF = 30000
 const DEFAULT_BACKOFF_MULTIPLIER = 2
 const DEFAULT_HEARTBEAT_INTERVAL = 30000
 const DEFAULT_HEARTBEAT_TIMEOUT = 5000
+const DEFAULT_MAX_QUEUE_SIZE = 1000
+const DEFAULT_CONNECTION_TIMEOUT = 30000
 
 // ============================================================================
 // ReconnectingWebSocketTransport
@@ -183,9 +199,19 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
   // Auth state
   private authSent = false
 
+  // Bound handler references (created once, reused across reconnections)
+  private readonly boundHandleMessage: (event: MessageEvent) => void
+  private readonly boundHandleClose: (event: CloseEvent) => void
+  private readonly boundHandleError: (event: Event) => void
+
   constructor(url: string, options: ReconnectingWebSocketOptions = {}) {
     this.url = url
     this.currentBackoff = options.reconnectBackoff ?? DEFAULT_RECONNECT_BACKOFF
+
+    // Create bound handlers once for reuse across reconnections (Bug fix: rpc.do-4o6)
+    this.boundHandleMessage = this.handleMessage.bind(this)
+    this.boundHandleClose = this.handleClose.bind(this)
+    this.boundHandleError = this.handleError.bind(this)
 
     // Build options object, only adding defined values to satisfy exactOptionalPropertyTypes
     const opts: typeof this.options = {
@@ -197,6 +223,8 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
       heartbeatInterval: options.heartbeatInterval ?? DEFAULT_HEARTBEAT_INTERVAL,
       heartbeatTimeout: options.heartbeatTimeout ?? DEFAULT_HEARTBEAT_TIMEOUT,
       allowInsecureAuth: options.allowInsecureAuth ?? false,
+      maxQueueSize: options.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE,
+      connectionTimeout: options.connectionTimeout ?? DEFAULT_CONNECTION_TIMEOUT,
       debug: options.debug ?? false,
     }
     // Only add optional properties if they are defined
@@ -224,7 +252,8 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
       this.ws.send(message)
       this.log('Sent:', message.slice(0, 100))
     } else {
-      // Queue for later
+      // Enforce queue size limit (Bug fix: rpc.do-zt0)
+      this.enforceSendQueueLimit()
       this.sendQueue.push(message)
       this.log('Queued for send:', message.slice(0, 100))
     }
@@ -277,13 +306,17 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
     }
 
     if (this.state === 'connecting' || this.state === 'reconnecting') {
-      // Wait for connection
+      // Wait for connection with timeout (Bug fix: rpc.do-82f)
       return new Promise((resolve, reject) => {
+        const timeout = this.options.connectionTimeout
+        const startTime = Date.now()
         const checkConnection = () => {
           if (this.state === 'connected') {
             resolve()
           } else if (this.state === 'closed') {
             reject(ConnectionError.connectionLost('Transport is closed'))
+          } else if (Date.now() - startTime >= timeout) {
+            reject(ConnectionError.timeout(timeout))
           } else {
             setTimeout(checkConnection, 50)
           }
@@ -365,10 +398,10 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
         this.ws.addEventListener('error', onError)
         this.ws.addEventListener('close', onClose)
 
-        // Set up permanent handlers after connection
-        this.ws.addEventListener('message', this.handleMessage.bind(this))
-        this.ws.addEventListener('close', this.handleClose.bind(this))
-        this.ws.addEventListener('error', this.handleError.bind(this))
+        // Set up permanent handlers using stored bound references (Bug fix: rpc.do-4o6)
+        this.ws.addEventListener('message', this.boundHandleMessage)
+        this.ws.addEventListener('close', this.boundHandleClose)
+        this.ws.addEventListener('error', this.boundHandleError)
       } catch (error) {
         this.state = 'disconnected'
         reject(error)
@@ -424,7 +457,8 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
       return
     }
 
-    // Otherwise queue the message
+    // Otherwise queue the message (enforce limit: rpc.do-zt0)
+    this.enforceMessageQueueLimit()
     this.messageQueue.push(data)
   }
 
@@ -515,6 +549,31 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
     while (this.receiveQueue.length > 0) {
       const pending = this.receiveQueue.shift()!
       pending.reject(error)
+    }
+  }
+
+  /**
+   * Enforce message queue size limit by discarding oldest messages
+   */
+  private enforceMessageQueueLimit(): void {
+    while (this.messageQueue.length >= this.options.maxQueueSize) {
+      this.messageQueue.shift()
+      this.log('Message queue full, dropped oldest message')
+      // If there's a pending receive waiting, reject it with overflow error
+      const pending = this.receiveQueue.shift()
+      if (pending) {
+        pending.reject(new Error('Message queue overflow: oldest message dropped'))
+      }
+    }
+  }
+
+  /**
+   * Enforce send queue size limit by discarding oldest messages
+   */
+  private enforceSendQueueLimit(): void {
+    while (this.sendQueue.length >= this.options.maxQueueSize) {
+      this.sendQueue.shift()
+      this.log('Send queue full, dropped oldest message')
     }
   }
 

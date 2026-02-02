@@ -46,6 +46,86 @@ export function isServerMessage(data: unknown): data is ServerMessage {
 }
 
 // ============================================================================
+// Method Path Navigation
+// ============================================================================
+
+/**
+ * Navigate a dotted method path (e.g. "users.create") on a root object.
+ *
+ * Splits the method string by '.' and traverses each segment on the root,
+ * returning the final value. Throws RPCError if any intermediate segment
+ * is not an object or function.
+ *
+ * @param root - The root object to navigate (e.g. a capnweb session proxy)
+ * @param method - The dotted method path (e.g. "users.create")
+ * @returns The value at the end of the path
+ *
+ * @throws {RPCError} With code 'INVALID_PATH' if a path segment is not traversable
+ *
+ * @internal
+ */
+export function navigateMethodPath(root: unknown, method: string): unknown {
+  const parts = method.split('.')
+  let target: unknown = root
+  for (const part of parts) {
+    // Allow both objects and functions (capnweb returns proxy functions that are traversable)
+    if ((typeof target !== 'object' && typeof target !== 'function') || target === null) {
+      throw new RPCError(`Invalid path: ${part}`, 'INVALID_PATH')
+    }
+    target = (target as Record<string, unknown>)[part]
+  }
+  return target
+}
+
+/**
+ * Navigate a dotted method path for service bindings with namespace/method error semantics.
+ *
+ * Unlike {@link navigateMethodPath}, this variant:
+ * - Separates intermediate (namespace) segments from the final (method) segment
+ * - Throws UNKNOWN_NAMESPACE for invalid intermediate paths
+ * - Throws UNKNOWN_METHOD if the final method is not callable
+ * - Returns the resolved function directly (not just the target value)
+ *
+ * @param root - The service binding object
+ * @param method - The dotted method path (e.g. "admin.users.delete")
+ * @returns The callable method function
+ *
+ * @throws {RPCError} With code 'UNKNOWN_NAMESPACE' if a namespace segment is invalid
+ * @throws {RPCError} With code 'UNKNOWN_METHOD' if the final method is not callable
+ *
+ * @internal
+ */
+export function navigateBindingMethodPath(root: unknown, method: string): (...args: unknown[]) => unknown {
+  const parts = method.split('.')
+  let target: unknown = root
+
+  // Navigate to the method (all parts except the last are namespaces)
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (typeof target !== 'object' || target === null) {
+      throw new RPCError(`Unknown namespace: ${parts.slice(0, i + 1).join('.')}`, 'UNKNOWN_NAMESPACE')
+    }
+    const partName = parts[i]
+    if (!partName) throw new RPCError(`Unknown namespace: ${parts.slice(0, i + 1).join('.')}`, 'UNKNOWN_NAMESPACE')
+    target = (target as Record<string, unknown>)[partName]
+    if (!target) throw new RPCError(`Unknown namespace: ${parts.slice(0, i + 1).join('.')}`, 'UNKNOWN_NAMESPACE')
+  }
+
+  const methodName = parts[parts.length - 1]
+  if (!methodName) {
+    throw new RPCError(`Unknown method: ${method}`, 'UNKNOWN_METHOD')
+  }
+  if (typeof target !== 'object' || target === null) {
+    throw new RPCError(`Unknown method: ${method}`, 'UNKNOWN_METHOD')
+  }
+  const methodFn = (target as Record<string, unknown>)[methodName]
+  if (!isFunction(methodFn)) {
+    throw new RPCError(`Unknown method: ${method}`, 'UNKNOWN_METHOD')
+  }
+
+  return methodFn
+}
+
+// ============================================================================
 // Error Wrapping
 // ============================================================================
 
@@ -177,23 +257,36 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
     // It's an options object
     timeout = authOrOptions.timeout
   }
-  // Note: auth is accepted for API consistency but not used - see function docs
+
+  // Warn if auth is provided since http() transport does not use it
+  if (authOrOptions && (typeof authOrOptions === 'string' || typeof authOrOptions === 'function' ||
+      (typeof authOrOptions === 'object' && 'auth' in authOrOptions && authOrOptions.auth))) {
+    console.warn('[rpc.do] Warning: auth option is not used by http() transport. Use capnweb() with reconnect: true for authenticated connections, or use in-band auth.')
+  }
 
   // Note: capnweb is a dynamically imported external library with its own type system.
   // We use 'unknown' for the session and navigate it dynamically.
-  let session: unknown = null
+  // Use a promise to prevent concurrent calls from creating multiple sessions.
+  let sessionPromise: Promise<unknown> | null = null
 
-  return {
-    async call(method: string, args: unknown[]) {
-      if (!session) {
+  async function getSession(): Promise<unknown> {
+    if (!sessionPromise) {
+      sessionPromise = (async () => {
         // Dynamic import capnweb (optional dependency)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const capnwebModule: Record<string, unknown> = await import('@dotdo/capnweb')
 
         const createSession = capnwebModule['newHttpBatchRpcSession'] as ((url: string) => unknown) | undefined
         if (!createSession) throw new RPCError('capnweb.newHttpBatchRpcSession not found', 'MODULE_ERROR')
-        session = createSession(url)
-      }
+        return createSession(url)
+      })()
+    }
+    return sessionPromise
+  }
+
+  return {
+    async call(method: string, args: unknown[]) {
+      const session = await getSession()
 
       // Set up timeout handling
       let timeoutId: ReturnType<typeof setTimeout> | undefined
@@ -207,16 +300,8 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
         : null
 
       try {
-        // Navigate the session proxy
-        const parts = method.split('.')
-        let target: unknown = session
-        for (const part of parts) {
-          // Allow both objects and functions (capnweb returns proxy functions that are traversable)
-          if ((typeof target !== 'object' && typeof target !== 'function') || target === null) {
-            throw new RPCError(`Invalid path: ${part}`, 'INVALID_PATH')
-          }
-          target = (target as Record<string, unknown>)[part]
-        }
+        // Navigate the session proxy and resolve the target method
+        const target = navigateMethodPath(session, method)
 
         // Call with args
         if (!isFunction(target)) {
@@ -236,11 +321,16 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
       }
     },
     close() {
-      if (session && typeof session === 'object' && session !== null) {
-        const disposable = session as { [Symbol.dispose]?: () => void }
-        disposable[Symbol.dispose]?.()
+      // Resolve the current session synchronously if available, then dispose
+      if (sessionPromise) {
+        void sessionPromise.then((session) => {
+          if (session && typeof session === 'object' && session !== null) {
+            const disposable = session as { [Symbol.dispose]?: () => void }
+            disposable[Symbol.dispose]?.()
+          }
+        })
       }
-      session = null
+      sessionPromise = null
     }
   }
 }
@@ -284,32 +374,7 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
 export function binding(b: unknown): Transport {
   return {
     async call(method: string, args: unknown[]) {
-      const parts = method.split('.')
-      let target: unknown = b
-
-      // Navigate to the method
-      for (let i = 0; i < parts.length - 1; i++) {
-        if (typeof target !== 'object' || target === null) {
-          throw new RPCError(`Unknown namespace: ${parts.slice(0, i + 1).join('.')}`, 'UNKNOWN_NAMESPACE')
-        }
-        const partName = parts[i]
-        if (!partName) throw new RPCError(`Unknown namespace: ${parts.slice(0, i + 1).join('.')}`, 'UNKNOWN_NAMESPACE')
-        target = (target as Record<string, unknown>)[partName]
-        if (!target) throw new RPCError(`Unknown namespace: ${parts.slice(0, i + 1).join('.')}`, 'UNKNOWN_NAMESPACE')
-      }
-
-      const methodName = parts[parts.length - 1]
-      if (!methodName) {
-        throw new RPCError(`Unknown method: ${method}`, 'UNKNOWN_METHOD')
-      }
-      if (typeof target !== 'object' || target === null) {
-        throw new RPCError(`Unknown method: ${method}`, 'UNKNOWN_METHOD')
-      }
-      const methodFn = (target as Record<string, unknown>)[methodName]
-      if (!isFunction(methodFn)) {
-        throw new RPCError(`Unknown method: ${method}`, 'UNKNOWN_METHOD')
-      }
-
+      const methodFn = navigateBindingMethodPath(b, method)
       return methodFn(...args)
     }
   }
@@ -438,12 +503,13 @@ export function capnweb(
 
   // Note: capnweb is a dynamically imported external library with its own type system.
   // We use 'unknown' for the session and navigate it dynamically.
+  // Use a promise to prevent concurrent calls from creating multiple sessions.
   // For non-reconnecting mode, auth is handled via in-band RPC methods
-  let session: unknown = null
+  let sessionPromise: Promise<unknown> | null = null
 
-  return {
-    async call(method: string, args: unknown[]) {
-      if (!session) {
+  async function getSession(): Promise<unknown> {
+    if (!sessionPromise) {
+      sessionPromise = (async () => {
         // Dynamic import capnweb (optional dependency)
         // capnweb types are not available at compile time, so we use Record<string, unknown>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -453,25 +519,24 @@ export function capnweb(
           const wsUrl = url.replace(/^http/, 'ws')
           const createSession = capnwebModule['newWebSocketRpcSession'] as ((url: string) => unknown) | undefined
           if (!createSession) throw new RPCError('capnweb.newWebSocketRpcSession not found', 'MODULE_ERROR')
-          session = createSession(wsUrl)
+          return createSession(wsUrl)
         } else {
           const createSession = capnwebModule['newHttpBatchRpcSession'] as ((url: string) => unknown) | undefined
           if (!createSession) throw new RPCError('capnweb.newHttpBatchRpcSession not found', 'MODULE_ERROR')
-          session = createSession(url)
+          return createSession(url)
         }
-      }
+      })()
+    }
+    return sessionPromise
+  }
+
+  return {
+    async call(method: string, args: unknown[]) {
+      const session = await getSession()
 
       try {
-        // Navigate the session proxy
-        const parts = method.split('.')
-        let target: unknown = session
-        for (const part of parts) {
-          // Allow both objects and functions (capnweb returns proxy functions that are traversable)
-          if ((typeof target !== 'object' && typeof target !== 'function') || target === null) {
-            throw new RPCError(`Invalid path: ${part}`, 'INVALID_PATH')
-          }
-          target = (target as Record<string, unknown>)[part]
-        }
+        // Navigate the session proxy and resolve the target method
+        const target = navigateMethodPath(session, method)
 
         // Call with args
         if (!isFunction(target)) {
@@ -484,11 +549,16 @@ export function capnweb(
       }
     },
     close() {
-      if (session && (typeof session === 'object' || typeof session === 'function') && session !== null) {
-        const disposable = session as { [Symbol.dispose]?: () => void }
-        disposable[Symbol.dispose]?.()
+      // Resolve the current session synchronously if available, then dispose
+      if (sessionPromise) {
+        void sessionPromise.then((session) => {
+          if (session && (typeof session === 'object' || typeof session === 'function') && session !== null) {
+            const disposable = session as { [Symbol.dispose]?: () => void }
+            disposable[Symbol.dispose]?.()
+          }
+        })
       }
-      session = null
+      sessionPromise = null
     }
   }
 }
@@ -500,12 +570,13 @@ function createReconnectingCapnwebTransport(
   url: string,
   options?: CapnwebTransportOptions
 ): Transport {
-  let session: unknown = null
+  // Use a promise to prevent concurrent calls from creating multiple sessions.
+  let sessionPromise: Promise<unknown> | null = null
   let transport: { close: () => void } | null = null
 
-  return {
-    async call(method: string, args: unknown[]) {
-      if (!session) {
+  async function getSession(): Promise<unknown> {
+    if (!sessionPromise) {
+      sessionPromise = (async () => {
         // Dynamic imports
         const [capnwebModule, { ReconnectingWebSocketTransport }] = await Promise.all([
           import('@dotdo/capnweb'),
@@ -536,20 +607,19 @@ function createReconnectingCapnwebTransport(
 
         // Create RpcSession with the transport
         const rpcSession = new RpcSessionCtor(reconnectTransport, options?.localMain)
-        session = rpcSession.getRemoteMain()
-      }
+        return rpcSession.getRemoteMain()
+      })()
+    }
+    return sessionPromise
+  }
+
+  return {
+    async call(method: string, args: unknown[]) {
+      const session = await getSession()
 
       try {
-        // Navigate the session proxy
-        const parts = method.split('.')
-        let target: unknown = session
-        for (const part of parts) {
-          // Allow both objects and functions (capnweb returns proxy functions that are traversable)
-          if ((typeof target !== 'object' && typeof target !== 'function') || target === null) {
-            throw new RPCError(`Invalid path: ${part}`, 'INVALID_PATH')
-          }
-          target = (target as Record<string, unknown>)[part]
-        }
+        // Navigate the session proxy and resolve the target method
+        const target = navigateMethodPath(session, method)
 
         // Call with args
         if (!isFunction(target)) {
@@ -563,7 +633,7 @@ function createReconnectingCapnwebTransport(
     },
     close() {
       transport?.close()
-      session = null
+      sessionPromise = null
       transport = null
     }
   }

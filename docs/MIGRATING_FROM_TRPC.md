@@ -42,7 +42,7 @@ rpc.do uses transports to define how calls are made, with a simple dispatch func
 // rpc.do: Transports define communication
 const rpc = RPC<API>(http('/api/rpc'))
 // or
-const rpc = RPC<API>(ws('wss://api.example.com'))
+const rpc = RPC<API>(capnweb('wss://api.example.com'))
 // or
 const rpc = RPC<API>(binding(env.MY_SERVICE))
 ```
@@ -374,7 +374,7 @@ Switch transports without changing your API:
 const rpc = RPC<API>(http('/api/rpc'))
 
 // Production: WebSocket for real-time
-const rpc = RPC<API>(ws('wss://api.example.com'))
+const rpc = RPC<API>(capnweb('wss://api.example.com'))
 
 // Cloudflare: Service Bindings for zero-latency
 const rpc = RPC<API>(binding(env.MY_SERVICE))
@@ -447,7 +447,7 @@ const [user, posts] = await Promise.all([
 // tRPC: subscription procedure type
 
 // rpc.do: Use WebSocket transport
-const rpc = RPC<API>(ws('wss://api.example.com'))
+const rpc = RPC<API>(capnweb('wss://api.example.com'))
 // Implement subscription logic in your dispatch
 ```
 

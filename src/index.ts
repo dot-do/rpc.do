@@ -504,7 +504,10 @@ export {
 // ============================================================================
 
 /**
- * Pre-configured RPC client for rpc.do without auth
+ * Pre-configured RPC client for rpc.do without auth.
+ *
+ * Lazily initialized on first property access to avoid side effects at import
+ * time (compatible with `sideEffects: false` in package.json for tree-shaking).
  *
  * @example
  * import { $, RPC } from 'rpc.do'
@@ -520,6 +523,12 @@ export {
  * const myDO = RPC('https://my-do.workers.dev')
  * const users = await myDO.sql`SELECT * FROM users`.all()
  */
-export const $ = RPC('https://rpc.do')
+let _$: ReturnType<typeof RPC> | undefined
+export const $: ReturnType<typeof RPC> = new Proxy({} as ReturnType<typeof RPC>, {
+  get(_, prop) {
+    if (!_$) _$ = RPC('https://rpc.do')
+    return (_$ as any)[prop]
+  },
+})
 
 export default $

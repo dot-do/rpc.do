@@ -164,7 +164,7 @@ try {
 | Transport | Description |
 |-----------|-------------|
 | `http(url, auth?)` | HTTP POST |
-| `ws(url, auth?)` | WebSocket (basic) |
+| `capnweb(url, auth?)` | WebSocket (capnweb RPC) |
 | `wsAdvanced(url, opts?)` | WebSocket with reconnection, heartbeat, first-message auth |
 | `binding(env.RPC)` | CF Workers service bindings |
 | `capnweb(url, opts?)` | Full capnweb RPC |
@@ -185,9 +185,9 @@ await rpc.ai.generate({ prompt: 'hello' })
 ### WebSocket Transport
 
 ```typescript
-import { RPC, ws, auth } from 'rpc.do'
+import { RPC, capnweb, auth } from 'rpc.do'
 
-const rpc = RPC(ws('wss://rpc.do', auth()))
+const rpc = RPC(capnweb('wss://rpc.do', auth()))
 ```
 
 ### Advanced WebSocket Transport
@@ -255,11 +255,11 @@ export default {
 ### Composite Transport (Fallback)
 
 ```typescript
-import { RPC, composite, ws, http } from 'rpc.do'
+import { RPC, composite, capnweb, http } from 'rpc.do'
 
 // Try WebSocket first, fall back to HTTP
 const rpc = RPC(composite(
-  ws('wss://api.example.com/rpc'),
+  capnweb('wss://api.example.com/rpc'),
   http('https://api.example.com/rpc')
 ))
 ```

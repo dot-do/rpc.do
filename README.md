@@ -77,19 +77,19 @@ const user = await rpc.users.getById({ id: '123' })
 ## Transports
 
 ```typescript
-import { RPC, http, ws, binding, composite } from 'rpc.do'
+import { RPC, http, capnweb, binding, composite } from 'rpc.do'
 
 // HTTP
 const rpc = RPC(http('https://api.example.com'))
 
 // WebSocket
-const rpc = RPC(ws('wss://api.example.com'))
+const rpc = RPC(capnweb('wss://api.example.com'))
 
 // Cloudflare Service Binding
 const rpc = RPC(binding(env.MY_SERVICE))
 
 // Fallback chain
-const rpc = RPC(composite(ws('wss://...'), http('https://...')))
+const rpc = RPC(composite(capnweb('wss://...'), http('https://...')))
 ```
 
 ## Authentication

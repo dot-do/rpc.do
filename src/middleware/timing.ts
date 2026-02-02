@@ -85,18 +85,11 @@ export function timingMiddleware(options: TimingOptions = {}): RpcClientMiddlewa
     cleanupInterval = 10000,
   } = options
 
-  // Map to store start times by a unique request key
-  // We use method + timestamp as key since same method can be called concurrently
-  const timings = new Map<string, TimingContext>()
-
-  // Generate a unique key for each request
-  let requestId = 0
-  const getRequestKey = (method: string): string => {
-    return `${method}:${++requestId}`
-  }
-
-  // Store the current request key in closure
-  let currentRequestKey: string | null = null
+  // Map keyed by auto-incrementing request ID to avoid race conditions.
+  // When concurrent calls to the same method are in-flight, we find the
+  // OLDEST entry (lowest ID) matching the method name (FIFO ordering).
+  const timings = new Map<number, TimingContext>()
+  let nextRequestId = 0
 
   // TTL-based cleanup to prevent memory leaks from dropped requests
   let lastCleanup = performance.now()
@@ -109,15 +102,23 @@ export function timingMiddleware(options: TimingOptions = {}): RpcClientMiddlewa
     lastCleanup = now
 
     const staleThreshold = now - ttl
-    const entries = Array.from(timings.entries())
-    for (let i = 0; i < entries.length; i++) {
-      const entry = entries[i]
-      if (!entry) continue
-      const [key, ctx] = entry
+    for (const [id, ctx] of timings) {
       if (ctx.startTime < staleThreshold) {
-        timings.delete(key)
+        timings.delete(id)
       }
     }
+  }
+
+  // Find and remove the oldest timing entry for a given method (FIFO).
+  // Map iteration order is insertion order, so the first match is the oldest.
+  const findAndRemoveTiming = (method: string): TimingContext | undefined => {
+    for (const [id, ctx] of timings) {
+      if (ctx.method === method) {
+        timings.delete(id)
+        return ctx
+      }
+    }
+    return undefined
   }
 
   return {
@@ -125,8 +126,8 @@ export function timingMiddleware(options: TimingOptions = {}): RpcClientMiddlewa
       // Clean up stale entries on each request to prevent unbounded growth
       cleanupStaleEntries()
 
-      currentRequestKey = getRequestKey(method)
-      timings.set(currentRequestKey, {
+      const id = nextRequestId++
+      timings.set(id, {
         method,
         startTime: performance.now(),
       })
@@ -135,25 +136,11 @@ export function timingMiddleware(options: TimingOptions = {}): RpcClientMiddlewa
     onResponse(method: string, _result: unknown): void {
       const endTime = performance.now()
 
-      // Find the timing for this method (most recent one)
-      let timing: TimingContext | undefined
-      let keyToDelete: string | undefined
+      // Find the oldest timing entry for this method (FIFO)
+      const timing = findAndRemoveTiming(method)
 
-      const entries = Array.from(timings.entries())
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i]
-        if (!entry) continue
-        const [key, ctx] = entry
-        if (ctx.method === method) {
-          timing = ctx
-          keyToDelete = key
-          break
-        }
-      }
-
-      if (timing && keyToDelete) {
+      if (timing) {
         const durationMs = endTime - timing.startTime
-        timings.delete(keyToDelete)
 
         // Call the callback if provided
         if (onTiming) {
@@ -170,25 +157,11 @@ export function timingMiddleware(options: TimingOptions = {}): RpcClientMiddlewa
     onError(method: string, _error: unknown): void {
       const endTime = performance.now()
 
-      // Find the timing for this method (most recent one)
-      let timing: TimingContext | undefined
-      let keyToDelete: string | undefined
+      // Find the oldest timing entry for this method (FIFO)
+      const timing = findAndRemoveTiming(method)
 
-      const entries = Array.from(timings.entries())
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i]
-        if (!entry) continue
-        const [key, ctx] = entry
-        if (ctx.method === method) {
-          timing = ctx
-          keyToDelete = key
-          break
-        }
-      }
-
-      if (timing && keyToDelete) {
+      if (timing) {
         const durationMs = endTime - timing.startTime
-        timings.delete(keyToDelete)
 
         // Call the callback if provided
         if (onTiming) {
