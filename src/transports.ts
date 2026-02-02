@@ -31,17 +31,23 @@ export type ServerMessage =
   | { id?: number; result?: undefined; error: { message: string; code?: string | number; data?: unknown } }
 
 /**
+ * Type guard to check if a value is a non-null object.
+ * Useful for narrowing `unknown` before checking properties with `in`.
+ */
+function isNonNullObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+/**
  * Type guard for WebSocket server messages
  */
 export function isServerMessage(data: unknown): data is ServerMessage {
-  if (typeof data !== 'object' || data === null) {
+  if (!isNonNullObject(data)) {
     return false
   }
-  const msg = data as Record<string, unknown>
   // Must have either result or error (but not both as valid data)
-  const hasResult = 'result' in msg
-  const errorVal = msg['error']
-  const hasError = 'error' in msg && typeof errorVal === 'object' && errorVal !== null
+  const hasResult = 'result' in data
+  const hasError = 'error' in data && isNonNullObject(data['error'])
   return hasResult || hasError
 }
 
@@ -64,15 +70,22 @@ export function isServerMessage(data: unknown): data is ServerMessage {
  *
  * @internal
  */
+/**
+ * Type guard to check if a value is traversable (an object or function with indexable properties).
+ */
+function isTraversable(value: unknown): value is Record<string, unknown> {
+  return (typeof value === 'object' || typeof value === 'function') && value !== null
+}
+
 export function navigateMethodPath(root: unknown, method: string): unknown {
   const parts = method.split('.')
   let target: unknown = root
   for (const part of parts) {
     // Allow both objects and functions (capnweb returns proxy functions that are traversable)
-    if ((typeof target !== 'object' && typeof target !== 'function') || target === null) {
+    if (!isTraversable(target)) {
       throw new RPCError(`Invalid path: ${part}`, 'INVALID_PATH')
     }
-    target = (target as Record<string, unknown>)[part]
+    target = target[part]
   }
   return target
 }
@@ -101,12 +114,12 @@ export function navigateBindingMethodPath(root: unknown, method: string): (...ar
 
   // Navigate to the method (all parts except the last are namespaces)
   for (let i = 0; i < parts.length - 1; i++) {
-    if (typeof target !== 'object' || target === null) {
+    if (!isNonNullObject(target)) {
       throw new RPCError(`Unknown namespace: ${parts.slice(0, i + 1).join('.')}`, 'UNKNOWN_NAMESPACE')
     }
     const partName = parts[i]
     if (!partName) throw new RPCError(`Unknown namespace: ${parts.slice(0, i + 1).join('.')}`, 'UNKNOWN_NAMESPACE')
-    target = (target as Record<string, unknown>)[partName]
+    target = target[partName]
     if (!target) throw new RPCError(`Unknown namespace: ${parts.slice(0, i + 1).join('.')}`, 'UNKNOWN_NAMESPACE')
   }
 
@@ -114,10 +127,10 @@ export function navigateBindingMethodPath(root: unknown, method: string): (...ar
   if (!methodName) {
     throw new RPCError(`Unknown method: ${method}`, 'UNKNOWN_METHOD')
   }
-  if (typeof target !== 'object' || target === null) {
+  if (!isNonNullObject(target)) {
     throw new RPCError(`Unknown method: ${method}`, 'UNKNOWN_METHOD')
   }
-  const methodFn = (target as Record<string, unknown>)[methodName]
+  const methodFn = target[methodName]
   if (!isFunction(methodFn)) {
     throw new RPCError(`Unknown method: ${method}`, 'UNKNOWN_METHOD')
   }
@@ -128,6 +141,24 @@ export function navigateBindingMethodPath(root: unknown, method: string): (...ar
 // ============================================================================
 // Error Wrapping
 // ============================================================================
+
+/**
+ * Extract an HTTP status code from an error object.
+ * Checks for common `status` or `statusCode` properties used by HTTP libraries.
+ */
+function getErrorStatusCode(error: Error): number | undefined {
+  const err = error as Record<string, unknown>
+  if (typeof err['status'] === 'number') return err['status']
+  if (typeof err['statusCode'] === 'number') return err['statusCode']
+  return undefined
+}
+
+/**
+ * Type guard to check if an error has a string `code` property (e.g., RPC errors from server).
+ */
+function hasStringCode(error: Error): error is Error & { code: string } {
+  return 'code' in error && typeof (error as Record<string, unknown>)['code'] === 'string'
+}
 
 /**
  * Wrap transport errors from capnweb into appropriate rpc.do error types.
@@ -160,11 +191,7 @@ export function wrapTransportError(error: unknown): ConnectionError | RPCError {
     }
 
     // Check for HTTP status code directly on the error object
-    const statusCode = typeof (error as unknown as { status?: unknown }).status === 'number'
-      ? (error as unknown as { status: number }).status
-      : typeof (error as unknown as { statusCode?: unknown }).statusCode === 'number'
-        ? (error as unknown as { statusCode: number }).statusCode
-        : undefined
+    const statusCode = getErrorStatusCode(error)
 
     // Auth failures (401) - use status code or word-boundary regex
     if (statusCode === 401 || /\b401\b/.test(message) || message.includes('unauthorized') || message.includes('authentication failed')) {
@@ -190,8 +217,8 @@ export function wrapTransportError(error: unknown): ConnectionError | RPCError {
     }
 
     // RPC-level errors from the server (usually have code property)
-    if ('code' in error && typeof (error as { code: unknown }).code === 'string') {
-      return new RPCError(error.message, (error as { code: string }).code)
+    if (hasStringCode(error)) {
+      return new RPCError(error.message, error.code)
     }
 
     // Default: treat as RPC error
@@ -324,9 +351,8 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
       // Resolve the current session synchronously if available, then dispose
       if (sessionPromise) {
         void sessionPromise.then((session) => {
-          if (session && typeof session === 'object' && session !== null) {
-            const disposable = session as { [Symbol.dispose]?: () => void }
-            disposable[Symbol.dispose]?.()
+          if (isNonNullObject(session) && typeof session[Symbol.dispose] === 'function') {
+            (session[Symbol.dispose] as () => void)()
           }
         })
       }
@@ -552,9 +578,8 @@ export function capnweb(
       // Resolve the current session synchronously if available, then dispose
       if (sessionPromise) {
         void sessionPromise.then((session) => {
-          if (session && (typeof session === 'object' || typeof session === 'function') && session !== null) {
-            const disposable = session as { [Symbol.dispose]?: () => void }
-            disposable[Symbol.dispose]?.()
+          if (isTraversable(session) && typeof session[Symbol.dispose] === 'function') {
+            (session[Symbol.dispose] as () => void)()
           }
         })
       }

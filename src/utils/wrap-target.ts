@@ -107,7 +107,7 @@ export function collectObjectProperties(
   const namespaces: Record<string, RpcTarget> = {}
   const visited = new Set<string>()
 
-  const collect = (source: object) => {
+  const collect = (source: object): void => {
     for (const key of Object.getOwnPropertyNames(source)) {
       if (visited.has(key) || skip.has(key) || key.startsWith('_')) continue
       visited.add(key)

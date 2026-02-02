@@ -27,23 +27,15 @@ export type {
 import {
   RpcSession,
   RpcTarget,
-  newHttpBatchRpcResponse,
-  HibernatableWebSocketTransport,
-  TransportRegistry,
   type RpcTransport,
   type RpcSessionOptions,
+  HibernatableWebSocketTransport,
+  TransportRegistry,
 } from '@dotdo/capnweb/server'
-import { RpcInterface, SKIP_PROPS_BASE } from './rpc-interface.js'
+import { SKIP_PROPS_BASE } from './rpc-interface.js'
 
-// Shared WebSocket state machine
-import {
-  type WebSocketState,
-  type WebSocketAttachment,
-  isWebSocketAttachment,
-  createWebSocketAttachment,
-  transitionWebSocketState,
-  getWebSocketAttachment,
-} from './websocket-state.js'
+// Shared base class
+import { DurableRPCBase } from './base.js'
 
 // Re-export capnweb types
 export { RpcTarget, RpcSession, type RpcTransport, type RpcSessionOptions }
@@ -58,21 +50,6 @@ export {
   transitionWebSocketState,
   getWebSocketAttachment,
 } from './websocket-state.js'
-
-// ============================================================================
-// Cloudflare DO Base
-// ============================================================================
-
-declare class DurableObject {
-  protected ctx: DurableObjectState
-  protected env: Record<string, unknown>
-  constructor(ctx: DurableObjectState, env: Record<string, unknown>)
-  fetch?(request: Request): Response | Promise<Response>
-  alarm?(): void | Promise<void>
-  webSocketMessage?(ws: WebSocket, message: string | ArrayBuffer): void | Promise<void>
-  webSocketClose?(ws: WebSocket, code: number, reason: string, wasClean: boolean): void | Promise<void>
-  webSocketError?(ws: WebSocket, error: unknown): void | Promise<void>
-}
 
 // ============================================================================
 // Schema Types (minimal)
@@ -96,226 +73,20 @@ export interface LiteRpcSchema {
 }
 
 // ============================================================================
-// DurableRPC Lite - Minimal Base Class
+// DurableRPC Lite - Minimal Implementation
 // ============================================================================
 
 /**
  * Minimal RPC-enabled Durable Object base class.
  * No colo.do, no collections - just RPC handling.
  */
-export class DurableRPC extends DurableObject {
-  private _transportRegistry = new TransportRegistry()
-  private _sessions = new Map<WebSocket, RpcSession>()
-  private _rpcInterface?: RpcInterface<DurableRPC>
-  protected _currentRequest?: Request
-
-  /**
-   * Optional server-side middleware for RPC hooks.
-   * Override in subclass to add middleware.
-   */
-  middleware?: import('./middleware.js').ServerMiddleware[]
-
-  // ==========================================================================
-  // Storage Accessors
-  // ==========================================================================
-
-  /** SQLite storage */
-  get sql(): SqlStorage {
-    return this.ctx.storage.sql
+export class DurableRPC extends DurableRPCBase {
+  protected getSkipProps(): Set<string> {
+    return SKIP_PROPS_BASE
   }
 
-  /** Durable Object storage API */
-  get storage(): DurableObjectStorage {
-    return this.ctx.storage
-  }
-
-  /** Durable Object state */
-  get state(): DurableObjectState {
-    return this.ctx
-  }
-
-  private getRpcInterface(): RpcInterface<DurableRPC> {
-    if (!this._rpcInterface) {
-      this._rpcInterface = new RpcInterface({
-        instance: this,
-        skipProps: SKIP_PROPS_BASE,
-        basePrototype: DurableRPC.prototype,
-        getRequest: () => this._currentRequest,
-        getEnv: () => this.env,
-      })
-    }
-    return this._rpcInterface
-  }
-
-  protected getRpcSessionOptions(): RpcSessionOptions {
-    return {
-      onSendError: (error: Error) => {
-        console.error('[DurableRPC] Error:', error.message)
-        return new Error(error.message)
-      },
-    }
-  }
-
-  override async fetch(request: Request): Promise<Response> {
-    this._currentRequest = request
-
-    if (request.method === 'GET') {
-      const url = new URL(request.url)
-      if (url.pathname === '/__schema' || url.pathname === '/') {
-        const response = Response.json(this.getSchema())
-        this._currentRequest = undefined
-        return response
-      }
-    }
-
-    if (request.headers.get('Upgrade') === 'websocket') {
-      return this.handleWebSocketUpgrade()
-    }
-
-    try {
-      return await this.handleHttpRpc(request)
-    } finally {
-      this._currentRequest = undefined
-    }
-  }
-
-  /**
-   * Handle WebSocket upgrade request.
-   *
-   * State transitions: -> connecting -> active
-   *
-   * This creates the WebSocket pair, accepts the server socket with the
-   * hibernation API, and sets up the RPC session.
-   */
-  private handleWebSocketUpgrade(): Response {
-    const pair = new WebSocketPair()
-    const client = pair[0]
-    const server = pair[1]
-
-    // Create transport for this WebSocket
-    const transport = new HibernatableWebSocketTransport(server)
-    this._transportRegistry.register(transport)
-
-    // STATE: -> connecting
-    const attachment = createWebSocketAttachment(transport.id)
-    server.serializeAttachment(attachment)
-
-    // Use hibernation API to accept the WebSocket
-    this.ctx.acceptWebSocket(server)
-
-    // STATE: connecting -> active
-    transitionWebSocketState(server, attachment, 'active', 'WebSocket accepted')
-
-    const session = new RpcSession(
-      transport,
-      this.getRpcInterface(),
-      this.getRpcSessionOptions()
-    )
-    this._sessions.set(server, session)
-
-    return new Response(null, { status: 101, webSocket: client })
-  }
-
-  /**
-   * Called when a WebSocket receives a message.
-   *
-   * State transitions:
-   * - hibernated -> active (DO woke from hibernation)
-   * - active -> active (no change)
-   */
-  override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    if (typeof message !== 'string') return
-
-    let attachment = getWebSocketAttachment(ws)
-    let transport: HibernatableWebSocketTransport | undefined
-
-    if (attachment?.transportId) {
-      transport = this._transportRegistry.get(attachment.transportId)
-    }
-
-    // If transport not found, DO woke from hibernation
-    if (!transport) {
-      transport = new HibernatableWebSocketTransport(ws)
-      this._transportRegistry.register(transport)
-      const session = new RpcSession(transport, this.getRpcInterface(), this.getRpcSessionOptions())
-      this._sessions.set(ws, session)
-
-      if (attachment) {
-        // STATE: hibernated -> active
-        attachment.transportId = transport.id
-        transitionWebSocketState(ws, attachment, 'active', 'woke from hibernation')
-      } else {
-        // Create new attachment (error recovery)
-        attachment = createWebSocketAttachment(transport.id)
-        attachment.state = 'active'
-        ws.serializeAttachment(attachment)
-        console.debug('[DurableRPC] WebSocket state: (unknown) -> active (created new attachment)')
-      }
-    }
-
-    transport.enqueueMessage(message)
-  }
-
-  /**
-   * Called when a WebSocket is closed.
-   *
-   * State transition: active|hibernated -> closed
-   */
-  override async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
-    const attachment = getWebSocketAttachment(ws)
-
-    // STATE: * -> closed
-    if (attachment) {
-      const closeReason = `code=${code}, reason=${reason || 'none'}, wasClean=${wasClean}`
-      transitionWebSocketState(ws, attachment, 'closed', closeReason)
-
-      const transport = this._transportRegistry.get(attachment.transportId)
-      if (transport) {
-        transport.handleClose(code, reason)
-        this._transportRegistry.remove(attachment.transportId)
-      }
-    } else {
-      console.debug(`[DurableRPC] WebSocket closed without attachment (code=${code})`)
-    }
-
-    this._sessions.delete(ws)
-  }
-
-  /**
-   * Called when a WebSocket encounters an error.
-   *
-   * State transition: * -> closed
-   */
-  override async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-    const err = error instanceof Error ? error : new Error(String(error))
-    const attachment = getWebSocketAttachment(ws)
-
-    // STATE: * -> closed (via error)
-    if (attachment) {
-      transitionWebSocketState(ws, attachment, 'closed', `error: ${err.message}`)
-
-      const transport = this._transportRegistry.get(attachment.transportId)
-      if (transport) {
-        transport.handleError(err)
-        this._transportRegistry.remove(attachment.transportId)
-      }
-    } else {
-      console.debug('[DurableRPC] WebSocket error without attachment:', err.message)
-    }
-
-    this._sessions.delete(ws)
-  }
-
-  private async handleHttpRpc(request: Request): Promise<Response> {
-    if (request.method !== 'POST') {
-      return new Response('Method not allowed', { status: 405 })
-    }
-    try {
-      return await newHttpBatchRpcResponse(request, this.getRpcInterface(), this.getRpcSessionOptions())
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'RPC error'
-      return Response.json({ error: message }, { status: 500 })
-    }
+  protected getBasePrototype(): object {
+    return DurableRPC.prototype
   }
 
   getSchema(): LiteRpcSchema {
@@ -350,25 +121,11 @@ export class DurableRPC extends DurableObject {
 
     collectProps(this)
     let proto = Object.getPrototypeOf(this)
-    while (proto && proto !== DurableRPC.prototype && proto !== DurableObject.prototype) {
+    while (proto && proto !== DurableRPC.prototype && proto !== DurableRPCBase.prototype) {
       collectProps(proto)
       proto = Object.getPrototypeOf(proto)
     }
 
     return { version: 1, methods, namespaces }
-  }
-
-  broadcast(message: unknown, exclude?: WebSocket): void {
-    const sockets = this.ctx.getWebSockets()
-    const data = typeof message === 'string' ? message : JSON.stringify(message)
-    for (const ws of sockets) {
-      if (ws !== exclude) {
-        try { ws.send(data) } catch {}
-      }
-    }
-  }
-
-  get connectionCount(): number {
-    return this.ctx.getWebSockets().length
   }
 }

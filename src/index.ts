@@ -140,7 +140,7 @@ export interface RpcOptions {
 
 /**
  * Options for RPC client
- * @deprecated Use `RpcOptions` instead (lowercase 'pc' for consistency with capnweb convention)
+ * @deprecated Use `RpcOptions` instead (lowercase 'pc' for consistency with capnweb convention). Planned removal: v2.0
  */
 export interface RPCOptions extends RpcOptions {}
 
@@ -282,7 +282,7 @@ export interface RpcClientOptions {
 
 /**
  * Options for createRPCClient factory
- * @deprecated Use `RpcClientOptions` and then `RpcOptions` with RPC() instead
+ * @deprecated Use `RpcClientOptions` and then `RpcOptions` with RPC() instead. Planned removal: v2.0
  */
 export interface RPCClientOptions extends RpcClientOptions {}
 
@@ -311,12 +311,38 @@ export function createRPCClient<T extends object = Record<string, unknown>>(opti
   return RPC<T>(options.baseUrl, rpcOpts)
 }
 
-// Re-export transports (browser-safe)
-export * from './transports'
+// Re-export transports (browser-safe) - selective exports only, internal helpers are not re-exported
+export {
+  // Transport factory functions
+  http,
+  capnweb,
+  binding,
+  composite,
+  // Type guards (public API)
+  isFunction,
+  isServerMessage,
+} from './transports'
 
-// Explicit type re-exports for better discoverability
-export type { AuthProvider, ServerMessage } from './transports'
-export { isFunction, isServerMessage } from './transports'
+export type {
+  // Transport option types
+  AuthProvider,
+  ServerMessage,
+  HttpTransportOptions,
+  CapnwebTransportOptions,
+} from './transports'
+
+// Re-export reconnecting transport and middleware (from transports sub-modules)
+export {
+  ReconnectingWebSocketTransport,
+  reconnectingWs,
+  createRpcSession,
+  type ConnectionState,
+  type ConnectionEventHandlers,
+  type ReconnectingWebSocketOptions,
+  type RpcSessionOptions,
+} from './transports/reconnecting-ws.js'
+
+export { withMiddleware, withRetry, type RetryOptions } from './middleware/index.js'
 
 // DO Client - remote access to DO sql/storage/collections
 export {

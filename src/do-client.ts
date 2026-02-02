@@ -342,7 +342,7 @@ function wrapTransportWithMiddleware(transport: Transport, middleware: RpcClient
     return transport
   }
 
-  return {
+  const wrapped: Transport = {
     async call(method: string, args: unknown[]): Promise<unknown> {
       // Execute onRequest hooks
       await executeOnRequest(middleware, method, args)
@@ -363,8 +363,13 @@ function wrapTransportWithMiddleware(transport: Transport, middleware: RpcClient
         throw error
       }
     },
-    close: transport.close ? transport.close.bind(transport) : undefined,
-  } as Transport
+  }
+
+  if (transport.close) {
+    wrapped.close = transport.close.bind(transport)
+  }
+
+  return wrapped
 }
 
 /**
@@ -465,7 +470,11 @@ function createCollectionsProxy(getTransport: () => Transport): RemoteCollection
  * Create a remote storage proxy
  */
 function createStorageProxy(transport: Transport): RemoteStorage {
-  return {
+  // RemoteStorage has overloaded get/put/delete methods. TypeScript cannot
+  // verify overloaded signatures on object literals, so we build the proxy
+  // object and cast once at the boundary. The implementations correctly
+  // discriminate on the argument type (string vs array vs object).
+  const proxy = {
     async get<T>(keyOrKeys: string | string[]): Promise<T | undefined | Map<string, T>> {
       if (Array.isArray(keyOrKeys)) {
         const result = await transport.call(INTERNAL_METHODS.STORAGE_GET_MULTIPLE, [keyOrKeys]) as Record<string, T>
@@ -493,7 +502,9 @@ function createStorageProxy(transport: Transport): RemoteStorage {
     async keys(prefix?: string): Promise<string[]> {
       return transport.call(INTERNAL_METHODS.STORAGE_KEYS, [prefix]) as Promise<string[]>
     },
-  } as RemoteStorage
+  }
+  // Cast required due to overloaded method signatures on RemoteStorage interface
+  return proxy as RemoteStorage
 }
 
 /**

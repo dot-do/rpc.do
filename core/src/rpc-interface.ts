@@ -47,6 +47,10 @@ export const SKIP_PROPS_BASE = new Set([
   'handleHttpRpc',
   'getRpcInterface',
   'getRpcSessionOptions',
+  // DurableRPCBase abstract/protected methods
+  'getSkipProps',
+  'getBasePrototype',
+  'onFetch',
 ])
 
 /**

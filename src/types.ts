@@ -55,7 +55,7 @@ export type RpcFunction<TInput = unknown, TOutput = unknown> = (input: TInput) =
 
 /**
  * Defines a single RPC function signature
- * @deprecated Use `RpcFunction` instead (lowercase 'pc' for consistency with capnweb convention)
+ * @deprecated Use `RpcFunction` instead (lowercase 'pc' for consistency with capnweb convention). Planned removal: v2.0
  * @example
  * type Generate = RPCFunction<{ prompt: string }, { text: string }>
  */
@@ -82,7 +82,7 @@ export type RpcProxy<T extends object> = {
 
 /**
  * Recursively converts an API definition to async proxy type
- * @deprecated Use `RpcProxy` instead (lowercase 'pc' for consistency with capnweb convention)
+ * @deprecated Use `RpcProxy` instead (lowercase 'pc' for consistency with capnweb convention). Planned removal: v2.0
  * @example
  * interface API {
  *   ai: { generate: (p: { prompt: string }) => { text: string } }
@@ -95,7 +95,7 @@ export type RPCProxy<T extends object> = RpcProxy<T>
 /**
  * Simple promise type for RPC returns.
  *
- * @deprecated Use `RpcPromise<T>` from @dotdo/types for promise pipelining support.
+ * @deprecated Use `RpcPromise<T>` from @dotdo/types for promise pipelining support. Planned removal: v2.0
  *
  * @example
  * // Old (simple promise):
@@ -116,7 +116,7 @@ export type RpcResult<T extends (...args: unknown[]) => Promise<unknown>> = T ex
 
 /**
  * Infer the return type of an RPC function
- * @deprecated Use `RpcResult` instead (lowercase 'pc' for consistency with capnweb convention)
+ * @deprecated Use `RpcResult` instead (lowercase 'pc' for consistency with capnweb convention). Planned removal: v2.0
  * @example
  * type Result = RPCResult<typeof rpc.ai.generate> // { text: string }
  */
@@ -131,7 +131,7 @@ export type RpcInput<T extends (...args: unknown[]) => unknown> = T extends (inp
 
 /**
  * Infer the input type of an RPC function
- * @deprecated Use `RpcInput` instead (lowercase 'pc' for consistency with capnweb convention)
+ * @deprecated Use `RpcInput` instead (lowercase 'pc' for consistency with capnweb convention). Planned removal: v2.0
  * @example
  * type Params = RPCInput<typeof rpc.ai.generate> // { prompt: string }
  */
@@ -173,6 +173,6 @@ export type RpcClientMiddleware = {
 
 /**
  * Middleware hook for RPC requests and responses.
- * @deprecated Use `RpcClientMiddleware` instead (lowercase 'pc' for consistency with capnweb convention)
+ * @deprecated Use `RpcClientMiddleware` instead (lowercase 'pc' for consistency with capnweb convention). Planned removal: v2.0
  */
 export type RPCClientMiddleware = RpcClientMiddleware

@@ -74,6 +74,62 @@ describe('Browser Compatibility', () => {
     expect(output).not.toContain('child_process')
   })
 
+  it('should bundle react entry for browser without Node.js dependencies', async () => {
+    const entryCode = `
+      import { getMethod, createQueryFn, createMutationFn } from './src/react.ts'
+      export { getMethod, createQueryFn, createMutationFn }
+    `
+
+    const result = await build({
+      stdin: {
+        contents: entryCode,
+        resolveDir: process.cwd(),
+        loader: 'ts',
+      },
+      bundle: true,
+      write: false,
+      platform: 'browser',
+      format: 'esm',
+      logLevel: 'silent',
+    })
+
+    expect(result.errors).toHaveLength(0)
+    const outputFile = result.outputFiles[0]
+    expect(outputFile).toBeDefined()
+    const output = outputFile!.text
+    expect(output).not.toContain('node:')
+    expect(output).not.toContain('child_process')
+    expect(output).not.toContain('require("fs")')
+  })
+
+  it('should bundle middleware entry for browser without Node.js dependencies', async () => {
+    const entryCode = `
+      import { loggingMiddleware, timingMiddleware, retryObserver, withRetry, withMiddleware } from './src/middleware/index.ts'
+      export { loggingMiddleware, timingMiddleware, retryObserver, withRetry, withMiddleware }
+    `
+
+    const result = await build({
+      stdin: {
+        contents: entryCode,
+        resolveDir: process.cwd(),
+        loader: 'ts',
+      },
+      bundle: true,
+      write: false,
+      platform: 'browser',
+      format: 'esm',
+      logLevel: 'silent',
+    })
+
+    expect(result.errors).toHaveLength(0)
+    const outputFile = result.outputFiles[0]
+    expect(outputFile).toBeDefined()
+    const output = outputFile!.text
+    expect(output).not.toContain('node:')
+    expect(output).not.toContain('child_process')
+    expect(output).not.toContain('require("fs")')
+  })
+
   it('should fail to bundle auth entry for browser (expected - uses oauth.do)', async () => {
     // This test documents that auth requires server-side usage
     // It should fail or have external oauth.do dependency

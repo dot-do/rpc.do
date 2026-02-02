@@ -133,18 +133,22 @@ function createMockProxy<T extends object>(handlers: unknown, path: string[]): R
 }
 
 /**
+ * Type guard to check if a value is a non-null object.
+ */
+function isNonNullObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+/**
  * Internal: Get a nested value from an object using a path array
  */
 function getNestedValue(obj: unknown, path: string[]): unknown {
-  let current = obj
+  let current: unknown = obj
   for (const key of path) {
-    if (current === null || current === undefined) {
+    if (!isNonNullObject(current)) {
       return undefined
     }
-    if (typeof current !== 'object') {
-      return undefined
-    }
-    current = (current as Record<string, unknown>)[key]
+    current = current[key]
   }
   return current
 }
@@ -241,9 +245,8 @@ export function mockTransport(
         if (typeof errorVal === 'string') {
           throw new RPCError(errorVal, 'MOCK_ERROR')
         }
-        // Type narrowing for error object
-        const errObj = errorVal as { message?: string; code?: string; data?: unknown }
-        throw new RPCError(errObj.message ?? 'Unknown error', errObj.code ?? 'MOCK_ERROR', errObj.data)
+        // errorVal is narrowed to { message?: string; code?: string; data?: unknown }
+        throw new RPCError(errorVal.message ?? 'Unknown error', errorVal.code ?? 'MOCK_ERROR', errorVal.data)
       }
 
       // Return static response
@@ -310,12 +313,12 @@ export interface MockTransportExtras {
 }
 
 /**
- * Type guard for error responses
+ * Type guard for error responses.
+ * Narrows to an object with an `error` property containing either a string or error detail object.
  */
-function isErrorResponse(response: unknown): response is { error: unknown } {
+function isErrorResponse(response: unknown): response is { error: string | { message?: string; code?: string; data?: unknown } } {
   return (
-    typeof response === 'object' &&
-    response !== null &&
+    isNonNullObject(response) &&
     'error' in response
   )
 }

@@ -58,14 +58,28 @@ interface RetryContext {
  * Default implementation of shouldRetry
  * Returns true for network errors, timeouts, and 5xx errors
  */
+/**
+ * Type guard to check if an error is a ConnectionError with a retryable flag
+ */
+function isConnectionError(error: unknown): error is ConnectionError {
+  return error instanceof ConnectionError
+}
+
+/**
+ * Type guard to check if an error is an RPCError
+ */
+function isRPCError(error: unknown): error is RPCError {
+  return error instanceof RPCError
+}
+
 function defaultShouldRetry(error: unknown): boolean {
   // ConnectionError with retryable flag
-  if (error instanceof ConnectionError) {
+  if (isConnectionError(error)) {
     return error.retryable
   }
 
   // RPCError is typically not retryable (business logic error)
-  if (error instanceof RPCError) {
+  if (isRPCError(error)) {
     // Some RPC errors may be retryable (temporary server issues)
     const code = error.code.toUpperCase()
     return (
