@@ -156,6 +156,7 @@ try {
 - [Architecture](docs/ARCHITECTURE.md) -- Technical design and internals
 - [Troubleshooting](docs/TROUBLESHOOTING.md) -- Common issues and solutions
 - [Performance Benchmarks](BENCHMARKS.md) -- Latency, throughput, and bundle size analysis
+- [rpc.do vs Alternatives](docs/COMPARISON.md) -- Decision guide for choosing RPC tools
 - [Migrating from tRPC](docs/MIGRATING_FROM_TRPC.md)
 - [Migrating from gRPC](docs/MIGRATING_FROM_GRPC.md)
 - [React Integration](docs/REACT_INTEGRATION.md)

@@ -601,10 +601,10 @@ describe('generateOpenAPIJson', () => {
 })
 
 // ============================================================================
-// Type Conversion Tests
+// Type Conversion Tests (typeToSchema)
 // ============================================================================
 
-describe('type conversion', () => {
+describe('type conversion (typeToSchema)', () => {
   describe('primitive types', () => {
     it('should convert string type', () => {
       const schema = createExtractedSchema({
@@ -635,6 +635,113 @@ describe('type conversion', () => {
       const operation = result.paths['/test']!.post!
       expect(operation.requestBody!.content['application/json'].schema.properties!['val']).toEqual({ type: 'boolean' })
     })
+
+    it('should convert void type', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [], returnType: 'void' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
+      expect(responseSchema.type).toBe('object')
+      expect(responseSchema.description).toBe('No return value')
+    })
+
+    it('should convert undefined type', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [], returnType: 'undefined' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
+      expect(responseSchema.type).toBe('object')
+      expect(responseSchema.description).toBe('No return value')
+    })
+
+    it('should convert any type', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [{ name: 'val', type: 'any', optional: false }], returnType: 'Promise<any>' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const operation = result.paths['/test']!.post!
+      expect(operation.requestBody!.content['application/json'].schema.properties!['val']).toEqual({
+        type: 'object',
+        description: 'Any value',
+      })
+    })
+
+    it('should convert unknown type', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [{ name: 'val', type: 'unknown', optional: false }], returnType: 'Promise<unknown>' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const operation = result.paths['/test']!.post!
+      expect(operation.requestBody!.content['application/json'].schema.properties!['val']).toEqual({
+        type: 'object',
+        description: 'Any value',
+      })
+    })
+
+    it('should convert object type', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [{ name: 'val', type: 'object', optional: false }], returnType: 'Promise<object>' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const operation = result.paths['/test']!.post!
+      expect(operation.requestBody!.content['application/json'].schema.properties!['val']).toEqual({ type: 'object' })
+    })
+
+    it('should convert null type', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [], returnType: 'null' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
+      expect(responseSchema.type).toBe('object')
+      expect(responseSchema.nullable).toBe(true)
+    })
+
+    it('should handle lowercase type case-insensitively', () => {
+      const schema = createExtractedSchema({
+        methods: [
+          { name: 'test1', parameters: [], returnType: 'STRING' },
+          { name: 'test2', parameters: [], returnType: 'Number' },
+          { name: 'test3', parameters: [], returnType: 'BOOLEAN' },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      expect(result.paths['/test1']!.post!.responses['200'].content!['application/json'].schema.type).toBe('string')
+      expect(result.paths['/test2']!.post!.responses['200'].content!['application/json'].schema.type).toBe('number')
+      expect(result.paths['/test3']!.post!.responses['200'].content!['application/json'].schema.type).toBe('boolean')
+    })
+  })
+
+  describe('Promise types', () => {
+    it('should unwrap Promise<T>', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [], returnType: 'Promise<string>' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
+      expect(responseSchema.type).toBe('string')
+    })
+
+    it('should unwrap nested Promise<Array<T>>', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [], returnType: 'Promise<Array<User>>' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
+      expect(responseSchema.type).toBe('array')
+      expect(responseSchema.items!.$ref).toBe('#/components/schemas/User')
+    })
   })
 
   describe('array types', () => {
@@ -659,6 +766,29 @@ describe('type conversion', () => {
       expect(responseSchema.type).toBe('array')
       expect(responseSchema.items).toEqual({ type: 'number' })
     })
+
+    it('should convert nested array types', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [], returnType: 'Promise<string[][]>' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
+      expect(responseSchema.type).toBe('array')
+      expect(responseSchema.items!.type).toBe('array')
+      expect(responseSchema.items!.items).toEqual({ type: 'string' })
+    })
+
+    it('should convert Array<CustomType>', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [], returnType: 'Promise<Array<CustomType>>' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
+      expect(responseSchema.type).toBe('array')
+      expect(responseSchema.items!.$ref).toBe('#/components/schemas/CustomType')
+    })
   })
 
   describe('nullable types', () => {
@@ -670,6 +800,29 @@ describe('type conversion', () => {
       const result = toOpenAPIFromExtracted(schema)
       const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
       expect(responseSchema.type).toBe('string')
+      expect(responseSchema.nullable).toBe(true)
+    })
+
+    it('should convert CustomType | null to nullable ref', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [], returnType: 'Promise<User | null>' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
+      expect(responseSchema.$ref).toBe('#/components/schemas/User')
+      expect(responseSchema.nullable).toBe(true)
+    })
+
+    it('should handle array with nullable', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [], returnType: 'Promise<string[] | null>' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
+      expect(responseSchema.type).toBe('array')
+      expect(responseSchema.items).toEqual({ type: 'string' })
       expect(responseSchema.nullable).toBe(true)
     })
   })
@@ -696,6 +849,28 @@ describe('type conversion', () => {
       expect(responseSchema.type).toBe('object')
       expect(responseSchema.additionalProperties).toEqual({ type: 'boolean' })
     })
+
+    it('should convert Record with complex value type', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [], returnType: 'Promise<Record<string, User>>' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
+      expect(responseSchema.type).toBe('object')
+      expect(responseSchema.additionalProperties).toEqual({ $ref: '#/components/schemas/User' })
+    })
+
+    it('should convert Map with array value type', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [], returnType: 'Promise<Map<string, string[]>>' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
+      expect(responseSchema.type).toBe('object')
+      expect(responseSchema.additionalProperties).toEqual({ type: 'array', items: { type: 'string' } })
+    })
   })
 
   describe('Date type', () => {
@@ -709,6 +884,17 @@ describe('type conversion', () => {
       expect(responseSchema.type).toBe('string')
       expect(responseSchema.format).toBe('date-time')
     })
+
+    it('should convert Date[] to array of date-time strings', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [], returnType: 'Promise<Date[]>' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
+      expect(responseSchema.type).toBe('array')
+      expect(responseSchema.items).toEqual({ type: 'string', format: 'date-time' })
+    })
   })
 
   describe('custom types', () => {
@@ -721,6 +907,343 @@ describe('type conversion', () => {
       const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
       expect(responseSchema.$ref).toBe('#/components/schemas/CustomType')
     })
+
+    it('should handle lowercase custom types as generic object', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [], returnType: 'Promise<someCustomType>' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const responseSchema = result.paths['/test']!.post!.responses['200'].content!['application/json'].schema
+      expect(responseSchema.type).toBe('object')
+      expect(responseSchema.description).toBe('Type: someCustomType')
+    })
+  })
+
+  describe('whitespace handling', () => {
+    it('should trim whitespace from type strings', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'test', parameters: [{ name: 'val', type: '  string  ', optional: false }], returnType: 'Promise<string>' }],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const operation = result.paths['/test']!.post!
+      expect(operation.requestBody!.content['application/json'].schema.properties!['val']).toEqual({ type: 'string' })
+    })
+  })
+})
+
+// ============================================================================
+// typesToComponents Tests
+// ============================================================================
+
+describe('typesToComponents', () => {
+  describe('interface parsing', () => {
+    it('should parse simple interface with required properties', () => {
+      const schema = createExtractedSchema({
+        types: [
+          {
+            name: 'User',
+            declaration: 'interface User { id: string; name: string; age: number }',
+            kind: 'interface',
+          },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const userSchema = result.components!.schemas!['User']
+
+      expect(userSchema.type).toBe('object')
+      expect(userSchema.properties!['id']).toEqual({ type: 'string' })
+      expect(userSchema.properties!['name']).toEqual({ type: 'string' })
+      expect(userSchema.properties!['age']).toEqual({ type: 'number' })
+      expect(userSchema.required).toEqual(['id', 'name', 'age'])
+    })
+
+    it('should parse interface with optional properties', () => {
+      const schema = createExtractedSchema({
+        types: [
+          {
+            name: 'Config',
+            declaration: 'interface Config { host: string; port?: number; timeout?: number }',
+            kind: 'interface',
+          },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const configSchema = result.components!.schemas!['Config']
+
+      expect(configSchema.required).toEqual(['host'])
+      expect(configSchema.properties!['port']).toEqual({ type: 'number' })
+      expect(configSchema.properties!['timeout']).toEqual({ type: 'number' })
+    })
+
+    it('should parse interface with mixed required and optional properties', () => {
+      const schema = createExtractedSchema({
+        types: [
+          {
+            name: 'Product',
+            declaration: 'interface Product { id: string; name: string; description?: string; price: number; discount?: number }',
+            kind: 'interface',
+          },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const productSchema = result.components!.schemas!['Product']
+
+      expect(productSchema.required).toEqual(['id', 'name', 'price'])
+      expect(Object.keys(productSchema.properties!)).toHaveLength(5)
+    })
+
+    it('should parse interface with array properties', () => {
+      const schema = createExtractedSchema({
+        types: [
+          {
+            name: 'Post',
+            declaration: 'interface Post { id: string; tags: string[]; comments: Comment[] }',
+            kind: 'interface',
+          },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const postSchema = result.components!.schemas!['Post']
+
+      expect(postSchema.properties!['tags']).toEqual({ type: 'array', items: { type: 'string' } })
+      expect(postSchema.properties!['comments']).toEqual({ type: 'array', items: { $ref: '#/components/schemas/Comment' } })
+    })
+
+    it('should parse interface with complex nested types', () => {
+      const schema = createExtractedSchema({
+        types: [
+          {
+            name: 'Response',
+            declaration: 'interface Response { data: Record<string, number>; users: Map<string, User> }',
+            kind: 'interface',
+          },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const responseSchema = result.components!.schemas!['Response']
+
+      expect(responseSchema.properties!['data']).toEqual({ type: 'object', additionalProperties: { type: 'number' } })
+      expect(responseSchema.properties!['users']).toEqual({ type: 'object', additionalProperties: { $ref: '#/components/schemas/User' } })
+    })
+
+    it('should parse multiline interface', () => {
+      const schema = createExtractedSchema({
+        types: [
+          {
+            name: 'MultilineUser',
+            declaration: `interface MultilineUser {
+              id: string
+              name: string
+              email: string
+            }`,
+            kind: 'interface',
+          },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const userSchema = result.components!.schemas!['MultilineUser']
+
+      expect(userSchema.type).toBe('object')
+      expect(userSchema.properties!['id']).toEqual({ type: 'string' })
+      expect(userSchema.properties!['name']).toEqual({ type: 'string' })
+      expect(userSchema.properties!['email']).toEqual({ type: 'string' })
+    })
+
+    it('should handle empty interface', () => {
+      const schema = createExtractedSchema({
+        types: [
+          {
+            name: 'Empty',
+            declaration: 'interface Empty { }',
+            kind: 'interface',
+          },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const emptySchema = result.components!.schemas!['Empty']
+
+      expect(emptySchema.type).toBe('object')
+      expect(emptySchema.properties).toEqual({})
+      expect(emptySchema.required).toBeUndefined()
+    })
+
+    it('should handle interface without braces', () => {
+      const schema = createExtractedSchema({
+        types: [
+          {
+            name: 'NoBraces',
+            declaration: 'interface NoBraces extends Base',
+            kind: 'interface',
+          },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const noBracesSchema = result.components!.schemas!['NoBraces']
+
+      expect(noBracesSchema.type).toBe('object')
+    })
+  })
+
+  describe('type alias parsing', () => {
+    it('should parse type alias with object structure', () => {
+      const schema = createExtractedSchema({
+        types: [
+          {
+            name: 'Point',
+            declaration: 'type Point = { x: number; y: number }',
+            kind: 'type',
+          },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const pointSchema = result.components!.schemas!['Point']
+
+      expect(pointSchema.type).toBe('object')
+      expect(pointSchema.properties!['x']).toEqual({ type: 'number' })
+      expect(pointSchema.properties!['y']).toEqual({ type: 'number' })
+    })
+
+    it('should parse type alias with optional properties', () => {
+      const schema = createExtractedSchema({
+        types: [
+          {
+            name: 'Options',
+            declaration: 'type Options = { debug?: boolean; verbose?: boolean }',
+            kind: 'type',
+          },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const optionsSchema = result.components!.schemas!['Options']
+
+      expect(optionsSchema.properties!['debug']).toEqual({ type: 'boolean' })
+      expect(optionsSchema.properties!['verbose']).toEqual({ type: 'boolean' })
+      expect(optionsSchema.required).toBeUndefined()
+    })
+  })
+})
+
+// ============================================================================
+// parseEnumDeclaration Tests
+// ============================================================================
+
+describe('parseEnumDeclaration', () => {
+  it('should parse string enum without explicit values', () => {
+    const schema = createExtractedSchema({
+      types: [
+        {
+          name: 'Status',
+          declaration: 'enum Status { Active, Inactive, Pending }',
+          kind: 'enum',
+        },
+      ],
+    })
+
+    const result = toOpenAPIFromExtracted(schema)
+    const statusSchema = result.components!.schemas!['Status']
+
+    expect(statusSchema.type).toBe('string')
+    expect(statusSchema.enum).toEqual(['Active', 'Inactive', 'Pending'])
+  })
+
+  it('should parse enum with string values', () => {
+    const schema = createExtractedSchema({
+      types: [
+        {
+          name: 'Color',
+          declaration: `enum Color { Red = 'red', Green = 'green', Blue = 'blue' }`,
+          kind: 'enum',
+        },
+      ],
+    })
+
+    const result = toOpenAPIFromExtracted(schema)
+    const colorSchema = result.components!.schemas!['Color']
+
+    expect(colorSchema.type).toBe('string')
+    expect(colorSchema.enum).toEqual(['red', 'green', 'blue'])
+  })
+
+  it('should parse enum with numeric values', () => {
+    const schema = createExtractedSchema({
+      types: [
+        {
+          name: 'Priority',
+          declaration: 'enum Priority { Low = 1, Medium = 2, High = 3 }',
+          kind: 'enum',
+        },
+      ],
+    })
+
+    const result = toOpenAPIFromExtracted(schema)
+    const prioritySchema = result.components!.schemas!['Priority']
+
+    expect(prioritySchema.type).toBe('integer')
+    expect(prioritySchema.enum).toEqual([1, 2, 3])
+  })
+
+  it('should parse enum with quoted string values', () => {
+    const schema = createExtractedSchema({
+      types: [
+        {
+          name: 'Direction',
+          declaration: `enum Direction { Up = "UP", Down = "DOWN" }`,
+          kind: 'enum',
+        },
+      ],
+    })
+
+    const result = toOpenAPIFromExtracted(schema)
+    const directionSchema = result.components!.schemas!['Direction']
+
+    expect(directionSchema.type).toBe('string')
+    expect(directionSchema.enum).toEqual(['UP', 'DOWN'])
+  })
+
+  it('should handle empty enum', () => {
+    const schema = createExtractedSchema({
+      types: [
+        {
+          name: 'Empty',
+          declaration: 'enum Empty { }',
+          kind: 'enum',
+        },
+      ],
+    })
+
+    const result = toOpenAPIFromExtracted(schema)
+    const emptySchema = result.components!.schemas!['Empty']
+
+    expect(emptySchema.enum).toEqual([])
+  })
+
+  it('should handle enum without braces', () => {
+    const schema = createExtractedSchema({
+      types: [
+        {
+          name: 'NoBraces',
+          declaration: 'enum NoBraces',
+          kind: 'enum',
+        },
+      ],
+    })
+
+    const result = toOpenAPIFromExtracted(schema)
+    const noBracesSchema = result.components!.schemas!['NoBraces']
+
+    expect(noBracesSchema.type).toBe('string')
   })
 })
 
@@ -837,5 +1360,296 @@ describe('edge cases', () => {
 
     expect(result.paths['/get_user']).toBeDefined()
     expect(result.paths['/get_user']!.post!.operationId).toBe('get_user')
+  })
+
+  it('should handle empty servers array', () => {
+    const schema = createRpcSchema()
+    const result = toOpenAPI(schema, { servers: [] })
+
+    expect(result.servers).toBeUndefined()
+  })
+
+  it('should handle methods with many parameters', () => {
+    const schema = createRpcSchema({
+      methods: [{ name: 'create', path: 'create', params: 10 }],
+    })
+
+    const result = toOpenAPI(schema)
+    const operation = result.paths['/create']!.post!
+
+    expect(operation.requestBody!.content['application/json'].schema.description).toBe('Arguments for create (10 parameters)')
+  })
+
+  it('should handle single parameter method', () => {
+    const schema = createRpcSchema({
+      methods: [{ name: 'get', path: 'get', params: 1 }],
+    })
+
+    const result = toOpenAPI(schema)
+    const operation = result.paths['/get']!.post!
+
+    expect(operation.requestBody!.content['application/json'].schema.description).toBe('Arguments for get (1 parameter)')
+  })
+})
+
+// ============================================================================
+// toOpenAPIFromExtracted - Additional Tests
+// ============================================================================
+
+describe('toOpenAPIFromExtracted - additional tests', () => {
+  describe('methods without parameters', () => {
+    it('should not add requestBody for parameterless methods', () => {
+      const schema = createExtractedSchema({
+        methods: [
+          { name: 'ping', parameters: [], returnType: 'Promise<string>' },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const operation = result.paths['/ping']!.post!
+
+      expect(operation.requestBody).toBeUndefined()
+    })
+  })
+
+  describe('methods with all optional parameters', () => {
+    it('should set requestBody.required to false when all params optional', () => {
+      const schema = createExtractedSchema({
+        methods: [
+          {
+            name: 'search',
+            parameters: [
+              { name: 'query', type: 'string', optional: true },
+              { name: 'limit', type: 'number', optional: true },
+            ],
+            returnType: 'Promise<string[]>',
+          },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const operation = result.paths['/search']!.post!
+
+      expect(operation.requestBody!.required).toBe(false)
+      expect(operation.requestBody!.content['application/json'].schema.required).toBeUndefined()
+    })
+  })
+
+  describe('namespace without typeName', () => {
+    it('should create tag description without type info', () => {
+      const schema = createExtractedSchema({
+        namespaces: [
+          {
+            name: 'users',
+            methods: [{ name: 'list', parameters: [], returnType: 'Promise<User[]>' }],
+          },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+      const tag = result.tags!.find((t) => t.name === 'users')
+
+      expect(tag?.description).toBe('Operations for users')
+    })
+  })
+
+  describe('deeply nested namespaces', () => {
+    it('should process multiple levels of nested namespaces', () => {
+      const schema = createExtractedSchema({
+        namespaces: [
+          {
+            name: 'api',
+            methods: [{ name: 'version', parameters: [], returnType: 'Promise<string>' }],
+            nestedNamespaces: [
+              {
+                name: 'v1',
+                methods: [{ name: 'health', parameters: [], returnType: 'Promise<boolean>' }],
+                nestedNamespaces: [
+                  {
+                    name: 'users',
+                    methods: [
+                      { name: 'list', parameters: [], returnType: 'Promise<User[]>' },
+                      { name: 'get', parameters: [{ name: 'id', type: 'string', optional: false }], returnType: 'Promise<User>' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+
+      expect(result.paths['/api/version']).toBeDefined()
+      expect(result.paths['/api/v1/health']).toBeDefined()
+      expect(result.paths['/api/v1/users/list']).toBeDefined()
+      expect(result.paths['/api/v1/users/get']).toBeDefined()
+
+      expect(result.tags!.find((t) => t.name === 'api')).toBeDefined()
+      expect(result.tags!.find((t) => t.name === 'api.v1')).toBeDefined()
+      expect(result.tags!.find((t) => t.name === 'api.v1.users')).toBeDefined()
+
+      const getUserOp = result.paths['/api/v1/users/get']!.post!
+      expect(getUserOp.operationId).toBe('apiV1UsersGet')
+      expect(getUserOp.tags).toEqual(['api.v1.users'])
+    })
+  })
+
+  describe('multiple types in schema', () => {
+    it('should process multiple interfaces, types, and enums', () => {
+      const schema = createExtractedSchema({
+        types: [
+          { name: 'User', declaration: 'interface User { id: string; name: string }', kind: 'interface' },
+          { name: 'Product', declaration: 'interface Product { sku: string; price: number }', kind: 'interface' },
+          { name: 'Status', declaration: 'enum Status { Active, Inactive }', kind: 'enum' },
+          { name: 'Config', declaration: 'type Config = { debug: boolean }', kind: 'type' },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema)
+
+      expect(result.components!.schemas!['User']).toBeDefined()
+      expect(result.components!.schemas!['Product']).toBeDefined()
+      expect(result.components!.schemas!['Status']).toBeDefined()
+      expect(result.components!.schemas!['Config']).toBeDefined()
+    })
+  })
+
+  describe('options propagation', () => {
+    it('should propagate all options correctly', () => {
+      const schema = createExtractedSchema({ className: 'TestDO' })
+      const result = toOpenAPIFromExtracted(schema, {
+        version: '3.1.0',
+        title: 'Custom Title',
+        description: 'Custom description',
+        apiVersion: '2.0.0',
+        servers: ['https://api.example.com'],
+        contact: { name: 'Support', email: 'support@test.com' },
+        license: { name: 'MIT' },
+        basePath: '/api',
+      })
+
+      expect(result.openapi).toBe('3.1.0')
+      expect(result.info.title).toBe('Custom Title')
+      expect(result.info.description).toBe('Custom description')
+      expect(result.info.version).toBe('2.0.0')
+      expect(result.servers![0].url).toBe('https://api.example.com')
+      expect(result.info.contact).toEqual({ name: 'Support', email: 'support@test.com' })
+      expect(result.info.license).toEqual({ name: 'MIT' })
+    })
+
+    it('should apply basePath to extracted schema endpoints', () => {
+      const schema = createExtractedSchema({
+        methods: [{ name: 'ping', parameters: [], returnType: 'Promise<string>' }],
+        namespaces: [
+          {
+            name: 'users',
+            methods: [{ name: 'get', parameters: [], returnType: 'Promise<User>' }],
+          },
+        ],
+      })
+
+      const result = toOpenAPIFromExtracted(schema, { basePath: '/rpc' })
+
+      expect(result.paths['/rpc/ping']).toBeDefined()
+      expect(result.paths['/rpc/users/get']).toBeDefined()
+    })
+
+    it('should handle servers as objects in toOpenAPIFromExtracted', () => {
+      const schema = createExtractedSchema({ className: 'TestDO' })
+      const result = toOpenAPIFromExtracted(schema, {
+        servers: [
+          { url: 'https://api.example.com', description: 'Production' },
+          { url: 'https://staging.example.com', description: 'Staging' },
+        ],
+      })
+
+      expect(result.servers).toHaveLength(2)
+      expect(result.servers![0]).toEqual({ url: 'https://api.example.com', description: 'Production' })
+      expect(result.servers![1]).toEqual({ url: 'https://staging.example.com', description: 'Staging' })
+    })
+
+    it('should handle servers as strings in toOpenAPIFromExtracted', () => {
+      const schema = createExtractedSchema({ className: 'TestDO' })
+      const result = toOpenAPIFromExtracted(schema, {
+        servers: ['https://api.example.com', 'https://staging.example.com'],
+      })
+
+      expect(result.servers).toHaveLength(2)
+      expect(result.servers![0]).toEqual({ url: 'https://api.example.com' })
+      expect(result.servers![1]).toEqual({ url: 'https://staging.example.com' })
+    })
+
+    it('should handle empty servers array in toOpenAPIFromExtracted', () => {
+      const schema = createExtractedSchema({ className: 'TestDO' })
+      const result = toOpenAPIFromExtracted(schema, { servers: [] })
+
+      expect(result.servers).toBeUndefined()
+    })
+  })
+})
+
+// ============================================================================
+// generateOpenAPIJson - Additional Tests
+// ============================================================================
+
+describe('generateOpenAPIJson - additional tests', () => {
+  it('should handle ExtractedSchema with all features', () => {
+    const schema = createExtractedSchema({
+      className: 'FullDO',
+      methods: [
+        {
+          name: 'process',
+          parameters: [{ name: 'input', type: 'string', optional: false }],
+          returnType: 'Promise<Result>',
+        },
+      ],
+      namespaces: [
+        {
+          name: 'data',
+          methods: [{ name: 'fetch', parameters: [], returnType: 'Promise<Data[]>' }],
+        },
+      ],
+      types: [
+        { name: 'Result', declaration: 'interface Result { success: boolean }', kind: 'interface' },
+        { name: 'Data', declaration: 'type Data = { value: number }', kind: 'type' },
+      ],
+    })
+
+    const result = JSON.parse(generateOpenAPIJson(schema))
+
+    expect(result.info.title).toBe('FullDO')
+    expect(result.paths['/process']).toBeDefined()
+    expect(result.paths['/data/fetch']).toBeDefined()
+    expect(result.components.schemas['Result']).toBeDefined()
+    expect(result.components.schemas['Data']).toBeDefined()
+  })
+
+  it('should produce valid JSON for complex schemas', () => {
+    const schema = createExtractedSchema({
+      className: 'ComplexDO',
+      methods: [
+        {
+          name: 'complexMethod',
+          parameters: [
+            { name: 'data', type: 'Record<string, User[]>', optional: false },
+            { name: 'options', type: 'Options | null', optional: true },
+          ],
+          returnType: 'Promise<Map<string, Result>>',
+        },
+      ],
+      types: [
+        { name: 'User', declaration: 'interface User { id: string }', kind: 'interface' },
+        { name: 'Options', declaration: 'interface Options { debug?: boolean }', kind: 'interface' },
+        { name: 'Result', declaration: 'interface Result { data: any }', kind: 'interface' },
+      ],
+    })
+
+    const json = generateOpenAPIJson(schema)
+    const parsed = JSON.parse(json)
+
+    expect(parsed.openapi).toBe('3.0.3')
+    expect(parsed.paths['/complexMethod']).toBeDefined()
   })
 })

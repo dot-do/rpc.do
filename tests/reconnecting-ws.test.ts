@@ -615,6 +615,288 @@ describe('ReconnectingWebSocketTransport - Heartbeat Ping/Pong', () => {
 })
 
 // ============================================================================
+// Pong Message Validation Tests (rpc.do-ucy)
+// ============================================================================
+
+describe('ReconnectingWebSocketTransport - Pong Message Validation', () => {
+  it('should accept valid pong message with type property', async () => {
+    const onError = vi.fn()
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      heartbeatInterval: 1000,
+      heartbeatTimeout: 500,
+      onError,
+      autoReconnect: false,
+    })
+
+    // Establish connection
+    const sendPromise = transport.send('test')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    const socket = getLastWebSocket()!
+
+    // Send ping
+    await vi.advanceTimersByTimeAsync(1000)
+
+    // Respond with valid pong
+    socket.simulateMessage({ type: 'pong' })
+
+    // Another heartbeat interval - should not timeout
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(transport.isConnected()).toBe(true)
+    expect(onError).not.toHaveBeenCalledWith(expect.objectContaining({ code: 'HEARTBEAT_TIMEOUT' }))
+  })
+
+  it('should not treat null as a pong message', async () => {
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      heartbeatInterval: 0, // Disable heartbeat to avoid interference
+    })
+
+    // Establish connection
+    const sendPromise = transport.send('test')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    const socket = getLastWebSocket()!
+
+    // Start waiting for a message
+    const receivePromise = transport.receive()
+
+    // Simulate receiving null (which JSON.parse would produce for "null")
+    socket.simulateRawMessage('null')
+
+    // The null should be passed through as a regular message, not treated as pong
+    const msg = await receivePromise
+    expect(msg).toBe('null')
+  })
+
+  it('should not treat array as a pong message', async () => {
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      heartbeatInterval: 0,
+    })
+
+    // Establish connection
+    const sendPromise = transport.send('test')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    const socket = getLastWebSocket()!
+
+    // Start waiting for a message
+    const receivePromise = transport.receive()
+
+    // Simulate receiving an array with type property (arrays are objects in JS)
+    socket.simulateRawMessage('["pong"]')
+
+    // Should be passed through as regular message
+    const msg = await receivePromise
+    expect(msg).toBe('["pong"]')
+  })
+
+  it('should not treat object without type property as pong', async () => {
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      heartbeatInterval: 0,
+    })
+
+    // Establish connection
+    const sendPromise = transport.send('test')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    const socket = getLastWebSocket()!
+
+    // Start waiting for a message
+    const receivePromise = transport.receive()
+
+    // Simulate receiving object without type property
+    socket.simulateMessage({ data: 'pong', timestamp: 123 })
+
+    // Should be passed through as regular message
+    const msg = await receivePromise
+    expect(JSON.parse(msg)).toEqual({ data: 'pong', timestamp: 123 })
+  })
+
+  it('should not treat object with wrong type value as pong', async () => {
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      heartbeatInterval: 0,
+    })
+
+    // Establish connection
+    const sendPromise = transport.send('test')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    const socket = getLastWebSocket()!
+
+    // Start waiting for a message
+    const receivePromise = transport.receive()
+
+    // Simulate receiving object with wrong type value
+    socket.simulateMessage({ type: 'ping' })
+
+    // Should be passed through as regular message
+    const msg = await receivePromise
+    expect(JSON.parse(msg)).toEqual({ type: 'ping' })
+  })
+
+  it('should not treat primitive string as pong', async () => {
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      heartbeatInterval: 0,
+    })
+
+    // Establish connection
+    const sendPromise = transport.send('test')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    const socket = getLastWebSocket()!
+
+    // Start waiting for a message
+    const receivePromise = transport.receive()
+
+    // Simulate receiving a string "pong"
+    socket.simulateRawMessage('"pong"')
+
+    // Should be passed through as regular message
+    const msg = await receivePromise
+    expect(msg).toBe('"pong"')
+  })
+
+  it('should not treat number as pong', async () => {
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      heartbeatInterval: 0,
+    })
+
+    // Establish connection
+    const sendPromise = transport.send('test')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    const socket = getLastWebSocket()!
+
+    // Start waiting for a message
+    const receivePromise = transport.receive()
+
+    // Simulate receiving a number
+    socket.simulateRawMessage('42')
+
+    // Should be passed through as regular message
+    const msg = await receivePromise
+    expect(msg).toBe('42')
+  })
+
+  it('should handle malformed JSON gracefully without crashing', async () => {
+    const onError = vi.fn()
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      heartbeatInterval: 0,
+      onError,
+    })
+
+    // Establish connection
+    const sendPromise = transport.send('test')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    const socket = getLastWebSocket()!
+
+    // Start waiting for a message
+    const receivePromise = transport.receive()
+
+    // Simulate receiving malformed JSON
+    socket.simulateRawMessage('{type: "pong"}') // Invalid JSON (missing quotes on key)
+
+    // Should be passed through as regular message (not crash)
+    const msg = await receivePromise
+    expect(msg).toBe('{type: "pong"}')
+
+    // No error should be emitted for parse failures (they're handled gracefully)
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('should accept pong with extra properties', async () => {
+    const onError = vi.fn()
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      heartbeatInterval: 1000,
+      heartbeatTimeout: 500,
+      onError,
+      autoReconnect: false,
+    })
+
+    // Establish connection
+    const sendPromise = transport.send('test')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    const socket = getLastWebSocket()!
+
+    // Send ping
+    await vi.advanceTimersByTimeAsync(1000)
+
+    // Respond with pong that has extra properties (timestamp, etc.)
+    socket.simulateMessage({ type: 'pong', t: Date.now(), serverTime: 123456789 })
+
+    // Another heartbeat interval - should not timeout
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(transport.isConnected()).toBe(true)
+    expect(onError).not.toHaveBeenCalledWith(expect.objectContaining({ code: 'HEARTBEAT_TIMEOUT' }))
+  })
+
+  it('should log invalid pong structure in debug mode', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+      heartbeatInterval: 0,
+      debug: true,
+    })
+
+    // Establish connection
+    const sendPromise = transport.send('test')
+    await vi.advanceTimersByTimeAsync(0)
+    getLastWebSocket()!.simulateOpen()
+    await vi.advanceTimersByTimeAsync(0)
+    await sendPromise
+
+    const socket = getLastWebSocket()!
+
+    // Start waiting for a message
+    const receivePromise = transport.receive()
+
+    // Simulate receiving null
+    socket.simulateRawMessage('null')
+
+    await receivePromise
+
+    // Should have logged about invalid pong
+    const invalidPongLogs = consoleSpy.mock.calls.filter(
+      call => call[0] === '[ReconnectingWS]' && call.some(arg => String(arg).includes('Invalid pong'))
+    )
+    expect(invalidPongLogs.length).toBeGreaterThan(0)
+
+    consoleSpy.mockRestore()
+  })
+})
+
+// ============================================================================
 // First-Message Authentication Tests
 // ============================================================================
 

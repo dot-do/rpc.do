@@ -461,7 +461,9 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
     // Check for heartbeat pong
     try {
       const msg = JSON.parse(data)
-      if (msg.type === 'pong') {
+      // Validate pong message structure (Bug fix: rpc.do-ucy)
+      // Ensure msg is a valid object with type === 'pong' before processing
+      if (this.isValidPongMessage(msg)) {
         this.heartbeatPending = false
         this.lastPongTime = Date.now()
         return
@@ -582,32 +584,55 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
   }
 
   /**
+   * Shared helper to enforce queue size limit based on queueFullBehavior
+   * @param queue - The queue array to check and potentially modify
+   * @param maxSize - Maximum allowed queue size
+   * @param behavior - The QueueFullBehavior to apply when queue is full
+   * @param queueName - Name of the queue for logging and error messages ('send' or 'receive')
+   * @returns true if the message should be added, false if it should be dropped
+   * @throws ConnectionError if behavior is 'error' and queue is full
+   */
+  private enforceQueueLimit(
+    queue: string[],
+    maxSize: number,
+    behavior: QueueFullBehavior,
+    queueName: 'send' | 'receive'
+  ): boolean {
+    if (queue.length < maxSize) {
+      return true // Queue has room
+    }
+
+    switch (behavior) {
+      case 'error':
+        throw ConnectionError.queueFull(queueName, maxSize)
+
+      case 'drop-oldest':
+        queue.shift()
+        this.log(`${queueName} queue full, dropped oldest message (drop-oldest behavior)`)
+        return true // Make room and allow the new message
+
+      case 'drop-newest':
+        this.log(`${queueName} queue full, dropping incoming message (drop-newest behavior)`)
+        return false // Don't add the new message
+
+      default:
+        // Exhaustive check - should never happen
+        throw ConnectionError.queueFull(queueName, maxSize)
+    }
+  }
+
+  /**
    * Enforce message queue size limit based on queueFullBehavior
    * @returns true if the message should be added, false if it should be dropped
    * @throws ConnectionError if queueFullBehavior is 'error' and queue is full
    */
   private enforceMessageQueueLimit(): boolean {
-    if (this.messageQueue.length < this.options.maxQueueSize) {
-      return true // Queue has room
-    }
-
-    switch (this.options.queueFullBehavior) {
-      case 'error':
-        throw ConnectionError.queueFull('receive', this.options.maxQueueSize)
-
-      case 'drop-oldest':
-        this.messageQueue.shift()
-        this.log('Message queue full, dropped oldest message (drop-oldest behavior)')
-        return true // Make room and allow the new message
-
-      case 'drop-newest':
-        this.log('Message queue full, dropping incoming message (drop-newest behavior)')
-        return false // Don't add the new message
-
-      default:
-        // Exhaustive check - should never happen
-        throw ConnectionError.queueFull('receive', this.options.maxQueueSize)
-    }
+    return this.enforceQueueLimit(
+      this.messageQueue,
+      this.options.maxQueueSize,
+      this.options.queueFullBehavior,
+      'receive'
+    )
   }
 
   /**
@@ -616,27 +641,12 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
    * @throws ConnectionError if queueFullBehavior is 'error' and queue is full
    */
   private enforceSendQueueLimit(): boolean {
-    if (this.sendQueue.length < this.options.maxQueueSize) {
-      return true // Queue has room
-    }
-
-    switch (this.options.queueFullBehavior) {
-      case 'error':
-        throw ConnectionError.queueFull('send', this.options.maxQueueSize)
-
-      case 'drop-oldest':
-        this.sendQueue.shift()
-        this.log('Send queue full, dropped oldest message (drop-oldest behavior)')
-        return true // Make room and allow the new message
-
-      case 'drop-newest':
-        this.log('Send queue full, dropping incoming message (drop-newest behavior)')
-        return false // Don't add the new message
-
-      default:
-        // Exhaustive check - should never happen
-        throw ConnectionError.queueFull('send', this.options.maxQueueSize)
-    }
+    return this.enforceQueueLimit(
+      this.sendQueue,
+      this.options.maxQueueSize,
+      this.options.queueFullBehavior,
+      'send'
+    )
   }
 
   // ==========================================================================
@@ -778,6 +788,36 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
     if (this.options.debug) {
       console.log('[ReconnectingWS]', ...args)
     }
+  }
+
+  /**
+   * Validate pong message structure (Bug fix: rpc.do-ucy)
+   *
+   * Ensures the parsed message is a valid pong message with proper structure.
+   * This guards against malformed messages that could cause unexpected behavior.
+   *
+   * @param msg - The parsed JSON message to validate
+   * @returns true if msg is a valid pong message, false otherwise
+   */
+  private isValidPongMessage(msg: unknown): boolean {
+    // Check that msg is a non-null object
+    if (typeof msg !== 'object' || msg === null) {
+      this.log('Invalid pong: not an object')
+      return false
+    }
+
+    // Check that msg has a 'type' property
+    if (!('type' in msg)) {
+      return false
+    }
+
+    // Check that type is exactly 'pong'
+    const typedMsg = msg as { type: unknown }
+    if (typedMsg.type !== 'pong') {
+      return false
+    }
+
+    return true
   }
 }
 
