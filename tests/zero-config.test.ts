@@ -16,33 +16,17 @@ import { join } from 'node:path'
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 
-// ============================================================================
-// RED PHASE TDD: These tests are skipped because the implementation doesn't exist yet.
-// The detect module (../src/detect) needs to be implemented before these tests can run.
-// Once implemented, remove the .skip from the describe blocks below.
-// ============================================================================
-
-// Import the detect module that doesn't exist yet (will fail)
-// import {
-//   detectFromWrangler,
-//   findClassSource,
-//   detectFromScan,
-//   updateTsConfig,
-//   type WranglerBinding,
-//   type DetectedDO,
-//   type ScanResult,
-// } from '../src/detect'
-
-// Placeholder types until implementation exists
-type WranglerBinding = { name: string; className: string }
-type DetectedDO = { className: string; filePath: string; baseClass: string }
-type ScanResult = { className: string; filePath: string; pattern: string; baseClass?: string; lineNumber: number; exportName?: string }
-
-// Placeholder functions - will be replaced by actual imports when implemented
-const detectFromWrangler = async (_dir: string): Promise<WranglerBinding[]> => { throw new Error('Not implemented') }
-const findClassSource = async (_className: string, _dir: string, _options?: { pattern?: string }): Promise<DetectedDO | null> => { throw new Error('Not implemented') }
-const detectFromScan = async (_dir: string): Promise<ScanResult[]> => { throw new Error('Not implemented') }
-const updateTsConfig = async (_dir: string, _options?: { outputDir?: string }): Promise<boolean> => { throw new Error('Not implemented') }
+// Import the detect module
+import {
+  detectFromWrangler,
+  findClassSource,
+  detectFromScan,
+  updateTsConfig,
+  runZeroConfig,
+  type WranglerBinding,
+  type DetectedDO,
+  type ScanResult,
+} from '../src/detect'
 
 // ============================================================================
 // Test Fixtures - Sample wrangler configs and DO source files
@@ -190,7 +174,7 @@ function createFile(dir: string, relativePath: string, content: string): string 
 // Tests: detectFromWrangler
 // ============================================================================
 
-describe.skip('detectFromWrangler', () => {
+describe('detectFromWrangler', () => {
   beforeEach(() => {
     testDir = createTestDir()
   })
@@ -378,7 +362,7 @@ bindings = [{ name = "TOML_DO", class_name = "TomlDO" }]
 // Tests: findClassSource
 // ============================================================================
 
-describe.skip('findClassSource', () => {
+describe('findClassSource', () => {
   beforeEach(() => {
     testDir = createTestDir()
   })
@@ -509,7 +493,7 @@ export class SecondDO extends DurableObject {
 // Tests: detectFromScan
 // ============================================================================
 
-describe.skip('detectFromScan', () => {
+describe('detectFromScan', () => {
   beforeEach(() => {
     testDir = createTestDir()
   })
@@ -643,7 +627,7 @@ describe.skip('detectFromScan', () => {
 // Tests: updateTsConfig
 // ============================================================================
 
-describe.skip('updateTsConfig', () => {
+describe('updateTsConfig', () => {
   beforeEach(() => {
     testDir = createTestDir()
   })
@@ -745,7 +729,7 @@ describe.skip('updateTsConfig', () => {
 // Tests: Integration - Zero-Config CLI Flow
 // ============================================================================
 
-describe.skip('zero-config CLI', () => {
+describe('zero-config CLI', () => {
   beforeEach(() => {
     testDir = createTestDir()
   })
@@ -876,7 +860,7 @@ bindings = [
 // Tests: Type Definitions (compile-time checks)
 // ============================================================================
 
-describe.skip('type definitions', () => {
+describe('type definitions', () => {
   it('should export WranglerBinding type', () => {
     // This is a compile-time check - if the type is wrong, the test file won't compile
     const binding: WranglerBinding = {
