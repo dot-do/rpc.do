@@ -77,6 +77,7 @@
     "build": "rm -rf dist && tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "cd e2e && pnpm test",
     "typecheck": "tsc --noEmit",
     "bench": "tsx benchmarks/bench.ts",
@@ -152,6 +153,7 @@
     "tsup": "^8.0.0",
     "tsx": "^4.7.0",
     "typescript": "^5.5.2",
+    "@vitest/coverage-v8": "^2.1.8",
     "vitest": "^2.1.8",
     "wrangler": "^4.0.0",
     "ws": "^8.16.0"

@@ -28,7 +28,14 @@ export type {
   RPCInput,
   RpcClientMiddleware,
   RPCClientMiddleware,
+  // Branded types for compile-time safety
+  SqlQueryString,
+  RpcMethodPath,
+  AuthToken,
 } from './types'
+
+// Export branded type helper functions
+export { sqlQuery, methodPath, authToken } from './types'
 
 import type { Transport, TransportFactory, RpcProxy, RpcClientMiddleware } from './types'
 
@@ -361,6 +368,7 @@ export {
   type CreateDOClientOptions,
   type SqlQuery,
   type SqlQueryResult,
+  type SerializedSqlQuery,
   type RemoteStorage,
   type RemoteCollection,
   type RemoteCollections,

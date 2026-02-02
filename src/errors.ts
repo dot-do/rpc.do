@@ -29,6 +29,7 @@ export type ConnectionErrorCode =
   | 'HEARTBEAT_TIMEOUT'
   | 'INSECURE_CONNECTION'
   | 'REQUEST_TIMEOUT'
+  | 'QUEUE_FULL'
 
 /**
  * Connection error with retry information
@@ -233,6 +234,41 @@ export class ConnectionError extends Error {
       `Request timeout after ${timeoutMs}ms`,
       'REQUEST_TIMEOUT',
       true
+    )
+  }
+
+  /**
+   * Create a queue full error (not retryable without fixing the underlying issue)
+   *
+   * Thrown when the message queue is full and queueFullBehavior is set to 'error'.
+   * This indicates backpressure - messages are being sent faster than they can be processed.
+   *
+   * @param queueType - Which queue is full ('send' or 'receive')
+   * @param maxSize - The maximum queue size that was reached
+   * @returns ConnectionError with code 'QUEUE_FULL'
+   *
+   * @example
+   * ```typescript
+   * const transport = reconnectingWs('wss://api.example.com', {
+   *   maxQueueSize: 100,
+   *   queueFullBehavior: 'error',
+   * })
+   *
+   * try {
+   *   await transport.send(largeMessage)
+   * } catch (error) {
+   *   if (error instanceof ConnectionError && error.code === 'QUEUE_FULL') {
+   *     console.log('Message queue is full, slow down sending')
+   *   }
+   * }
+   * ```
+   */
+  static queueFull(queueType: 'send' | 'receive', maxSize: number): ConnectionError {
+    return new ConnectionError(
+      `${queueType === 'send' ? 'Send' : 'Receive'} queue is full (max ${maxSize} messages). ` +
+        'Consider increasing maxQueueSize, using a different queueFullBehavior, or reducing message rate.',
+      'QUEUE_FULL',
+      false
     )
   }
 }

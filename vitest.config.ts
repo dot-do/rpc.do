@@ -17,5 +17,26 @@ export default defineConfig({
     maxConcurrency: 5,
     testTimeout: 30000,
     hookTimeout: 30000,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'json-summary', 'lcov'],
+      reportsDirectory: './coverage',
+      exclude: [
+        '**/node_modules/**',
+        '**/dist/**',
+        '**/e2e/**',
+        '**/*.d.ts',
+        '**/types/**',
+        'vitest.config.ts',
+        'tsup.config.ts',
+        '**/benchmarks/**',
+      ],
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 80,
+        statements: 80,
+      },
+    },
   },
 })

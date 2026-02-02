@@ -55,6 +55,14 @@ import { loadCapnweb } from '../capnweb-loader.js'
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'closed'
 
 /**
+ * Behavior when the message queue is full
+ * - 'error': Throw a ConnectionError with code 'QUEUE_FULL' (default)
+ * - 'drop-oldest': Drop the oldest message in the queue to make room
+ * - 'drop-newest': Drop the incoming message (don't add to queue)
+ */
+export type QueueFullBehavior = 'error' | 'drop-oldest' | 'drop-newest'
+
+/**
  * Event handlers for connection lifecycle
  */
 export interface ConnectionEventHandlers {
@@ -129,10 +137,18 @@ export interface ReconnectingWebSocketOptions extends ConnectionEventHandlers {
 
   /**
    * Maximum number of messages to queue while disconnected
-   * When the limit is reached, the oldest queued messages are rejected
    * @default 1000
    */
   maxQueueSize?: number
+
+  /**
+   * Behavior when the message queue is full
+   * - 'error': Throw a ConnectionError with code 'QUEUE_FULL' (default)
+   * - 'drop-oldest': Drop the oldest message in the queue to make room
+   * - 'drop-newest': Drop the incoming message (don't add to queue)
+   * @default 'error'
+   */
+  queueFullBehavior?: QueueFullBehavior
 
   /**
    * Timeout in ms for ensureConnected to wait for a connection
@@ -225,6 +241,7 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
       heartbeatTimeout: options.heartbeatTimeout ?? DEFAULT_HEARTBEAT_TIMEOUT,
       allowInsecureAuth: options.allowInsecureAuth ?? false,
       maxQueueSize: options.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE,
+      queueFullBehavior: options.queueFullBehavior ?? 'error',
       connectionTimeout: options.connectionTimeout ?? DEFAULT_CONNECTION_TIMEOUT,
       debug: options.debug ?? false,
     }
@@ -253,10 +270,12 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
       this.ws.send(message)
       this.log('Sent:', message.slice(0, 100))
     } else {
-      // Enforce queue size limit (Bug fix: rpc.do-zt0)
-      this.enforceSendQueueLimit()
-      this.sendQueue.push(message)
-      this.log('Queued for send:', message.slice(0, 100))
+      // Enforce queue size limit (Bug fix: rpc.do-zt0) with backpressure handling (rpc.do-n0z)
+      const shouldQueue = this.enforceSendQueueLimit()
+      if (shouldQueue) {
+        this.sendQueue.push(message)
+        this.log('Queued for send:', message.slice(0, 100))
+      }
     }
   }
 
@@ -458,9 +477,18 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
       return
     }
 
-    // Otherwise queue the message (enforce limit: rpc.do-zt0)
-    this.enforceMessageQueueLimit()
-    this.messageQueue.push(data)
+    // Otherwise queue the message (enforce limit: rpc.do-zt0) with backpressure handling (rpc.do-n0z)
+    try {
+      const shouldQueue = this.enforceMessageQueueLimit()
+      if (shouldQueue) {
+        this.messageQueue.push(data)
+      }
+    } catch (error) {
+      // For 'error' behavior, we log and emit the error since handleMessage is sync
+      // The message is dropped in this case
+      this.log('Message queue full, message dropped:', error)
+      this.options.onError?.(error as Error)
+    }
   }
 
   /**
@@ -554,27 +582,60 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
   }
 
   /**
-   * Enforce message queue size limit by discarding oldest messages
+   * Enforce message queue size limit based on queueFullBehavior
+   * @returns true if the message should be added, false if it should be dropped
+   * @throws ConnectionError if queueFullBehavior is 'error' and queue is full
    */
-  private enforceMessageQueueLimit(): void {
-    while (this.messageQueue.length >= this.options.maxQueueSize) {
-      this.messageQueue.shift()
-      this.log('Message queue full, dropped oldest message')
-      // If there's a pending receive waiting, reject it with overflow error
-      const pending = this.receiveQueue.shift()
-      if (pending) {
-        pending.reject(new Error('Message queue overflow: oldest message dropped'))
-      }
+  private enforceMessageQueueLimit(): boolean {
+    if (this.messageQueue.length < this.options.maxQueueSize) {
+      return true // Queue has room
+    }
+
+    switch (this.options.queueFullBehavior) {
+      case 'error':
+        throw ConnectionError.queueFull('receive', this.options.maxQueueSize)
+
+      case 'drop-oldest':
+        this.messageQueue.shift()
+        this.log('Message queue full, dropped oldest message (drop-oldest behavior)')
+        return true // Make room and allow the new message
+
+      case 'drop-newest':
+        this.log('Message queue full, dropping incoming message (drop-newest behavior)')
+        return false // Don't add the new message
+
+      default:
+        // Exhaustive check - should never happen
+        throw ConnectionError.queueFull('receive', this.options.maxQueueSize)
     }
   }
 
   /**
-   * Enforce send queue size limit by discarding oldest messages
+   * Enforce send queue size limit based on queueFullBehavior
+   * @returns true if the message should be added, false if it should be dropped
+   * @throws ConnectionError if queueFullBehavior is 'error' and queue is full
    */
-  private enforceSendQueueLimit(): void {
-    while (this.sendQueue.length >= this.options.maxQueueSize) {
-      this.sendQueue.shift()
-      this.log('Send queue full, dropped oldest message')
+  private enforceSendQueueLimit(): boolean {
+    if (this.sendQueue.length < this.options.maxQueueSize) {
+      return true // Queue has room
+    }
+
+    switch (this.options.queueFullBehavior) {
+      case 'error':
+        throw ConnectionError.queueFull('send', this.options.maxQueueSize)
+
+      case 'drop-oldest':
+        this.sendQueue.shift()
+        this.log('Send queue full, dropped oldest message (drop-oldest behavior)')
+        return true // Make room and allow the new message
+
+      case 'drop-newest':
+        this.log('Send queue full, dropping incoming message (drop-newest behavior)')
+        return false // Don't add the new message
+
+      default:
+        // Exhaustive check - should never happen
+        throw ConnectionError.queueFull('send', this.options.maxQueueSize)
     }
   }
 
@@ -680,6 +741,33 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
    */
   isConnected(): boolean {
     return this.state === 'connected' && this.ws?.readyState === WebSocket.OPEN
+  }
+
+  /**
+   * Get the current depth of the message queues
+   *
+   * Useful for monitoring backpressure and implementing custom flow control.
+   *
+   * @returns Object with send and receive queue depths
+   *
+   * @example
+   * ```typescript
+   * const depth = transport.getQueueDepth()
+   * console.log(`Send queue: ${depth.send}/${depth.maxSize}`)
+   * console.log(`Receive queue: ${depth.receive}/${depth.maxSize}`)
+   *
+   * // Implement custom backpressure
+   * if (depth.send > depth.maxSize * 0.8) {
+   *   console.warn('Send queue is 80% full, consider slowing down')
+   * }
+   * ```
+   */
+  getQueueDepth(): { send: number; receive: number; maxSize: number } {
+    return {
+      send: this.sendQueue.length,
+      receive: this.messageQueue.length,
+      maxSize: this.options.maxQueueSize,
+    }
   }
 
   // ==========================================================================

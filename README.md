@@ -4,6 +4,7 @@ Access your Durable Object's SQL, storage, and collections remotely -- same API 
 
 [![npm](https://img.shields.io/npm/v/rpc.do)](https://npmjs.com/package/rpc.do)
 ![CI](https://github.com/dot-do/rpc.do/actions/workflows/ci.yml/badge.svg)
+[![codecov](https://codecov.io/gh/dot-do/rpc.do/branch/main/graph/badge.svg)](https://codecov.io/gh/dot-do/rpc.do)
 
 ```bash
 npm install rpc.do
@@ -154,6 +155,7 @@ try {
 - [API Reference](docs/API_REFERENCE.md) -- Complete API documentation
 - [Architecture](docs/ARCHITECTURE.md) -- Technical design and internals
 - [Troubleshooting](docs/TROUBLESHOOTING.md) -- Common issues and solutions
+- [Performance Benchmarks](BENCHMARKS.md) -- Latency, throughput, and bundle size analysis
 - [Migrating from tRPC](docs/MIGRATING_FROM_TRPC.md)
 - [Migrating from gRPC](docs/MIGRATING_FROM_GRPC.md)
 - [React Integration](docs/REACT_INTEGRATION.md)

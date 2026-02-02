@@ -46,6 +46,20 @@ import type {
   DOClientOptions as TypesDOClientOptions,
 } from '@dotdo/types/rpc'
 import { INTERNAL_METHODS } from './constants.js'
+import {
+  asSqlQueryResult,
+  asNullable,
+  asSqlRunResult,
+  asArray,
+  asBoolean,
+  asNumber,
+  asStringArray,
+  asCollectionStats,
+  asRecord,
+  asOptional,
+  asDatabaseSchema,
+  asRpcSchema,
+} from './utils/type-helpers.js'
 
 // Import schema types from @dotdo/rpc (canonical location)
 // These are bundled by tsup so no runtime dependency is added
@@ -373,9 +387,23 @@ function wrapTransportWithMiddleware(transport: Transport, middleware: RpcClient
 }
 
 /**
+ * Serialized SQL query structure for transport.
+ *
+ * Note: The SqlQueryString branded type is available for compile-time safety
+ * when working with raw SQL strings elsewhere in the codebase. This structure
+ * uses parameterized queries (template strings + values) which is inherently safe.
+ */
+export interface SerializedSqlQuery {
+  /** The template string parts */
+  strings: string[]
+  /** The interpolated values */
+  values: unknown[]
+}
+
+/**
  * Create a serialized SQL query from tagged template
  */
-function serializeSql(strings: TemplateStringsArray, values: unknown[]): { strings: string[]; values: unknown[] } {
+function serializeSql(strings: TemplateStringsArray, values: unknown[]): SerializedSqlQuery {
   return {
     strings: Array.from(strings),
     values,
@@ -394,17 +422,21 @@ function createSqlQuery<T extends Record<string, unknown>>(
 
   return {
     async all(): Promise<T[]> {
-      const result = await transport.call(INTERNAL_METHODS.SQL, [serialized]) as SqlQueryResult<T>
+      // Safe: INTERNAL_METHODS.SQL returns SqlQueryResult from the server
+      const result = asSqlQueryResult<T>(await transport.call(INTERNAL_METHODS.SQL, [serialized]))
       return result.results
     },
     async first(): Promise<T | null> {
-      return transport.call(INTERNAL_METHODS.SQL_FIRST, [serialized]) as Promise<T | null>
+      // Safe: INTERNAL_METHODS.SQL_FIRST returns T | null from the server
+      return asNullable<T>(await transport.call(INTERNAL_METHODS.SQL_FIRST, [serialized]))
     },
     async run(): Promise<{ rowsWritten: number }> {
-      return transport.call(INTERNAL_METHODS.SQL_RUN, [serialized]) as Promise<{ rowsWritten: number }>
+      // Safe: INTERNAL_METHODS.SQL_RUN returns { rowsWritten: number } from the server
+      return asSqlRunResult(await transport.call(INTERNAL_METHODS.SQL_RUN, [serialized]))
     },
     async raw(): Promise<SqlQueryResult<T>> {
-      return transport.call(INTERNAL_METHODS.SQL, [serialized]) as Promise<SqlQueryResult<T>>
+      // Safe: INTERNAL_METHODS.SQL returns SqlQueryResult from the server
+      return asSqlQueryResult<T>(await transport.call(INTERNAL_METHODS.SQL, [serialized]))
     },
   }
 }
@@ -418,31 +450,39 @@ function createCollectionProxy<T extends Record<string, unknown>>(
 ): RemoteCollection<T> {
   return {
     async get(id: string): Promise<T | null> {
-      return transport.call(INTERNAL_METHODS.COLLECTION_GET, [name, id]) as Promise<T | null>
+      // Safe: COLLECTION_GET returns T | null from the server
+      return asNullable<T>(await transport.call(INTERNAL_METHODS.COLLECTION_GET, [name, id]))
     },
     async put(id: string, doc: T): Promise<void> {
       await transport.call(INTERNAL_METHODS.COLLECTION_PUT, [name, id, doc])
     },
     async delete(id: string): Promise<boolean> {
-      return transport.call(INTERNAL_METHODS.COLLECTION_DELETE, [name, id]) as Promise<boolean>
+      // Safe: COLLECTION_DELETE returns boolean from the server
+      return asBoolean(await transport.call(INTERNAL_METHODS.COLLECTION_DELETE, [name, id]))
     },
     async has(id: string): Promise<boolean> {
-      return transport.call(INTERNAL_METHODS.COLLECTION_HAS, [name, id]) as Promise<boolean>
+      // Safe: COLLECTION_HAS returns boolean from the server
+      return asBoolean(await transport.call(INTERNAL_METHODS.COLLECTION_HAS, [name, id]))
     },
     async find(filter?: Filter<T>, options?: QueryOptions): Promise<T[]> {
-      return transport.call(INTERNAL_METHODS.COLLECTION_FIND, [name, filter, options]) as Promise<T[]>
+      // Safe: COLLECTION_FIND returns T[] from the server
+      return asArray<T>(await transport.call(INTERNAL_METHODS.COLLECTION_FIND, [name, filter, options]))
     },
     async count(filter?: Filter<T>): Promise<number> {
-      return transport.call(INTERNAL_METHODS.COLLECTION_COUNT, [name, filter]) as Promise<number>
+      // Safe: COLLECTION_COUNT returns number from the server
+      return asNumber(await transport.call(INTERNAL_METHODS.COLLECTION_COUNT, [name, filter]))
     },
     async list(options?: QueryOptions): Promise<T[]> {
-      return transport.call(INTERNAL_METHODS.COLLECTION_LIST, [name, options]) as Promise<T[]>
+      // Safe: COLLECTION_LIST returns T[] from the server
+      return asArray<T>(await transport.call(INTERNAL_METHODS.COLLECTION_LIST, [name, options]))
     },
     async keys(): Promise<string[]> {
-      return transport.call(INTERNAL_METHODS.COLLECTION_KEYS, [name]) as Promise<string[]>
+      // Safe: COLLECTION_KEYS returns string[] from the server
+      return asStringArray(await transport.call(INTERNAL_METHODS.COLLECTION_KEYS, [name]))
     },
     async clear(): Promise<number> {
-      return transport.call(INTERNAL_METHODS.COLLECTION_CLEAR, [name]) as Promise<number>
+      // Safe: COLLECTION_CLEAR returns number from the server
+      return asNumber(await transport.call(INTERNAL_METHODS.COLLECTION_CLEAR, [name]))
     },
   }
 }
@@ -456,13 +496,18 @@ function createCollectionsProxy(getTransport: () => Transport): RemoteCollection
   }
 
   fn.names = async (): Promise<string[]> => {
-    return getTransport().call(INTERNAL_METHODS.COLLECTION_NAMES, []) as Promise<string[]>
+    // Safe: COLLECTION_NAMES returns string[] from the server
+    return asStringArray(await getTransport().call(INTERNAL_METHODS.COLLECTION_NAMES, []))
   }
 
   fn.stats = async (): Promise<Array<{ name: string; count: number; size: number }>> => {
-    return getTransport().call(INTERNAL_METHODS.COLLECTION_STATS, []) as Promise<Array<{ name: string; count: number; size: number }>>
+    // Safe: COLLECTION_STATS returns Array<{ name, count, size }> from the server
+    return asCollectionStats(await getTransport().call(INTERNAL_METHODS.COLLECTION_STATS, []))
   }
 
+  // Structural cast: TypeScript cannot verify that a function object with additional
+  // properties satisfies an interface with a call signature. This is safe because
+  // fn is callable and has names/stats methods attached.
   return fn as RemoteCollections
 }
 
@@ -477,10 +522,12 @@ function createStorageProxy(transport: Transport): RemoteStorage {
   const proxy = {
     async get<T>(keyOrKeys: string | string[]): Promise<T | undefined | Map<string, T>> {
       if (Array.isArray(keyOrKeys)) {
-        const result = await transport.call(INTERNAL_METHODS.STORAGE_GET_MULTIPLE, [keyOrKeys]) as Record<string, T>
+        // Safe: STORAGE_GET_MULTIPLE returns Record<string, T> from the server
+        const result = asRecord<T>(await transport.call(INTERNAL_METHODS.STORAGE_GET_MULTIPLE, [keyOrKeys]))
         return new Map(Object.entries(result))
       }
-      return transport.call(INTERNAL_METHODS.STORAGE_GET, [keyOrKeys]) as Promise<T | undefined>
+      // Safe: STORAGE_GET returns T | undefined from the server
+      return asOptional<T>(await transport.call(INTERNAL_METHODS.STORAGE_GET, [keyOrKeys]))
     },
     async put<T>(keyOrEntries: string | Record<string, T>, value?: T): Promise<void> {
       if (typeof keyOrEntries === 'string') {
@@ -491,19 +538,25 @@ function createStorageProxy(transport: Transport): RemoteStorage {
     },
     async delete(keyOrKeys: string | string[]): Promise<boolean | number> {
       if (Array.isArray(keyOrKeys)) {
-        return transport.call(INTERNAL_METHODS.STORAGE_DELETE_MULTIPLE, [keyOrKeys]) as Promise<number>
+        // Safe: STORAGE_DELETE_MULTIPLE returns number from the server
+        return asNumber(await transport.call(INTERNAL_METHODS.STORAGE_DELETE_MULTIPLE, [keyOrKeys]))
       }
-      return transport.call(INTERNAL_METHODS.STORAGE_DELETE, [keyOrKeys]) as Promise<boolean>
+      // Safe: STORAGE_DELETE returns boolean from the server
+      return asBoolean(await transport.call(INTERNAL_METHODS.STORAGE_DELETE, [keyOrKeys]))
     },
     async list<T>(options?: { prefix?: string; limit?: number; start?: string; end?: string }): Promise<Map<string, T>> {
-      const result = await transport.call(INTERNAL_METHODS.STORAGE_LIST, [options]) as Record<string, T>
+      // Safe: STORAGE_LIST returns Record<string, T> from the server
+      const result = asRecord<T>(await transport.call(INTERNAL_METHODS.STORAGE_LIST, [options]))
       return new Map(Object.entries(result))
     },
     async keys(prefix?: string): Promise<string[]> {
-      return transport.call(INTERNAL_METHODS.STORAGE_KEYS, [prefix]) as Promise<string[]>
+      // Safe: STORAGE_KEYS returns string[] from the server
+      return asStringArray(await transport.call(INTERNAL_METHODS.STORAGE_KEYS, [prefix]))
     },
   }
-  // Cast required due to overloaded method signatures on RemoteStorage interface
+  // Structural cast: TypeScript cannot verify overloaded method signatures on
+  // object literals. This is safe because the proxy correctly discriminates
+  // on argument type (string vs array vs object) for each overloaded method.
   return proxy as RemoteStorage
 }
 
@@ -659,10 +712,17 @@ export function createDOClient<T extends object = Record<string, unknown>>(
           return t.call(path.join('.'), args)
         })()
       },
+    // Structural cast: Proxy<() => void> cannot be typed as a callable with
+    // arbitrary property access. This is safe because the proxy correctly
+    // implements both function call (apply trap) and property access (get trap).
     }) as MethodProxy
   }
 
   // The main client proxy
+  // Structural cast: TypeScript cannot infer the full DOClient<T> type from
+  // a Proxy. This is safe because the proxy's get trap handles all DOClient
+  // properties (sql, storage, collection, dbSchema, schema, close) and
+  // delegates unknown properties to createMethodProxy for custom RPC methods.
   const client = new Proxy({} as DOClient<T>, {
     get(_, prop: string) {
       // Special properties
@@ -684,14 +744,16 @@ export function createDOClient<T extends object = Record<string, unknown>>(
       if (prop === 'dbSchema') {
         return async (): Promise<DatabaseSchema> => {
           const t = await getTransport()
-          return t.call(INTERNAL_METHODS.DB_SCHEMA, []) as Promise<DatabaseSchema>
+          // Safe: DB_SCHEMA returns DatabaseSchema from the server
+          return asDatabaseSchema(await t.call(INTERNAL_METHODS.DB_SCHEMA, []))
         }
       }
 
       if (prop === 'schema') {
         return async (): Promise<RpcSchema> => {
           const t = await getTransport()
-          return t.call(INTERNAL_METHODS.SCHEMA, []) as Promise<RpcSchema>
+          // Safe: SCHEMA returns RpcSchema from the server
+          return asRpcSchema(await t.call(INTERNAL_METHODS.SCHEMA, []))
         }
       }
 

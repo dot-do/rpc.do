@@ -1880,3 +1880,287 @@ describe('ReconnectingWebSocketTransport - Error Recovery', () => {
     expect(transport.isConnected()).toBe(true)
   })
 })
+
+// ============================================================================
+// Backpressure Handling Tests (rpc.do-n0z)
+// ============================================================================
+
+describe('ReconnectingWebSocketTransport - Backpressure Handling', () => {
+  describe('getQueueDepth()', () => {
+    it('should return current queue depths', async () => {
+      const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+        maxQueueSize: 100,
+      })
+
+      const depth = transport.getQueueDepth()
+      expect(depth.send).toBe(0)
+      expect(depth.receive).toBe(0)
+      expect(depth.maxSize).toBe(100)
+    })
+
+    it('should track receive queue depth', async () => {
+      const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+        maxQueueSize: 100,
+      })
+
+      // Establish connection
+      const sendPromise = transport.send('test')
+      await vi.advanceTimersByTimeAsync(0)
+      getLastWebSocket()!.simulateOpen()
+      await vi.advanceTimersByTimeAsync(0)
+      await sendPromise
+
+      const socket = getLastWebSocket()!
+
+      // Queue messages without consuming them
+      socket.simulateRawMessage('msg1')
+      socket.simulateRawMessage('msg2')
+      socket.simulateRawMessage('msg3')
+
+      const depth = transport.getQueueDepth()
+      expect(depth.receive).toBe(3)
+    })
+  })
+
+  describe('queueFullBehavior: error (default) - receive queue', () => {
+    it('should call onError when receive queue overflows', async () => {
+      const onError = vi.fn()
+      const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+        maxQueueSize: 3,
+        queueFullBehavior: 'error',
+        onError,
+      })
+
+      // Establish connection
+      const sendPromise = transport.send('test')
+      await vi.advanceTimersByTimeAsync(0)
+      getLastWebSocket()!.simulateOpen()
+      await vi.advanceTimersByTimeAsync(0)
+      await sendPromise
+
+      const socket = getLastWebSocket()!
+
+      // Fill the queue
+      socket.simulateRawMessage('msg1')
+      socket.simulateRawMessage('msg2')
+      socket.simulateRawMessage('msg3')
+
+      expect(transport.getQueueDepth().receive).toBe(3)
+
+      // Fourth message should trigger error callback
+      socket.simulateRawMessage('msg4')
+
+      expect(onError).toHaveBeenCalled()
+      const error = onError.mock.calls[0][0] as ConnectionError
+      expect(error.code).toBe('QUEUE_FULL')
+    })
+
+    it('should drop the message when receive queue is full with error behavior', async () => {
+      const onError = vi.fn()
+      const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+        maxQueueSize: 3,
+        queueFullBehavior: 'error',
+        onError,
+      })
+
+      // Establish connection
+      const sendPromise = transport.send('test')
+      await vi.advanceTimersByTimeAsync(0)
+      getLastWebSocket()!.simulateOpen()
+      await vi.advanceTimersByTimeAsync(0)
+      await sendPromise
+
+      const socket = getLastWebSocket()!
+
+      // Fill the queue
+      socket.simulateRawMessage('msg1')
+      socket.simulateRawMessage('msg2')
+      socket.simulateRawMessage('msg3')
+      socket.simulateRawMessage('msg4') // This triggers error
+
+      // Queue should remain at max (msg4 was dropped)
+      expect(transport.getQueueDepth().receive).toBe(3)
+
+      // Messages are in FIFO order, msg4 was dropped
+      const received1 = await transport.receive()
+      const received2 = await transport.receive()
+      const received3 = await transport.receive()
+
+      expect(received1).toBe('msg1')
+      expect(received2).toBe('msg2')
+      expect(received3).toBe('msg3')
+    })
+  })
+
+  describe('queueFullBehavior: drop-oldest - receive queue', () => {
+    it('should drop oldest message when receive queue is full', async () => {
+      const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+        maxQueueSize: 3,
+        queueFullBehavior: 'drop-oldest',
+      })
+
+      // Establish connection
+      const sendPromise = transport.send('test')
+      await vi.advanceTimersByTimeAsync(0)
+      getLastWebSocket()!.simulateOpen()
+      await vi.advanceTimersByTimeAsync(0)
+      await sendPromise
+
+      const socket = getLastWebSocket()!
+
+      // Fill the queue
+      socket.simulateRawMessage('msg1')
+      socket.simulateRawMessage('msg2')
+      socket.simulateRawMessage('msg3')
+
+      expect(transport.getQueueDepth().receive).toBe(3)
+
+      // Fourth message should drop oldest
+      socket.simulateRawMessage('msg4')
+
+      // Queue should still be at max
+      expect(transport.getQueueDepth().receive).toBe(3)
+
+      // First message received should be msg2 (msg1 was dropped)
+      const received = await transport.receive()
+      expect(received).toBe('msg2')
+    })
+
+    it('should continue dropping oldest as more messages arrive', async () => {
+      const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+        maxQueueSize: 2,
+        queueFullBehavior: 'drop-oldest',
+      })
+
+      // Establish connection
+      const sendPromise = transport.send('test')
+      await vi.advanceTimersByTimeAsync(0)
+      getLastWebSocket()!.simulateOpen()
+      await vi.advanceTimersByTimeAsync(0)
+      await sendPromise
+
+      const socket = getLastWebSocket()!
+
+      // Send many messages
+      socket.simulateRawMessage('msg1')
+      socket.simulateRawMessage('msg2')
+      socket.simulateRawMessage('msg3') // drops msg1
+      socket.simulateRawMessage('msg4') // drops msg2
+      socket.simulateRawMessage('msg5') // drops msg3
+
+      // Queue should be at max (2)
+      expect(transport.getQueueDepth().receive).toBe(2)
+
+      // Should get the last 2 messages
+      const received1 = await transport.receive()
+      const received2 = await transport.receive()
+
+      expect(received1).toBe('msg4')
+      expect(received2).toBe('msg5')
+    })
+  })
+
+  describe('queueFullBehavior: drop-newest - receive queue', () => {
+    it('should drop incoming message when receive queue is full', async () => {
+      const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+        maxQueueSize: 3,
+        queueFullBehavior: 'drop-newest',
+      })
+
+      // Establish connection
+      const sendPromise = transport.send('test')
+      await vi.advanceTimersByTimeAsync(0)
+      getLastWebSocket()!.simulateOpen()
+      await vi.advanceTimersByTimeAsync(0)
+      await sendPromise
+
+      const socket = getLastWebSocket()!
+
+      // Fill the queue
+      socket.simulateRawMessage('msg1')
+      socket.simulateRawMessage('msg2')
+      socket.simulateRawMessage('msg3')
+
+      expect(transport.getQueueDepth().receive).toBe(3)
+
+      // Fourth message should be dropped
+      socket.simulateRawMessage('msg4')
+
+      // Queue should still be at max
+      expect(transport.getQueueDepth().receive).toBe(3)
+
+      // First message received should be msg1 (msg4 was dropped)
+      const received = await transport.receive()
+      expect(received).toBe('msg1')
+    })
+
+    it('should continue dropping newest as more messages arrive', async () => {
+      const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+        maxQueueSize: 2,
+        queueFullBehavior: 'drop-newest',
+      })
+
+      // Establish connection
+      const sendPromise = transport.send('test')
+      await vi.advanceTimersByTimeAsync(0)
+      getLastWebSocket()!.simulateOpen()
+      await vi.advanceTimersByTimeAsync(0)
+      await sendPromise
+
+      const socket = getLastWebSocket()!
+
+      // Send many messages
+      socket.simulateRawMessage('msg1')
+      socket.simulateRawMessage('msg2')
+      socket.simulateRawMessage('msg3') // dropped
+      socket.simulateRawMessage('msg4') // dropped
+      socket.simulateRawMessage('msg5') // dropped
+
+      // Queue should be at max (2)
+      expect(transport.getQueueDepth().receive).toBe(2)
+
+      // Should get the first 2 messages (others were dropped)
+      const received1 = await transport.receive()
+      const received2 = await transport.receive()
+
+      expect(received1).toBe('msg1')
+      expect(received2).toBe('msg2')
+    })
+  })
+
+  describe('maxQueueSize configuration', () => {
+    it('should use default maxQueueSize of 1000', () => {
+      const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc')
+      expect(transport.getQueueDepth().maxSize).toBe(1000)
+    })
+
+    it('should respect custom maxQueueSize', () => {
+      const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+        maxQueueSize: 50,
+      })
+      expect(transport.getQueueDepth().maxSize).toBe(50)
+    })
+
+    it('should use default queueFullBehavior of error', () => {
+      const onError = vi.fn()
+      const transport = new ReconnectingWebSocketTransport('wss://test.example.com/rpc', {
+        maxQueueSize: 1,
+        onError,
+      })
+
+      // Establish connection and overflow
+      const sendPromise = transport.send('test')
+      vi.advanceTimersByTimeAsync(0)
+      getLastWebSocket()!.simulateOpen()
+      vi.advanceTimersByTimeAsync(0)
+
+      sendPromise.then(() => {
+        const socket = getLastWebSocket()!
+        socket.simulateRawMessage('msg1')
+        socket.simulateRawMessage('msg2') // Should trigger error
+
+        expect(onError).toHaveBeenCalled()
+      })
+    })
+  })
+})

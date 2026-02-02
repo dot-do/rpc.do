@@ -179,6 +179,48 @@ function generateId(prefix?: string): string {
 }
 
 // ============================================================================
+// Internal Storage Types
+// ============================================================================
+
+/**
+ * Internal storage format for Things.
+ * Uses _prefixed field names because @dotdo/collections doesn't allow
+ * $-prefixed field names in filters.
+ */
+interface StoredThing {
+  _id: string
+  _type: string
+  _version: number
+  _createdAt: number
+  _updatedAt: number
+  data: Record<string, unknown>
+}
+
+/** Convert Thing to internal storage format */
+function toStoredThing<T extends Record<string, unknown>>(thing: Thing<T>): StoredThing {
+  return {
+    _id: thing.$id,
+    _type: thing.$type,
+    _version: thing.$version,
+    _createdAt: thing.$createdAt,
+    _updatedAt: thing.$updatedAt,
+    data: thing.data,
+  }
+}
+
+/** Convert internal storage format to Thing */
+function fromStoredThing<T extends Record<string, unknown>>(stored: StoredThing): Thing<T> {
+  return {
+    $id: stored._id,
+    $type: stored._type,
+    $version: stored._version,
+    $createdAt: stored._createdAt,
+    $updatedAt: stored._updatedAt,
+    data: stored.data as T,
+  }
+}
+
+// ============================================================================
 // DO Collections
 // ============================================================================
 
@@ -203,7 +245,7 @@ export class DOCollections {
   private sql: SqlStorage
   private _nouns: Collection<Noun>
   private _verbs: Collection<Verb>
-  private _things: Collection<Thing>
+  private _things: Collection<StoredThing>
   private _actions: Collection<Action>
   private _rels: Collection<Relationship>
   private _matcher?: SemanticMatcher
@@ -213,7 +255,7 @@ export class DOCollections {
     this.sql = sql
     this._nouns = createCollection<Noun>(sql, '_nouns')
     this._verbs = createCollection<Verb>(sql, '_verbs')
-    this._things = createCollection<Thing>(sql, '_things')
+    this._things = createCollection<StoredThing>(sql, '_things')
     this._actions = createCollection<Action>(sql, '_actions')
     this._rels = createCollection<Relationship>(sql, '_rels')
     if (options?.semanticMatcher) this._matcher = options.semanticMatcher
@@ -298,28 +340,32 @@ export class DOCollections {
         $updatedAt: now,
         data,
       }
-      this._things.put($id, thing as Thing)
+      // Store using internal format with _prefixed fields
+      this._things.put($id, toStoredThing(thing))
       this._logAction('created', undefined, $id)
       return thing
     },
 
     /** Get a thing by ID */
     get: <T extends Record<string, unknown> = Record<string, unknown>>(id: string): Thing<T> | null => {
-      return this._things.get(id) as Thing<T> | null
+      const stored = this._things.get(id)
+      return stored ? fromStoredThing<T>(stored) : null
     },
 
     /** Update a thing (increments version) */
     update: <T extends Record<string, unknown> = Record<string, unknown>>(id: string, data: Partial<T>): Thing<T> | null => {
-      const existing = this._things.get(id)
-      if (!existing) return null
+      const stored = this._things.get(id)
+      if (!stored) return null
 
       const updated: Thing<T> = {
-        ...existing,
-        $version: existing.$version + 1,
+        $id: stored._id,
+        $type: stored._type,
+        $version: stored._version + 1,
+        $createdAt: stored._createdAt,
         $updatedAt: Date.now(),
-        data: { ...existing.data, ...data } as T,
+        data: { ...stored.data, ...data } as T,
       }
-      this._things.put(id, updated as Thing)
+      this._things.put(id, toStoredThing(updated))
       this._logAction('updated', undefined, id)
       return updated
     },
@@ -338,23 +384,25 @@ export class DOCollections {
 
     /** Find things by type and optional filter */
     find: <T extends Record<string, unknown> = Record<string, unknown>>(type?: string, filter?: Filter<T>, options?: QueryOptions): Thing<T>[] => {
-      const baseFilter: Filter<Thing> = type ? { $type: type } as Filter<Thing> : {}
+      // Use _type internally (collections doesn't allow $ prefix in field names)
+      const baseFilter: Filter<StoredThing> = type ? { _type: type } as Filter<StoredThing> : {}
       // Merge data filters
       const fullFilter = filter
         ? { ...baseFilter, ...Object.fromEntries(Object.entries(filter).map(([k, v]) => [`data.${k}`, v])) }
         : baseFilter
-      return this._things.find(fullFilter as Filter<Thing>, options) as Thing<T>[]
+      return this._things.find(fullFilter as Filter<StoredThing>, options).map(s => fromStoredThing<T>(s))
     },
 
     /** Count things by type */
     count: (type?: string): number => {
+      // Use _type internally (collections doesn't allow $ prefix in field names)
       return type
-        ? this._things.count({ $type: type } as Filter<Thing>)
+        ? this._things.count({ _type: type } as Filter<StoredThing>)
         : this._things.count()
     },
 
     /** List all things */
-    list: (options?: QueryOptions): Thing[] => this._things.list(options),
+    list: (options?: QueryOptions): Thing[] => this._things.list(options).map(s => fromStoredThing(s)),
   }
 
   // --------------------------------------------------------------------------

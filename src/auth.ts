@@ -9,6 +9,12 @@
 import type { AuthProvider } from './transports'
 export type { AuthProvider }
 
+// Import AuthToken branded type from types and re-export
+import type { AuthToken } from './types'
+import { authToken } from './types'
+export type { AuthToken }
+export { authToken }
+
 /**
  * Options for cached auth provider
  */
@@ -245,33 +251,37 @@ export function compositeAuth(providers: AuthProvider[]): AuthProvider {
  * Get a token from global variables or oauth.do
  * Checks DO_ADMIN_TOKEN and DO_TOKEN globals first, then falls back to oauth.do
  *
- * @returns The token or null if not available
+ * @returns The token (branded as AuthToken) or null if not available
  *
  * @example
  * import { getToken } from 'rpc.do/auth'
  *
  * const token = await getToken()
+ * if (token) {
+ *   // token is typed as AuthToken
+ * }
  */
-export async function getToken(): Promise<string | null> {
+export async function getToken(): Promise<AuthToken | null> {
   // Check global tokens first (works in browser and Node.js)
   const g = globalThis as Record<string, unknown>
   const globalToken = g['DO_ADMIN_TOKEN'] ?? g['DO_TOKEN']
   if (typeof globalToken === 'string') {
-    return globalToken
+    return authToken(globalToken)
   }
 
   // Check environment variables (Node.js only)
   if (typeof process !== 'undefined' && process.env) {
     const envToken = process.env['DO_ADMIN_TOKEN'] ?? process.env['DO_TOKEN']
     if (envToken) {
-      return envToken
+      return authToken(envToken)
     }
   }
 
   // Fall back to oauth.do (dynamically imported)
   try {
     const oauth = await import('oauth.do')
-    return await oauth.getToken()
+    const token = await oauth.getToken()
+    return token ? authToken(token) : null
   } catch {
     // oauth.do not available
     return null

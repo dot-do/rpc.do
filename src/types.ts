@@ -37,6 +37,128 @@ export type Transport = MinimalTransport
 export type TransportFactory = DotdoTransportFactory
 
 // ============================================================================
+// Branded Types (Compile-Time Safety)
+// ============================================================================
+
+/**
+ * Branded type for raw SQL query strings.
+ *
+ * This provides compile-time safety to ensure SQL queries are explicitly marked
+ * as such, preventing accidental injection of untrusted strings into SQL contexts.
+ *
+ * @example
+ * ```typescript
+ * import { sqlQuery, type SqlQueryString } from 'rpc.do'
+ *
+ * // Create a branded SQL query
+ * const query: SqlQueryString = sqlQuery('SELECT * FROM users WHERE id = ?')
+ *
+ * // Type error - cannot assign plain string to SqlQueryString
+ * const badQuery: SqlQueryString = 'SELECT * FROM users' // Error!
+ * ```
+ */
+export type SqlQueryString = string & { readonly __brand: 'SqlQuery' }
+
+/**
+ * Branded type for RPC method paths (e.g., "users.create", "admin.users.delete").
+ *
+ * This provides compile-time safety for method path strings, ensuring they are
+ * explicitly constructed rather than from arbitrary user input.
+ *
+ * @example
+ * ```typescript
+ * import { methodPath, type RpcMethodPath } from 'rpc.do'
+ *
+ * // Create a branded method path
+ * const path: RpcMethodPath = methodPath('users.create')
+ *
+ * // Type error - cannot assign plain string to RpcMethodPath
+ * const badPath: RpcMethodPath = 'users.delete' // Error!
+ * ```
+ */
+export type RpcMethodPath = string & { readonly __brand: 'RpcMethodPath' }
+
+/**
+ * Branded type for authentication tokens.
+ *
+ * This provides compile-time safety for auth tokens, ensuring they are handled
+ * through proper channels rather than arbitrary strings.
+ *
+ * @example
+ * ```typescript
+ * import { authToken, type AuthToken } from 'rpc.do'
+ *
+ * // Create a branded auth token
+ * const token: AuthToken = authToken('sk_live_xxxxx')
+ *
+ * // Type error - cannot assign plain string to AuthToken
+ * const badToken: AuthToken = 'secret' // Error!
+ * ```
+ */
+export type AuthToken = string & { readonly __brand: 'AuthToken' }
+
+/**
+ * Create a branded SQL query string.
+ *
+ * Use this function to explicitly mark a string as a SQL query for compile-time safety.
+ * This is useful when you have a known-safe SQL string that you want to pass to
+ * functions expecting SqlQueryString.
+ *
+ * @param query - The raw SQL query string
+ * @returns A branded SqlQueryString
+ *
+ * @example
+ * ```typescript
+ * import { sqlQuery } from 'rpc.do'
+ *
+ * const query = sqlQuery('SELECT * FROM users WHERE id = ?')
+ * ```
+ */
+export function sqlQuery(query: string): SqlQueryString {
+  return query as SqlQueryString
+}
+
+/**
+ * Create a branded RPC method path.
+ *
+ * Use this function to explicitly mark a string as a method path for compile-time safety.
+ * Method paths are dot-separated strings like "users.create" or "admin.users.delete".
+ *
+ * @param path - The dot-separated method path
+ * @returns A branded RpcMethodPath
+ *
+ * @example
+ * ```typescript
+ * import { methodPath } from 'rpc.do'
+ *
+ * const path = methodPath('users.create')
+ * ```
+ */
+export function methodPath(path: string): RpcMethodPath {
+  return path as RpcMethodPath
+}
+
+/**
+ * Create a branded authentication token.
+ *
+ * Use this function to explicitly mark a string as an auth token for compile-time safety.
+ * This ensures tokens are handled through proper channels.
+ *
+ * @param token - The authentication token string
+ * @returns A branded AuthToken
+ *
+ * @example
+ * ```typescript
+ * import { authToken } from 'rpc.do'
+ *
+ * const token = authToken(process.env.API_TOKEN!)
+ * ```
+ */
+export function authToken(token: string): AuthToken {
+  return token as AuthToken
+}
+
+// ============================================================================
 // RPC Type System
 // ============================================================================
 

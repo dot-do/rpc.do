@@ -2,7 +2,7 @@
  * Built-in transports for rpc.do
  */
 
-import type { Transport } from './types'
+import type { Transport, RpcMethodPath } from './types'
 import type { ServerMessage as TypesServerMessage } from '@dotdo/types/rpc'
 import { ConnectionError, RPCError } from './errors'
 import { loadCapnweb } from './capnweb-loader.js'
@@ -78,7 +78,17 @@ function isTraversable(value: unknown): value is Record<string, unknown> {
   return (typeof value === 'object' || typeof value === 'function') && value !== null
 }
 
-export function navigateMethodPath(root: unknown, method: string): unknown {
+/**
+ * Navigate a dotted method path (e.g. "users.create") on a root object.
+ *
+ * Accepts both plain strings (for backward compatibility) and branded RpcMethodPath
+ * for compile-time safety when the caller wants to ensure path validity.
+ *
+ * @param root - The root object to navigate (e.g. a capnweb session proxy)
+ * @param method - The dotted method path (string or RpcMethodPath)
+ * @returns The value at the end of the path
+ */
+export function navigateMethodPath(root: unknown, method: string | RpcMethodPath): unknown {
   const parts = method.split('.')
   let target: unknown = root
   for (const part of parts) {
@@ -109,7 +119,17 @@ export function navigateMethodPath(root: unknown, method: string): unknown {
  *
  * @internal
  */
-export function navigateBindingMethodPath(root: unknown, method: string): (...args: unknown[]) => unknown {
+/**
+ * Navigate a dotted method path for service bindings with namespace/method error semantics.
+ *
+ * Accepts both plain strings (for backward compatibility) and branded RpcMethodPath
+ * for compile-time safety when the caller wants to ensure path validity.
+ *
+ * @param root - The service binding object
+ * @param method - The dotted method path (string or RpcMethodPath)
+ * @returns The callable method function
+ */
+export function navigateBindingMethodPath(root: unknown, method: string | RpcMethodPath): (...args: unknown[]) => unknown {
   const parts = method.split('.')
   let target: unknown = root
 
