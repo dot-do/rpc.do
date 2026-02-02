@@ -1,0 +1,41 @@
+/* Custom styles for rpc.do documentation */
+
+:root {
+  --sl-color-accent-low: #2a3a5a;
+  --sl-color-accent: #4a7cc9;
+  --sl-color-accent-high: #8ab4f8;
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #eceef2;
+  --sl-color-gray-2: #c2c5cd;
+  --sl-color-gray-3: #8b909a;
+  --sl-color-gray-4: #545861;
+  --sl-color-gray-5: #353841;
+  --sl-color-gray-6: #24272f;
+  --sl-color-black: #17181c;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #e8f0fe;
+  --sl-color-accent: #1a73e8;
+  --sl-color-accent-high: #174ea6;
+}
+
+/* Code blocks */
+.expressive-code pre {
+  border-radius: 8px;
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+}
+
+/* Links */
+a:not(.sl-badge) {
+  text-underline-offset: 0.2em;
+}
+
+/* Cards */
+.card {
+  border-radius: 8px;
+}

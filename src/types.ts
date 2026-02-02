@@ -10,30 +10,31 @@
  * @internal
  */
 
+import type { MinimalTransport, TransportFactory as DotdoTransportFactory } from '@dotdo/types/rpc'
+
 // ============================================================================
-// Transport Types (rpc.do-specific - compatible with @dotdo/types MinimalTransport)
+// Transport Types (imported from @dotdo/types for consistency)
 // ============================================================================
 
 /**
  * Transport interface for rpc.do.
  *
- * This is compatible with MinimalTransport from `@dotdo/types/rpc`.
+ * This is an alias for `MinimalTransport` from `@dotdo/types/rpc`.
  * For the full transport lifecycle interface with connect/disconnect/events,
  * see `ManagedTransport` from `@dotdo/types/rpc`.
  *
  * @see MinimalTransport from '@dotdo/types/rpc'
  */
-export type Transport = {
-  call(method: string, args: unknown[]): Promise<unknown>
-  close?(): void
-}
+export type Transport = MinimalTransport
 
 /**
  * Factory function for creating transports (lazy initialization).
  *
+ * This is an alias for `TransportFactory` from `@dotdo/types/rpc`.
+ *
  * @see TransportFactory from '@dotdo/types/rpc'
  */
-export type TransportFactory = () => Transport | Promise<Transport>
+export type TransportFactory = DotdoTransportFactory
 
 // ============================================================================
 // RPC Type System

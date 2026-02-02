@@ -1,0 +1,72 @@
+---
+title: rpc.do
+description: Lightweight RPC for Cloudflare Durable Objects - same API locally and over the network
+template: splash
+hero:
+  tagline: Access your Durable Object's SQL, storage, and collections remotely -- same API locally and over the network.
+  actions:
+    - text: Get Started
+      link: /getting-started/introduction/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/dot-do/rpc.do
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Why rpc.do?
+
+<CardGrid stagger>
+  <Card title="Same API Everywhere" icon="rocket">
+    `$.sql`, `$.storage`, `$.collection` mirror the DO's internal APIs. Your mental model stays the same whether inside the DO or calling from anywhere.
+  </Card>
+  <Card title="Purpose-built for DOs" icon="star">
+    First-class access to DO SQLite, KV storage, collections, schema introspection, and WebSocket hibernation. Not a generic RPC bolted onto DOs.
+  </Card>
+  <Card title="Zero-config Types" icon="setting">
+    Point `npx rpc.do generate` at your DO source and get a fully typed client. No schema language to learn.
+  </Card>
+  <Card title="Lightweight" icon="open-book">
+    ~3KB core. Proxy-based, no build step, no runtime dependencies beyond your transport.
+  </Card>
+</CardGrid>
+
+## Quick Example
+
+```typescript
+import { RPC } from 'rpc.do'
+
+const $ = RPC('https://my-do.workers.dev')
+
+// SQL -- tagged templates with automatic parameterization
+const users = await $.sql`SELECT * FROM users WHERE active = ${true}`.all()
+
+// Storage -- key-value, same as this.storage inside the DO
+const config = await $.storage.get('config')
+
+// Collections -- MongoDB-style queries on DO SQLite
+const admins = await $.collection('users').find({ role: 'admin' })
+
+// Custom RPC methods -- whatever you define on your DO class
+const result = await $.users.create({ name: 'Alice', email: 'alice@co.com' })
+```
+
+## Two Packages
+
+| Package | Role | Install |
+|---------|------|---------|
+| **@dotdo/rpc** | Server - Extend your DO with RPC, SQL, collections | `npm i @dotdo/rpc` |
+| **rpc.do** | Client - Connect from Worker, browser, Node, or CLI | `npm i rpc.do` |
+
+## Ready to Start?
+
+<CardGrid>
+  <Card title="Read the docs" icon="open-book">
+    Learn how to set up rpc.do in your project with our [Getting Started guide](/getting-started/introduction/).
+  </Card>
+  <Card title="API Reference" icon="information">
+    Explore the complete [API Reference](/api/rpc-client/) for all features and options.
+  </Card>
+</CardGrid>

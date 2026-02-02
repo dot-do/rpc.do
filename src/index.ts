@@ -55,9 +55,9 @@ import type { Transport, TransportFactory, RpcProxy, RpcClientMiddleware } from 
  * const comments = await db.users.get('123').posts.list()[0].comments.list()
  * ```
  *
- * Note: The local `Transport` type in rpc.do differs from `@dotdo/types/rpc`
- * Transport interface. rpc.do uses a minimal `{call, close?}` shape for
- * capnweb integration, while @dotdo/types has a full lifecycle interface.
+ * Note: The rpc.do `Transport` type is now an alias for `MinimalTransport`
+ * from `@dotdo/types/rpc`. For the full transport lifecycle interface with
+ * connect/disconnect/events, use `ManagedTransport` from `@dotdo/types/rpc`.
  */
 export type {
   // Promise pipelining types (CapnWeb pattern)

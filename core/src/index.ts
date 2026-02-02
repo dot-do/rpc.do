@@ -140,24 +140,22 @@ export {
 } from 'colo.do/tiny'
 
 // ============================================================================
-// $ Context
+// Mixins - Composable functionality (re-export for advanced use)
 // ============================================================================
 
-/**
- * Colo (colocation) context for location-aware DOs
- */
-export interface ColoContext {
-  /** The colo where this DO instance is running */
-  colo: string
-  /** Full colo information (city, country, coordinates, etc.) */
-  info?: ColoInfo
-  /** The colo of the worker that made this request (if known) */
-  workerColo?: string
-  /** Estimated latency from worker to DO in milliseconds */
-  latencyMs?: number
-  /** Distance from worker to DO in kilometers */
-  distanceKm?: number
-}
+// Re-export mixins for advanced composition
+export * from './mixins/index.js'
+
+// Import types from mixins for use in this file
+import { WORKER_COLO_HEADER, type ColoContext } from './mixins/colo.js'
+import { type SqlQueryResult, type SerializedSqlQuery } from './mixins/sql.js'
+
+// Re-export types for backward compatibility
+export type { SqlQueryResult, SerializedSqlQuery, ColoContext }
+
+// ============================================================================
+// $ Context (Legacy)
+// ============================================================================
 
 /**
  * Server-side context available inside DO RPC methods
@@ -178,27 +176,8 @@ export interface RpcContext {
   colo: ColoContext
 }
 
-/**
- * SQL query result from remote execution
- */
-export interface SqlQueryResult<T = Record<string, unknown>> {
-  results: T[]
-  meta: {
-    rows_read: number
-    rows_written: number
-  }
-}
-
-/**
- * Serialized SQL query for RPC transport
- */
-export interface SerializedSqlQuery {
-  strings: string[]
-  values: unknown[]
-}
-
 // ============================================================================
-// DurableRPC Base Class
+// DurableRPC Class
 // ============================================================================
 
 /**
@@ -292,9 +271,6 @@ export interface SerializedSqlQuery {
  * const admins = await $.collection('users').find({ role: 'admin' })
  * ```
  */
-/** Header used to pass worker colo to DO */
-const WORKER_COLO_HEADER = 'X-Worker-Colo'
-
 export class DurableRPC extends DurableRPCBase {
   /** Cached colo for this DO instance */
   private _colo: string | null = null
@@ -329,65 +305,9 @@ export class DurableRPC extends DurableRPCBase {
    * - **Aggregation**: `count(filter)`, `list(options)`, `keys()`
    * - **Bulk**: `clear()` to delete all documents
    *
-   * Supported filter operators:
-   * - `$eq`, `$ne` - Equality/inequality
-   * - `$gt`, `$gte`, `$lt`, `$lte` - Comparisons
-   * - `$in`, `$nin` - Array membership
-   * - `$exists` - Field existence
-   * - `$regex` - Pattern matching
-   * - `$and`, `$or` - Logical operators
-   *
    * @typeParam T - The document type (must extend `Record<string, unknown>`)
    * @param name - The collection name (used as SQLite table name)
    * @returns A Collection instance with typed document operations
-   *
-   * @example Basic CRUD operations
-   * ```typescript
-   * interface User {
-   *   name: string
-   *   email: string
-   *   active: boolean
-   *   createdAt: number
-   * }
-   *
-   * export class MyDO extends DurableRPC {
-   *   users = this.collection<User>('users')
-   *
-   *   async createUser(data: Omit<User, 'createdAt'>) {
-   *     const id = crypto.randomUUID()
-   *     this.users.put(id, { ...data, createdAt: Date.now() })
-   *     return { id }
-   *   }
-   *
-   *   async getUser(id: string) {
-   *     return this.users.get(id)  // Returns User | null
-   *   }
-   * }
-   * ```
-   *
-   * @example Queries with filters
-   * ```typescript
-   * // Simple equality
-   * const admins = this.users.find({ role: 'admin' })
-   *
-   * // Comparison operators
-   * const recentUsers = this.users.find({
-   *   createdAt: { $gt: Date.now() - 86400000 }  // Last 24 hours
-   * })
-   *
-   * // With options
-   * const topUsers = this.users.find(
-   *   { active: true },
-   *   { limit: 10, sort: '-createdAt' }  // Descending sort
-   * )
-   * ```
-   *
-   * @example Via RPC (same API)
-   * ```typescript
-   * const $ = RPC('https://my-do.workers.dev')
-   * await $.collection<User>('users').put('user-1', userData)
-   * const admins = await $.collection<User>('users').find({ role: 'admin' })
-   * ```
    */
   collection<T extends Record<string, unknown> = Record<string, unknown>>(name: string): Collection<T> {
     if (!this._collections) {
@@ -425,7 +345,7 @@ export class DurableRPC extends DurableRPCBase {
   }
 
   // ==========================================================================
-  // RPC-callable SQL methods (used by client-side $ proxy)
+  // RPC-callable SQL methods (from SQL mixin logic)
   // ==========================================================================
 
   /**
@@ -434,8 +354,6 @@ export class DurableRPC extends DurableRPCBase {
    * @internal
    */
   __sql(query: SerializedSqlQuery): SqlQueryResult {
-    // Validate parameter count: template strings should have one more element than values
-    // e.g., sql`SELECT * FROM users WHERE id = ${id}` has strings=["SELECT * FROM users WHERE id = ", ""], values=[id]
     if (query.strings.length - 1 !== query.values.length) {
       throw new Error(
         `SQL parameter count mismatch: expected ${query.strings.length - 1} values but got ${query.values.length}. ` +
@@ -458,7 +376,6 @@ export class DurableRPC extends DurableRPCBase {
    * @internal
    */
   __sqlFirst<T = Record<string, unknown>>(query: SerializedSqlQuery): T | null {
-    // Validate parameter count: template strings should have one more element than values
     if (query.strings.length - 1 !== query.values.length) {
       throw new Error(
         `SQL parameter count mismatch: expected ${query.strings.length - 1} values but got ${query.values.length}. ` +
@@ -474,7 +391,6 @@ export class DurableRPC extends DurableRPCBase {
    * @internal
    */
   __sqlRun(query: SerializedSqlQuery): { rowsWritten: number } {
-    // Validate parameter count: template strings should have one more element than values
     if (query.strings.length - 1 !== query.values.length) {
       throw new Error(
         `SQL parameter count mismatch: expected ${query.strings.length - 1} values but got ${query.values.length}. ` +
@@ -486,7 +402,7 @@ export class DurableRPC extends DurableRPCBase {
   }
 
   // ==========================================================================
-  // RPC-callable storage methods
+  // RPC-callable storage methods (from Storage mixin logic)
   // ==========================================================================
 
   /** @internal */ async __storageGet<T>(key: string): Promise<T | undefined> {
@@ -518,7 +434,7 @@ export class DurableRPC extends DurableRPCBase {
   }
 
   // ==========================================================================
-  // Schema & Discovery
+  // Schema & Discovery (from Schema mixin logic)
   // ==========================================================================
 
   /**
@@ -540,7 +456,7 @@ export class DurableRPC extends DurableRPCBase {
   }
 
   // ==========================================================================
-  // RPC-callable collection methods
+  // RPC-callable collection methods (from Collections mixin logic)
   // ==========================================================================
 
   /** @internal */ __collectionGet<T extends Record<string, unknown>>(
@@ -610,6 +526,10 @@ export class DurableRPC extends DurableRPCBase {
     return this._collections.stats()
   }
 
+  // ==========================================================================
+  // Colo helpers (from Colo mixin logic)
+  // ==========================================================================
+
   /**
    * Get the colo where this DO is running
    * Detected from first request, undefined before any requests
@@ -624,96 +544,6 @@ export class DurableRPC extends DurableRPCBase {
   get coloInfo(): ColoInfo | undefined {
     return this._colo ? getColo(this._colo) : undefined
   }
-
-  // ==========================================================================
-  // Fetch pre-processing (colo detection)
-  // ==========================================================================
-
-  /**
-   * Detect colo from cf object on first request.
-   */
-  protected override onFetch(request: Request): void {
-    if (!this._colo) {
-      const cf = (request as unknown as { cf?: IncomingRequestCfProperties }).cf
-      this._colo = cf?.colo ?? null
-    }
-  }
-
-  // ==========================================================================
-  // Schema Reflection
-  // ==========================================================================
-
-  /**
-   * Introspect this DO's API and return a complete schema description
-   *
-   * Returns a schema containing:
-   * - All public RPC methods with parameter counts
-   * - Nested namespaces and their methods
-   * - Database schema (tables, columns, indexes)
-   * - Storage key samples (optional)
-   * - Current colo (datacenter location)
-   *
-   * This is used by:
-   * - `npx rpc.do generate` for typed client codegen
-   * - GET requests to `/__schema` endpoint
-   * - API documentation and tooling
-   *
-   * @returns Complete RPC schema for this Durable Object
-   *
-   * @example Accessing schema remotely
-   * ```typescript
-   * const $ = RPC('https://my-do.workers.dev')
-   * const schema = await $.schema()
-   *
-   * // Inspect available methods
-   * schema.methods.forEach(m => {
-   *   console.log(`${m.path}(${m.params} params)`)
-   * })
-   *
-   * // Inspect database tables
-   * schema.database?.tables.forEach(t => {
-   *   console.log(`Table: ${t.name}`)
-   *   t.columns.forEach(c => console.log(`  - ${c.name}: ${c.type}`))
-   * })
-   * ```
-   *
-   * @example Schema structure
-   * ```typescript
-   * // Returned schema structure:
-   * {
-   *   version: 1,
-   *   methods: [
-   *     { name: 'getUser', path: 'getUser', params: 1 },
-   *     { name: 'get', path: 'users.get', params: 1 },
-   *     { name: 'list', path: 'users.list', params: 0 },
-   *   ],
-   *   namespaces: [
-   *     { name: 'users', methods: [...] }
-   *   ],
-   *   database: {
-   *     tables: [{
-   *       name: 'users',
-   *       columns: [
-   *         { name: 'id', type: 'TEXT', nullable: false, primaryKey: true },
-   *         { name: 'name', type: 'TEXT', nullable: false, primaryKey: false },
-   *       ],
-   *       indexes: []
-   *     }]
-   *   },
-   *   colo: 'SFO'
-   * }
-   * ```
-   */
-  getSchema(): RpcSchema {
-    return introspectDurableRPC(this, {
-      skipProps: SKIP_PROPS_EXTENDED,
-      basePrototype: DurableRPC.prototype,
-    })
-  }
-
-  // ==========================================================================
-  // Colo-aware helpers
-  // ==========================================================================
 
   /**
    * Get sorted list of colos by distance from this DO
@@ -757,6 +587,48 @@ export class DurableRPC extends DurableRPCBase {
   distanceTo(targetColo: string): number | undefined {
     if (!this._colo) return undefined
     return coloDistance(this._colo, targetColo)
+  }
+
+  // ==========================================================================
+  // Fetch pre-processing (colo detection)
+  // ==========================================================================
+
+  /**
+   * Detect colo from cf object on first request.
+   */
+  protected override onFetch(request: Request): void {
+    if (!this._colo) {
+      const cf = (request as unknown as { cf?: IncomingRequestCfProperties }).cf
+      this._colo = cf?.colo ?? null
+    }
+  }
+
+  // ==========================================================================
+  // Schema Reflection
+  // ==========================================================================
+
+  /**
+   * Introspect this DO's API and return a complete schema description
+   *
+   * Returns a schema containing:
+   * - All public RPC methods with parameter counts
+   * - Nested namespaces and their methods
+   * - Database schema (tables, columns, indexes)
+   * - Storage key samples (optional)
+   * - Current colo (datacenter location)
+   *
+   * This is used by:
+   * - `npx rpc.do generate` for typed client codegen
+   * - GET requests to `/__schema` endpoint
+   * - API documentation and tooling
+   *
+   * @returns Complete RPC schema for this Durable Object
+   */
+  getSchema(): RpcSchema {
+    return introspectDurableRPC(this, {
+      skipProps: SKIP_PROPS_EXTENDED,
+      basePrototype: DurableRPC.prototype,
+    })
   }
 }
 
