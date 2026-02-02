@@ -12,14 +12,14 @@ export function generateClient(schema: RpcSchema): string {
 
   // Top-level methods
   for (const method of schema.methods) {
-    lines.push(`  ${method.name}(...args: any[]): Promise<any>`)
+    lines.push(`  ${method.name}(...args: unknown[]): Promise<unknown>`)
   }
 
   // Namespaces
   for (const ns of schema.namespaces) {
     lines.push(`  ${ns.name}: {`)
     for (const method of ns.methods) {
-      lines.push(`    ${method.name}(...args: any[]): Promise<any>`)
+      lines.push(`    ${method.name}(...args: unknown[]): Promise<unknown>`)
     }
     lines.push(`  }`)
   }

@@ -17,7 +17,7 @@ import { RPCError } from './errors'
 /**
  * Handler type for mockRPC - allows any function type
  */
-type MockHandlers<T> = {
+type MockHandlers<T extends object> = {
   [K in keyof T]?: T[K] extends (...args: infer A) => infer R
     ? (...args: A) => R | Promise<Awaited<R>>
     : T[K] extends object
@@ -65,7 +65,7 @@ type MockHandlers<T> = {
  * })
  * ```
  */
-export function mockRPC<T>(handlers: MockHandlers<T>): RpcProxy<T> {
+export function mockRPC<T extends object>(handlers: MockHandlers<T>): RpcProxy<T> {
   return createMockProxy<T>(handlers, [])
 }
 

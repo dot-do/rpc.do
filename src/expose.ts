@@ -53,10 +53,10 @@ import {
 // ============================================================================
 
 /** Factory function that creates an SDK instance from env */
-export type SDKFactory<Env, SDK> = (env: Env) => SDK
+export type SDKFactory<Env extends object, SDK extends object> = (env: Env) => SDK
 
 /** Method implementation with access to SDK and env */
-export type MethodImpl<Env, SDK> = (
+export type MethodImpl<Env extends object, SDK extends object> = (
   this: { sdk: SDK; env: Env },
   ...args: unknown[]
 ) => Promise<unknown> | unknown
@@ -68,7 +68,7 @@ export interface ExposeOptions<Env, SDK extends object> {
 }
 
 /** Options for expose() with multiple named SDKs */
-export interface ExposeMultiOptions<Env> {
+export interface ExposeMultiOptions<Env extends object> {
   sdks: Record<string, SDKFactory<Env, object>>
   methods?: Record<string, (this: { sdks: Record<string, object>; env: Env }, ...args: unknown[]) => unknown>
 }

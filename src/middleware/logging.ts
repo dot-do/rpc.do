@@ -20,21 +20,18 @@
  */
 
 import type { RpcClientMiddleware } from '../index'
+import type { BaseLoggingOptions } from './types'
 
 /**
- * Options for the logging middleware
+ * Options for the logging middleware.
+ *
+ * Extends {@link BaseLoggingOptions} which is shared with server-side middleware.
+ *
+ * @see BaseLoggingOptions for shared options
  */
-export interface LoggingOptions {
-  /** Custom logger function (default: console.log) */
-  log?: (message: string, ...args: unknown[]) => void
-  /** Custom error logger function (default: console.error) */
-  error?: (message: string, ...args: unknown[]) => void
-  /** Prefix for log messages (default: '[RPC]') */
-  prefix?: string
-  /** Whether to log request arguments (default: true) */
-  logArgs?: boolean
-  /** Whether to log response data (default: true) */
-  logResult?: boolean
+export interface LoggingOptions extends BaseLoggingOptions {
+  // Currently identical to BaseLoggingOptions
+  // Client-specific options can be added here in the future
 }
 
 /**

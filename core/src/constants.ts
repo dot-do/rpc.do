@@ -5,6 +5,13 @@
  * between the client and server for built-in DO features like
  * SQL, storage, and collections.
  *
+ * IMPORTANT: This file intentionally duplicates src/constants.ts in the rpc.do package.
+ * Both @dotdo/rpc (server) and rpc.do (client) need these constants for
+ * protocol compatibility, but they are separate packages without a runtime
+ * dependency between them. See PACKAGE_BOUNDARY.md for details.
+ *
+ * When modifying these constants, ensure both files are updated together.
+ *
  * @example
  * ```typescript
  * import { INTERNAL_METHODS } from '@dotdo/rpc'

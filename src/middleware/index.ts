@@ -22,6 +22,13 @@ export { loggingMiddleware, type LoggingOptions } from './logging'
 export { timingMiddleware, type TimingOptions } from './timing'
 export { retryMiddleware, withRetry, type RetryOptions } from './retry'
 
+// Re-export shared base types for ecosystem compatibility
+export type {
+  BaseLoggingOptions,
+  BaseTimingOptions,
+  MiddlewareHookResult,
+} from './types'
+
 // ============================================================================
 // Transport Wrappers
 // ============================================================================

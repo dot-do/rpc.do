@@ -129,7 +129,7 @@ export type TransportFactory = () => Transport | Promise<Transport>
 /**
  * Converts a sync function to async
  */
-export type AsyncFunction<T> = T extends (...args: infer A) => infer R
+export type AsyncFunction<T extends (...args: unknown[]) => unknown> = T extends (...args: infer A) => infer R
   ? (...args: A) => Promise<Awaited<R>>
   : never
 
@@ -157,7 +157,7 @@ export type RPCFunction<TInput = any, TOutput = any> = RpcFunction<TInput, TOutp
  * type Client = RpcProxy<API>
  * // Client.ai.generate is now (p: { prompt: string }) => Promise<{ text: string }>
  */
-export type RpcProxy<T> = {
+export type RpcProxy<T extends object> = {
   [K in keyof T]: T[K] extends (...args: any[]) => any
     ? AsyncFunction<T[K]>
     : T[K] extends object
@@ -177,7 +177,7 @@ export type RpcProxy<T> = {
  * type Client = RPCProxy<API>
  * // Client.ai.generate is now (p: { prompt: string }) => Promise<{ text: string }>
  */
-export type RPCProxy<T> = RpcProxy<T>
+export type RPCProxy<T extends object> = RpcProxy<T>
 
 /**
  * Simple promise type for RPC returns.
@@ -199,7 +199,7 @@ export type RPCPromise<T> = Promise<T>
  * @example
  * type Result = RpcResult<typeof rpc.ai.generate> // { text: string }
  */
-export type RpcResult<T> = T extends (...args: any[]) => Promise<infer R> ? R : never
+export type RpcResult<T extends (...args: unknown[]) => Promise<unknown>> = T extends (...args: any[]) => Promise<infer R> ? R : never
 
 /**
  * Infer the return type of an RPC function
@@ -207,14 +207,14 @@ export type RpcResult<T> = T extends (...args: any[]) => Promise<infer R> ? R : 
  * @example
  * type Result = RPCResult<typeof rpc.ai.generate> // { text: string }
  */
-export type RPCResult<T> = RpcResult<T>
+export type RPCResult<T extends (...args: unknown[]) => Promise<unknown>> = RpcResult<T>
 
 /**
  * Infer the input type of an RPC function
  * @example
  * type Params = RpcInput<typeof rpc.ai.generate> // { prompt: string }
  */
-export type RpcInput<T> = T extends (input: infer I) => any ? I : never
+export type RpcInput<T extends (...args: unknown[]) => unknown> = T extends (input: infer I) => any ? I : never
 
 /**
  * Infer the input type of an RPC function
@@ -222,7 +222,7 @@ export type RpcInput<T> = T extends (input: infer I) => any ? I : never
  * @example
  * type Params = RPCInput<typeof rpc.ai.generate> // { prompt: string }
  */
-export type RPCInput<T> = RpcInput<T>
+export type RPCInput<T extends (...args: unknown[]) => unknown> = RpcInput<T>
 
 // ============================================================================
 // Middleware Types
@@ -319,7 +319,7 @@ export interface RPCOptions extends RpcOptions {}
  * const $ = RPC<API>('https://my-do.workers.dev')
  * const result = await $.users.create({ name: 'John' }) // typed!
  */
-export function RPC<T = any>(
+export function RPC<T extends object = Record<string, unknown>>(
   urlOrTransport: string | Transport | TransportFactory,
   options?: RpcOptions
 ): RpcProxy<T> & DOClientFeatures {
@@ -356,9 +356,30 @@ export function RPC<T = any>(
 }
 
 /**
- * DO Client features available on RPC proxy
+ * DO Client features available on RPC proxy.
+ *
+ * This interface describes the built-in features added to every RPC proxy
+ * when using `RPC()` or `createDOClient()`. These map to the DO's internal
+ * SQL, storage, and collection capabilities.
+ *
+ * @example
+ * ```typescript
+ * const $ = RPC<MyAPI>('https://my-do.workers.dev')
+ *
+ * // SQL (tagged template for safe parameter binding)
+ * const users = await $.sql`SELECT * FROM users WHERE active = ${true}`.all()
+ *
+ * // Storage (key-value)
+ * const config = await $.storage.get('config')
+ *
+ * // Collections (MongoDB-style)
+ * const admins = await $.collection('users').find({ role: 'admin' })
+ *
+ * // Schema introspection
+ * const schema = await $.schema()
+ * ```
  */
-interface DOClientFeatures {
+export interface DOClientFeatures {
   /** Tagged template SQL query */
   sql: <R = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]) => SqlQuery<R>
   /** Remote storage access */
@@ -426,7 +447,7 @@ export interface RPCClientOptions extends RpcClientOptions {}
  * const client = createRPCClient({ baseUrl: 'https://api.example.com/rpc' })
  * await client.ai.generate({ prompt: 'hello' })
  */
-export function createRPCClient<T = unknown>(options: RpcClientOptions): RpcProxy<T> & DOClientFeatures {
+export function createRPCClient<T extends object = Record<string, unknown>>(options: RpcClientOptions): RpcProxy<T> & DOClientFeatures {
   // Build options, only adding defined values to satisfy exactOptionalPropertyTypes
   const rpcOpts: RpcOptions = {}
   if (options.auth !== undefined) rpcOpts.auth = options.auth
@@ -446,6 +467,7 @@ export {
   createDOClient,
   connectDO,
   type DOClient,
+  type CreateDOClientOptions,
   type SqlQuery,
   type SqlQueryResult,
   type RemoteStorage,

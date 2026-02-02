@@ -102,7 +102,7 @@ export type MethodPaths<T, Prefix extends string = ''> = T extends object
  * type Args = ExtractFnArgs<Fn> // [id: string, name: string]
  * ```
  */
-export type ExtractFnArgs<T> = T extends (...args: infer A) => unknown ? A : never
+export type ExtractFnArgs<T extends (...args: unknown[]) => unknown> = T extends (...args: infer A) => unknown ? A : never
 
 /**
  * Extracts the awaited return type from a function type.
@@ -114,7 +114,7 @@ export type ExtractFnArgs<T> = T extends (...args: infer A) => unknown ? A : nev
  * type Return = ExtractFnReturn<Fn> // User (not Promise<User>)
  * ```
  */
-export type ExtractFnReturn<T> = T extends (...args: unknown[]) => infer R ? Awaited<R> : never
+export type ExtractFnReturn<T extends (...args: unknown[]) => unknown> = T extends (...args: unknown[]) => infer R ? Awaited<R> : never
 
 /**
  * Wraps a function type to return a Promise of its awaited return type.
@@ -127,7 +127,7 @@ export type ExtractFnReturn<T> = T extends (...args: unknown[]) => infer R ? Awa
  * type Wrapped = AsyncWrapperFn<Fn> // (id: string) => Promise<User>
  * ```
  */
-export type AsyncWrapperFn<T> = T extends (...args: infer A) => unknown
+export type AsyncWrapperFn<T extends (...args: unknown[]) => unknown> = T extends (...args: infer A) => unknown
   ? (...args: A) => Promise<ExtractFnReturn<T>>
   : never
 
@@ -171,7 +171,7 @@ export interface MutationFnOptions extends QueryFnOptions {
  * const user = await getUser({ id: '123' })
  * ```
  */
-export function getMethod<T, P extends MethodPaths<T> & string>(
+export function getMethod<T extends object, P extends MethodPaths<T> & string>(
   rpc: RpcProxy<T>,
   path: P
 ): PathValue<T, P> {
@@ -210,7 +210,7 @@ export function getMethod<T, P extends MethodPaths<T> & string>(
  * })
  * ```
  */
-export function createQueryFn<T, P extends MethodPaths<T> & string>(
+export function createQueryFn<T extends object, P extends MethodPaths<T> & string>(
   rpc: RpcProxy<T>,
   path: P,
   options?: QueryFnOptions
@@ -255,7 +255,7 @@ export function createQueryFn<T, P extends MethodPaths<T> & string>(
  * })
  * ```
  */
-export function createMutationFn<T, P extends MethodPaths<T> & string>(
+export function createMutationFn<T extends object, P extends MethodPaths<T> & string>(
   rpc: RpcProxy<T>,
   path: P,
   options?: MutationFnOptions
@@ -296,7 +296,7 @@ export function createMutationFn<T, P extends MethodPaths<T> & string>(
  * // { id: string; name: string; email: string }
  * ```
  */
-export type QueryData<T> = T extends (...args: unknown[]) => Promise<infer R> ? R : never
+export type QueryData<T extends (...args: unknown[]) => Promise<unknown>> = T extends (...args: unknown[]) => Promise<infer R> ? R : never
 
 /**
  * Extract the variables/input type for a query or mutation
@@ -307,7 +307,7 @@ export type QueryData<T> = T extends (...args: unknown[]) => Promise<infer R> ? 
  * // { id: string }
  * ```
  */
-export type QueryVariables<T> = T extends (arg: infer A) => unknown ? A : never
+export type QueryVariables<T extends (...args: unknown[]) => unknown> = T extends (arg: infer A) => unknown ? A : never
 
 /**
  * Helper type for creating React Query useQuery options
@@ -322,7 +322,7 @@ export type QueryVariables<T> = T extends (arg: infer A) => unknown ? A : never
  * }
  * ```
  */
-export interface UseQueryOptions<TMethod> {
+export interface UseQueryOptions<TMethod extends (...args: unknown[]) => Promise<unknown>> {
   queryKey: readonly unknown[]
   queryFn: () => Promise<QueryData<TMethod>>
   enabled?: boolean
@@ -346,7 +346,7 @@ export interface UseQueryOptions<TMethod> {
  * }
  * ```
  */
-export interface UseMutationOptions<TMethod> {
+export interface UseMutationOptions<TMethod extends (...args: unknown[]) => Promise<unknown>> {
   mutationFn: (variables: QueryVariables<TMethod>) => Promise<QueryData<TMethod>>
   onSuccess?: (data: QueryData<TMethod>, variables: QueryVariables<TMethod>) => void | Promise<void>
   onError?: (error: Error, variables: QueryVariables<TMethod>) => void | Promise<void>
@@ -374,14 +374,14 @@ export interface UseMutationOptions<TMethod> {
  * useSWR(['user', { id: '123' }], fetcher)
  * ```
  */
-export type SWRFetcher<TMethod> = (
+export type SWRFetcher<TMethod extends (...args: unknown[]) => Promise<unknown>> = (
   key: [string, QueryVariables<TMethod>]
 ) => Promise<QueryData<TMethod>>
 
 /**
  * Helper type for SWR mutation trigger functions
  */
-export type SWRMutationFetcher<TMethod> = (
+export type SWRMutationFetcher<TMethod extends (...args: unknown[]) => Promise<unknown>> = (
   key: string,
   options: { arg: QueryVariables<TMethod> }
 ) => Promise<QueryData<TMethod>>

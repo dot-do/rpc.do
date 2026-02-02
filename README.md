@@ -1,572 +1,115 @@
 # rpc.do
 
+Lightweight, transport-agnostic RPC for JavaScript/TypeScript.
+
+[![npm](https://img.shields.io/npm/v/rpc.do)](https://npmjs.com/package/rpc.do)
 ![CI](https://github.com/dot-do/rpc.do/actions/workflows/ci.yml/badge.svg)
 
-Managed RPC implementation for the [.do](https://dotdo.ai) platform with built-in authentication, CLI tooling, and cloud deployment.
-
-**New to rpc.do?** Check out the [Getting Started Guide](docs/GETTING_STARTED.md) for a beginner-friendly introduction.
-
-## Platform Package Hierarchy
-
-This repository is part of the .do platform ecosystem. Understanding the package hierarchy helps you choose the right tool:
-
-| Package | npm | Description |
-|---------|-----|-------------|
-| **@dotdo/types** | [![npm](https://img.shields.io/npm/v/@dotdo/types)](https://npmjs.com/package/@dotdo/types) | Core type definitions providing full access to the platform |
-| **@dotdo/rpc** | [![npm](https://img.shields.io/npm/v/@dotdo/rpc)](https://npmjs.com/package/@dotdo/rpc) | Abstract core library for building RPC-enabled Durable Objects |
-| **rpc.do** | [![npm](https://img.shields.io/npm/v/rpc.do)](https://npmjs.com/package/rpc.do) | Managed implementation with platform integrations |
-
-### @dotdo/rpc - Abstract Foundation
-
-**@dotdo/rpc** is the abstract core library for building your own RPC-enabled Cloudflare Durable Objects. Use it when you need full control over your Durable Object implementation.
-
-```bash
-npm install @dotdo/rpc
-```
-
-```typescript
-import { DurableRPC } from '@dotdo/rpc'
-
-export class MyService extends DurableRPC {
-  users = this.collection<User>('users')
-
-  async createUser(id: string, data: User) {
-    this.users.put(id, data)
-    return { id, ...data }
-  }
-}
-```
-
-See the full [@dotdo/rpc documentation](./core/README.md).
-
-### rpc.do - Managed Implementation
-
-**rpc.do** is the managed, batteries-included implementation integrated with the .do platform:
-
-- **[oauth.do](https://oauth.do)** - Built-in authentication with token management
-- **[cli.do](https://cli.do)** - Zero-config type generation via `npx rpc.do generate`
-- **[rpc.do](https://rpc.do)** - Cloud-hosted managed RPC service
-
-Use **rpc.do** when you want a complete, production-ready solution with platform integrations.
+## Install
 
 ```bash
 npm install rpc.do
 ```
 
-```typescript
-import $ from 'rpc.do'
-
-// Ready to use with managed authentication
-await $.ai.generate({ prompt: 'hello' })
-```
-
----
-
-## rpc.do Entry Points
-
-| Entry Point | Description | Use Case |
-|-------------|-------------|----------|
-| `rpc.do` | Client RPC proxy + type utilities | Creating RPC clients in browser/Node.js |
-| `rpc.do/server` | Server utilities (`createTarget`, `createHandler`) | Exposing any SDK/object as RPC endpoint |
-| `rpc.do/expose` | `WorkerEntrypoint` wrapper | Exposing SDKs via Cloudflare service bindings |
-| `rpc.do/transports` | Transport implementations | Advanced transport configuration |
-| `rpc.do/auth` | oauth.do integration | Authentication providers |
-| `rpc.do/errors` | Error classes | Type-safe error handling |
-
-### Decision Tree: Which Entry Point?
-
-```
-Need to call remote RPC methods?
-  -> Use `rpc.do` (default export)
-
-Need to expose an SDK as an RPC endpoint?
-  -> Via HTTP/WebSocket: Use `rpc.do/server`
-  -> Via service binding: Use `rpc.do/expose`
-
-Need oauth.do authentication?
-  -> Use `rpc.do/auth`
-
-Need custom transport behavior?
-  -> Use `rpc.do/transports`
-
-Need to handle RPC errors?
-  -> Use `rpc.do/errors`
-```
-
----
-
-## Why rpc.do?
-
-**Ergonomic Proxy-based API** - Call remote procedures with natural JavaScript syntax. No code generation, no schema compilation, just `$.ai.generate({ prompt: 'hello' })`.
-
-**Transport Agnostic** - Same client code works across HTTP, WebSocket, Cloudflare Service Bindings, and capnweb. Switch transports without changing your application logic.
-
-**Cloudflare Workers First-Class Support** - Built for the edge. Service bindings transport enables zero-latency RPC between Workers. Deploy the included Worker export for instant RPC endpoints.
-
-**Lightweight Alternative to tRPC/gRPC** - No build step required. No protobuf compilation. No router boilerplate. Just a ~3KB proxy that works everywhere.
-
-## How it works
-
-rpc.do uses JavaScript Proxies to create an infinitely nested namespace that accumulates method paths:
-
-```typescript
-const rpc = RPC(transport)
-
-// When you write:
-rpc.ai.models.gpt4.generate({ prompt: 'hello' })
-
-// The proxy accumulates: ['ai', 'models', 'gpt4', 'generate']
-// Then calls: transport('ai.models.gpt4.generate', [{ prompt: 'hello' }])
-```
-
-**Method Path Accumulation** - Each property access returns a new proxy that extends the path. Function invocation triggers the actual RPC call with the accumulated path as the method name.
-
-**Transport Abstraction** - Transports are simple functions: `(method: string, args: any[]) => Promise<any>`. This makes it trivial to implement custom transports or compose existing ones.
-
-## Installation
-
-### Basic Install
-
-```bash
-npm install rpc.do @dotdo/capnweb
-```
-
-This gives you:
-- HTTP and WebSocket transports
-- Service binding transport for Cloudflare Workers
-- Typed RPC proxy client
-
-### Peer Dependencies
-
-| Package | Required | What it enables |
-|---------|----------|-----------------|
-| `@dotdo/capnweb` | **Yes** | Core RPC protocol (capnproto-style batching, WebSocket transport) |
-| `oauth.do` | No | Built-in authentication with token caching and refresh |
-| `@dotdo/types` | No | Full platform type definitions for typed API access |
-
-### Install by Use Case
-
-**Basic HTTP RPC client:**
-```bash
-npm install rpc.do @dotdo/capnweb
-```
-
-**WebSocket with reconnection:**
-```bash
-npm install rpc.do @dotdo/capnweb
-# WebSocket transports are included - no extra dependencies needed
-```
-
-**With oauth.do authentication:**
-```bash
-npm install rpc.do @dotdo/capnweb oauth.do
-```
-
-**With platform types (for typed $.ai, $.db access):**
-```bash
-npm install rpc.do @dotdo/capnweb @dotdo/types
-```
-
-**Full-featured setup (authentication + types):**
-```bash
-npm install rpc.do @dotdo/capnweb oauth.do @dotdo/types
-```
-
 ## Quick Start
 
-```typescript
-import $ from 'rpc.do'
-// or: import { $ } from 'rpc.do'
-
-await $.ai.generate({ prompt: 'hello' })
-await $.db.get({ id: '123' })
-```
-
-## Custom Transport
-
-```typescript
-import { RPC, http, auth } from 'rpc.do'
-
-const rpc = RPC(http('https://rpc.do', auth()))
-
-await rpc.ai.generate({ prompt: 'hello' })
-```
-
-### WebSocket
-
-```typescript
-import { RPC, ws, auth } from 'rpc.do'
-
-const rpc = RPC(ws('wss://rpc.do', auth()))
-```
-
-### Advanced WebSocket Transport
-
-For production applications requiring robust connection handling, use the advanced WebSocket transport:
-
-```typescript
-import { RPC } from 'rpc.do'
-import { wsAdvanced } from 'rpc.do/transports/ws-advanced'
-
-const transport = wsAdvanced('wss://rpc.do', {
-  token: 'your-auth-token',  // First-message auth (not in URL)
-
-  // Event handlers
-  onConnect: () => console.log('Connected!'),
-  onDisconnect: (reason, code) => console.log('Disconnected:', reason),
-  onReconnecting: (attempt, max) => console.log(`Reconnecting ${attempt}/${max}`),
-  onError: (error) => console.error('Error:', error),
-
-  // Reconnection settings
-  autoReconnect: true,
-  maxReconnectAttempts: 10,
-  reconnectBackoff: 1000,      // Start at 1s
-  maxReconnectBackoff: 30000,  // Max 30s
-  backoffMultiplier: 2,        // Exponential backoff
-
-  // Heartbeat settings
-  heartbeatInterval: 30000,    // Ping every 30s
-  heartbeatTimeout: 5000,      // Pong timeout
-
-  // Timeouts
-  connectTimeout: 10000,
-  requestTimeout: 30000,
-})
-
-const rpc = RPC(transport)
-
-// Check connection state
-console.log(transport.state) // 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'closed'
-console.log(transport.isConnected())
-
-// Manual connection management
-await transport.connect()
-transport.close()
-```
-
-**Security Features:**
-- First-message authentication (token not in URL)
-- TLS required by default (blocks `ws://` with tokens)
-- Use `allowInsecureAuth: true` only for local development
-
-### Service Bindings (Cloudflare Workers)
-
-```typescript
-import { RPC, binding } from 'rpc.do'
-
-export default {
-  fetch: (req, env) => {
-    const rpc = RPC(binding(env.RPC))
-    return Response.json(await rpc.db.get({ id: '123' }))
-  }
-}
-```
-
-### Direct Token
-
-```typescript
-const rpc = RPC(http('https://rpc.do', 'sk_live_xxx'))
-```
-
-## Typed API
-
-```typescript
-import { RPC, http, RPCProxy, RPCPromise, RPCResult, RPCInput } from 'rpc.do'
-
-// Define your API shape
-interface API {
-  ai: {
-    generate: (params: { prompt: string }) => { text: string }
-  }
-  db: {
-    get: (params: { id: string }) => { data: any }
-    set: (params: { id: string; data: any }) => { ok: boolean }
-  }
-}
-
-// Create typed client
-const rpc = RPC<API>(http('https://rpc.do'))
-
-// Fully typed!
-const result = await rpc.ai.generate({ prompt: 'hello' })
-// result is { text: string }
-
-// Type utilities
-type GenerateResult = RPCResult<typeof rpc.ai.generate>  // { text: string }
-type GenerateInput = RPCInput<typeof rpc.ai.generate>    // { prompt: string }
-```
-
-## Auth
-
-rpc.do integrates with [oauth.do](https://oauth.do) for authentication. Install oauth.do as an optional peer dependency:
-
-```bash
-npm install oauth.do
-```
-
-### Using oauth.do Provider
+### Client
 
 ```typescript
 import { RPC, http } from 'rpc.do'
-import { oauthProvider } from 'rpc.do/auth'
 
-// Basic usage - uses oauth.do getToken with caching
-const rpc = RPC(http('https://rpc.do', oauthProvider()))
+const rpc = RPC(http('https://your-api.com/rpc'))
 
-await rpc.ai.generate({ prompt: 'hello' })
+// Call remote methods like local functions
+const user = await rpc.users.getById({ id: '123' })
+const result = await rpc.math.add({ a: 5, b: 3 })
 ```
 
-### Cached Auth
-
-Wrap any token function with caching:
+### Server (Cloudflare Worker)
 
 ```typescript
-import { cachedAuth } from 'rpc.do/auth'
-import { getToken } from 'oauth.do'
+import { createRpcHandler, noAuth } from 'rpc.do/server'
 
-const auth = cachedAuth(getToken, {
-  ttl: 60000,       // Cache for 1 minute
-  refreshBuffer: 10000  // Refresh 10s before expiry
-})
-
-const rpc = RPC(http('https://rpc.do', auth))
-```
-
-### Fallback Tokens
-
-```typescript
-import { oauthProvider, compositeAuth, staticAuth } from 'rpc.do/auth'
-
-// With fallback token
-const rpc = RPC(http('https://rpc.do', oauthProvider({
-  fallbackToken: process.env.API_TOKEN
-})))
-
-// Or use composite auth for multiple sources
-const auth = compositeAuth([
-  oauthProvider(),  // Try oauth.do first
-  staticAuth(() => process.env.API_TOKEN),  // Fall back to env var
-])
-const rpc = RPC(http('https://rpc.do', auth))
-```
-
-### Direct Auth Function
-
-The `auth()` function returns JWT or API key for `Authorization: Bearer TOKEN`:
-
-1. `globalThis.DO_ADMIN_TOKEN` / `DO_TOKEN` (Workers)
-2. `process.env.DO_ADMIN_TOKEN` / `DO_TOKEN` (Node.js)
-3. `oauth.do` stored credentials
-
-```typescript
-import { RPC, http } from 'rpc.do'
-import { auth } from 'rpc.do/auth'
-
-const rpc = RPC(http('https://rpc.do', auth()))
-```
-
-## Worker
-
-Deploy as a Cloudflare Worker with built-in auth and service binding dispatch:
-
-```typescript
-// Simple - uses env bindings for dispatch
-export { default } from 'rpc.do/worker'
-```
-
-Or with custom dispatch:
-
-```typescript
-import { createWorker } from 'rpc.do/worker'
-
-export default createWorker({
-  dispatch: async (method, args, env, ctx) => {
-    // Custom dispatch logic
-    const [service, ...path] = method.split('.')
-    return env[service][path.join('.')](...args)
+const methods = {
+  users: {
+    getById: async ({ id }) => ({ id, name: 'Alice' })
+  },
+  math: {
+    add: async ({ a, b }) => ({ result: a + b })
   }
-})
-```
-
-Environment variables:
-- `RPC_TOKEN` / `DO_ADMIN_TOKEN` / `DO_TOKEN` - Bearer tokens for auth
-
-## Server
-
-Custom server handler for advanced use cases:
-
-```typescript
-import { createRpcHandler, bearerAuth } from 'rpc.do/server'
+}
 
 export default {
   fetch: createRpcHandler({
-    auth: bearerAuth(async (token) => {
-      if (token === env.SECRET) return { admin: true }
-      return null
-    }),
-    dispatch: (method, args) => env[method.split('.')[0]][method.split('.').slice(1).join('.')](...args)
+    auth: noAuth(),
+    dispatch: async (method, args) => {
+      const [ns, fn] = method.split('.')
+      return methods[ns][fn](args[0])
+    }
   })
 }
 ```
 
+### With Types
+
+```typescript
+interface API {
+  users: { getById: (args: { id: string }) => { id: string; name: string } }
+  math: { add: (args: { a: number; b: number }) => { result: number } }
+}
+
+const rpc = RPC<API>(http('https://your-api.com/rpc'))
+
+// Full autocomplete and type checking
+const user = await rpc.users.getById({ id: '123' })
+```
+
+## Features
+
+- **Proxy-based API** - Call remote methods with natural JavaScript syntax
+- **Transport agnostic** - HTTP, WebSocket, Cloudflare Service Bindings, capnweb
+- **Type safe** - Full TypeScript support with inference
+- **Lightweight** - ~3KB core, no build step required
+- **Cloudflare Workers** - First-class support with service bindings
+- **Authentication** - Built-in oauth.do integration
+- **Error handling** - Typed error classes with retry support
+
 ## Transports
 
-| Transport | Description |
-|-----------|-------------|
-| `http(url, auth?)` | HTTP POST |
-| `ws(url, auth?)` | WebSocket (basic) |
-| `wsAdvanced(url, opts?)` | WebSocket with reconnection, heartbeat, first-message auth |
-| `binding(env.RPC)` | CF Workers service bindings |
-| `capnweb(url, opts?)` | Full capnweb RPC |
-| `composite(...t)` | Fallback chain |
+```typescript
+import { RPC, http, ws, binding, composite } from 'rpc.do'
 
-Import advanced transport from `rpc.do/transports/ws-advanced`.
+// HTTP
+const rpc = RPC(http('https://api.example.com'))
 
-## Types
+// WebSocket
+const rpc = RPC(ws('wss://api.example.com'))
 
-| Type | Description |
-|------|-------------|
-| `RPCProxy<T>` | Converts API shape to async proxy |
-| `RPCPromise<T>` | Explicit promise return type |
-| `RPCResult<T>` | Infer return type of RPC function |
-| `RPCInput<T>` | Infer input type of RPC function |
-| `RPCFunction<I, O>` | Define function signature |
+// Cloudflare Service Binding
+const rpc = RPC(binding(env.MY_SERVICE))
+
+// Fallback chain
+const rpc = RPC(composite(ws('wss://...'), http('https://...')))
+```
+
+## Authentication
+
+```typescript
+// With token
+const rpc = RPC(http('https://api.example.com', 'your-token'))
+
+// With oauth.do
+import { oauthProvider } from 'rpc.do/auth'
+const rpc = RPC(http('https://api.example.com', oauthProvider()))
+```
 
 ## Error Handling
 
-Import error classes from `rpc.do/errors`:
-
 ```typescript
-import { ConnectionError, RPCError, ProtocolVersionError } from 'rpc.do/errors'
+import { ConnectionError, RPCError } from 'rpc.do/errors'
 
 try {
-  await rpc.some.method()
-} catch (error) {
-  if (error instanceof ConnectionError) {
-    console.log(`Connection error: ${error.code}`)
-    if (error.retryable) {
-      // Can retry the operation
-    }
-  } else if (error instanceof RPCError) {
-    console.log(`RPC error: ${error.code}`, error.data)
-  } else if (error instanceof ProtocolVersionError) {
-    console.log(`Protocol mismatch: client ${error.clientVersion}, server ${error.serverVersion}`)
-  }
-}
-```
-
-**ConnectionError codes:**
-- `CONNECTION_TIMEOUT` - Connection timed out
-- `CONNECTION_FAILED` - Failed to establish connection
-- `CONNECTION_LOST` - Connection was lost
-- `AUTH_FAILED` - Authentication failed
-- `RECONNECT_FAILED` - All reconnection attempts exhausted
-- `HEARTBEAT_TIMEOUT` - Server not responding to heartbeats
-- `INSECURE_CONNECTION` - Token sent over non-TLS connection
-
-## Entry Points Reference
-
-### `rpc.do` - Client Proxy (Default)
-
-The main entry point for creating RPC clients.
-
-```typescript
-import $, { RPC, RPCProxy, RPCResult, RPCInput } from 'rpc.do'
-
-// Pre-configured anonymous client
-await $.ai.generate({ prompt: 'hello' })
-
-// Custom client with URL
-const rpc = RPC('https://my-do.workers.dev')
-
-// Typed client
-const typed = RPC<API>('https://api.example.com')
-```
-
-**Exports**: `$`, `RPC`, `createRPCClient`, `createDOClient`, `connectDO`, type utilities, transport functions (`http`, `capnweb`, `binding`, `composite`)
-
-### `rpc.do/server` - Server Utilities
-
-Wrap any object/SDK as a capnweb RpcTarget.
-
-```typescript
-import { createTarget, createHandler, RpcTarget } from 'rpc.do/server'
-
-// Wrap SDK and create fetch handler
-const target = createTarget(esbuild)
-export default { fetch: createHandler(target) }
-```
-
-**Exports**: `createTarget`, `createHandler`, `RpcTarget`, `RpcSession`, `newWorkersRpcResponse`, `newHttpBatchRpcResponse`, `HibernatableWebSocketTransport`, `serialize`, `deserialize`
-
-### `rpc.do/expose` - WorkerEntrypoint Wrapper
-
-Expose SDKs via Cloudflare service bindings with capnweb pipelining.
-
-```typescript
-import { expose } from 'rpc.do/expose'
-
-// Single SDK
-export default expose((env) => new Cloudflare({ apiToken: env.CF_TOKEN }))
-
-// Multiple SDKs
-export default expose({
-  sdks: {
-    cf: (env) => new Cloudflare({ apiToken: env.CF_TOKEN }),
-    gh: (env) => new Octokit({ auth: env.GH_TOKEN }),
-  }
-})
-```
-
-**Exports**: `expose`
-
-### `rpc.do/transports` - Transport Implementations
-
-Advanced transport configuration.
-
-```typescript
-import {
-  http, capnweb, binding, composite,
-  ReconnectingWebSocketTransport
-} from 'rpc.do/transports'
-
-// HTTP with timeout
-const transport = http('https://api.example.com', { timeout: 30000 })
-
-// WebSocket with reconnection
-const wsTransport = capnweb('wss://api.example.com', {
-  reconnect: true,
-  reconnectOptions: { onConnect: () => console.log('Connected') }
-})
-```
-
-**Exports**: `http`, `capnweb`, `binding`, `composite`, `ReconnectingWebSocketTransport`, `reconnectingWs`, `createRpcSession`
-
-### `rpc.do/auth` - Authentication
-
-Integration with oauth.do and flexible auth providers.
-
-```typescript
-import { auth, oauthProvider, cachedAuth, staticAuth, compositeAuth } from 'rpc.do/auth'
-
-// Basic auth (globals + env + oauth.do)
-const rpc = RPC(http('https://api.example.com', auth()))
-
-// oauth.do with caching
-const rpc = RPC(http('https://api.example.com', oauthProvider({ ttl: 60000 })))
-```
-
-**Exports**: `auth`, `oauthProvider`, `cachedAuth`, `staticAuth`, `compositeAuth`, `getToken`
-
-### `rpc.do/errors` - Error Classes
-
-Typed error classes for handling failures.
-
-```typescript
-import { ConnectionError, RPCError, ProtocolVersionError, AuthenticationError, RateLimitError } from 'rpc.do/errors'
-
-try {
-  await rpc.method()
+  await rpc.users.get({ id: '123' })
 } catch (error) {
   if (error instanceof ConnectionError && error.retryable) {
     // Retry the operation
@@ -574,17 +117,29 @@ try {
 }
 ```
 
-**Exports**: `ConnectionError`, `RPCError`, `ProtocolVersionError`, `AuthenticationError`, `RateLimitError`
+## Documentation
+
+- [Getting Started Guide](docs/GETTING_STARTED.md) - Step-by-step tutorial
+- [API Reference](docs/API_REFERENCE.md) - Complete API documentation
+- [Architecture](docs/ARCHITECTURE.md) - Technical design and internals
+- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
+
+### Migration Guides
+
+- [Migrating from tRPC](docs/MIGRATING_FROM_TRPC.md)
+- [Migrating from gRPC](docs/MIGRATING_FROM_GRPC.md)
+
+### Framework Integration
+
+- [React Integration](docs/REACT_INTEGRATION.md)
 
 ## Related Packages
 
 | Package | Description |
 |---------|-------------|
-| [`@dotdo/rpc`](./core/README.md) | Abstract DO server library (DurableRPC base class) |
-| [`@dotdo/types`](https://github.com/dot-do/types) | Core platform type definitions |
-| [`@dotdo/capnweb`](https://github.com/dot-do/capnweb) | Capnproto-style RPC protocol |
-| [`oauth.do`](https://github.com/dot-do/oauth.do) | OAuth authentication |
-| [`colo.do`](https://github.com/dot-do/colo.do) | Cloudflare colo location data |
+| [`@dotdo/rpc`](./core/README.md) | Abstract Durable Object server library |
+| [`@dotdo/types`](https://npmjs.com/package/@dotdo/types) | Core platform type definitions |
+| [`oauth.do`](https://oauth.do) | OAuth authentication |
 
 ## License
 

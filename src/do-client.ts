@@ -47,24 +47,29 @@ import type {
 } from '@dotdo/types/rpc'
 import { INTERNAL_METHODS } from './constants.js'
 
-// ============================================================================
-// Types
-// ============================================================================
+// Import schema types from @dotdo/rpc (canonical location)
+// These are bundled by tsup so no runtime dependency is added
+import type {
+  SqlQueryResult,
+  RpcSchema,
+  RpcMethodSchema,
+  RpcNamespaceSchema,
+  DatabaseSchema,
+  TableSchema,
+  ColumnSchema,
+  IndexSchema,
+} from '@dotdo/rpc'
 
-/**
- * SQL query result
- *
- * Note: rpc.do uses a slightly different shape than @dotdo/types SqlQueryResult.
- * This interface uses `results` and `meta`, while @dotdo/types uses `rows` and separate fields.
- *
- * @see TypesSqlQueryResult from '@dotdo/types/rpc' for the standard interface
- */
-export interface SqlQueryResult<T = Record<string, unknown>> {
-  results: T[]
-  meta: {
-    rows_read: number
-    rows_written: number
-  }
+// Re-export schema types for consumers
+export type {
+  SqlQueryResult,
+  RpcSchema,
+  RpcMethodSchema,
+  RpcNamespaceSchema,
+  DatabaseSchema,
+  TableSchema,
+  ColumnSchema,
+  IndexSchema,
 }
 
 /**
@@ -125,7 +130,7 @@ export type FilterOperator =
 /**
  * MongoDB-style filter query
  */
-export type Filter<T> = {
+export type Filter<T extends Record<string, unknown>> = {
   [K in keyof T]?: T[K] | FilterOperator
 } & {
   $and?: Filter<T>[]
@@ -183,46 +188,6 @@ export interface RemoteCollections {
   names(): Promise<string[]>
   /** Get stats for all collections */
   stats(): Promise<Array<{ name: string; count: number; size: number }>>
-}
-
-/**
- * Database schema types
- */
-export interface ColumnSchema {
-  name: string
-  type: string
-  nullable: boolean
-  primaryKey: boolean
-  defaultValue?: string
-}
-
-export interface TableSchema {
-  name: string
-  columns: ColumnSchema[]
-  indexes: IndexSchema[]
-}
-
-export interface IndexSchema {
-  name: string
-  columns: string[]
-  unique: boolean
-}
-
-export interface DatabaseSchema {
-  tables: TableSchema[]
-  version?: number
-}
-
-/**
- * Full RPC schema
- */
-export interface RpcSchema {
-  version: 1
-  methods: Array<{ name: string; path: string; params: number }>
-  namespaces: Array<{ name: string; methods: Array<{ name: string; path: string; params: number }> }>
-  database?: DatabaseSchema
-  storageKeys?: string[]
-  colo?: string
 }
 
 /**
@@ -309,7 +274,7 @@ export interface RpcSchema {
  *
  * @see TypesDOClient from '@dotdo/types/rpc' for the base interface
  */
-export type DOClient<T = unknown> = {
+export type DOClient<T extends object = Record<string, unknown>> = {
   /** Tagged template SQL query */
   sql: <R = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]) => SqlQuery<R>
   /** Remote storage access */
@@ -624,7 +589,7 @@ function createStorageProxy(transport: Transport): RemoteStorage {
  * @see RPC - Simpler API for most use cases
  * @see connectDO - Async convenience wrapper with automatic capnweb transport
  */
-export function createDOClient<T = unknown>(
+export function createDOClient<T extends object = Record<string, unknown>>(
   transport: Transport | TransportFactory,
   options?: CreateDOClientOptions
 ): DOClient<T> {
@@ -752,7 +717,7 @@ export function createDOClient<T = unknown>(
  * const users = await $.sql`SELECT * FROM users`.all()
  * ```
  */
-export async function connectDO<T = unknown>(
+export async function connectDO<T extends object = Record<string, unknown>>(
   url: string,
   options?: {
     auth?: string | (() => string | null | Promise<string | null>)

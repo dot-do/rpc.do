@@ -5,8 +5,12 @@
  * between the client and server for built-in DO features like
  * SQL, storage, and collections.
  *
- * Note: This file mirrors core/src/constants.ts for the @dotdo/rpc package.
- * Both packages need to use the same method names for client-server communication.
+ * IMPORTANT: This file intentionally duplicates core/src/constants.ts.
+ * Both rpc.do (client) and @dotdo/rpc (server) need these constants for
+ * protocol compatibility, but they are separate packages without a runtime
+ * dependency between them. See PACKAGE_BOUNDARY.md for details.
+ *
+ * When modifying these constants, ensure both files are updated together.
  *
  * @example
  * ```typescript

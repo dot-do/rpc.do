@@ -1121,7 +1121,7 @@ export interface RouterOptions<Env> {
   /** Map of namespace to DO binding name */
   bindings?: Record<string, keyof Env>
   /** Auth middleware */
-  auth?: (request: Request, env: Env) => Promise<{ authorized: boolean; id?: string; context?: any }>
+  auth?: (request: Request, env: Env) => Promise<{ authorized: boolean; id?: string; context?: unknown }>
   /** Custom ID resolver (default: uses X-DO-Id header or URL path) */
   resolveId?: (request: Request, namespace: string) => string | DurableObjectId
 }

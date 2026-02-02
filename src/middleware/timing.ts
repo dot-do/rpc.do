@@ -19,19 +19,17 @@
  */
 
 import type { RpcClientMiddleware } from '../index'
+import type { BaseTimingOptions } from './types'
 
 /**
- * Options for the timing middleware
+ * Options for the timing middleware.
+ *
+ * Extends {@link BaseTimingOptions} which is shared with server-side middleware,
+ * and adds client-specific options for memory management.
+ *
+ * @see BaseTimingOptions for shared options
  */
-export interface TimingOptions {
-  /** Custom logger function (default: console.log) */
-  log?: (message: string) => void
-  /** Prefix for log messages (default: '[RPC Timing]') */
-  prefix?: string
-  /** Threshold in ms - only log if call takes longer than this (default: 0) */
-  threshold?: number
-  /** Callback for each timing measurement */
-  onTiming?: (method: string, durationMs: number) => void
+export interface TimingOptions extends BaseTimingOptions {
   /** TTL in ms for timing entries - entries older than this are automatically cleaned up (default: 60000) */
   ttl?: number
   /** Interval in ms for cleanup check (default: 10000) */
