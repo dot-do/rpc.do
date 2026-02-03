@@ -880,7 +880,7 @@ export interface RpcSessionOptions extends ReconnectingWebSocketOptions {
  * // Bidirectional: client and server can call each other
  * const clientHandler = {
  *   notify: (message: string) => console.log('Server says:', message),
- *   onUpdate: (data: any) => updateUI(data),
+ *   onUpdate: (data: unknown) => updateUI(data),
  * }
  *
  * const { session, api } = await createRpcSession<ServerAPI>('wss://api.example.com/rpc', {

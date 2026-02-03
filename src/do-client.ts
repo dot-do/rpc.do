@@ -213,6 +213,8 @@ export interface RemoteCollections {
  * - `collection` - MongoDB-style document store on SQLite
  * - `dbSchema` - Database introspection (tables, columns, indexes)
  * - `schema` - Full RPC schema for codegen and tooling
+ * - `stream` - Consume streaming RPC methods
+ * - `subscribe` - Subscribe to real-time updates
  * - `close` - Clean up the connection
  *
  * Plus all custom RPC methods defined on your DO, accessed via proxy.
@@ -286,6 +288,29 @@ export interface RemoteCollections {
  * console.log(schema.methods)  // [{ name: 'getUser', path: 'users.get', params: 1 }]
  * ```
  *
+ * @example Streaming RPC methods
+ * ```typescript
+ * // Consume a streaming response
+ * const stream = await $.stream<TextChunk>('ai.generateStream', { prompt: 'Hello' })
+ *
+ * for await (const chunk of stream) {
+ *   process.stdout.write(chunk.text)
+ * }
+ * ```
+ *
+ * @example Real-time subscriptions
+ * ```typescript
+ * // Subscribe to real-time updates
+ * const subscription = await $.subscribe<UserEvent>('users:123')
+ *
+ * subscription.on('data', (event) => {
+ *   console.log('User updated:', event)
+ * })
+ *
+ * // Later: unsubscribe
+ * await subscription.unsubscribe()
+ * ```
+ *
  * @see TypesDOClient from '@dotdo/types/rpc' for the base interface
  */
 export type DOClient<T extends object = Record<string, unknown>> = {
@@ -299,6 +324,10 @@ export type DOClient<T extends object = Record<string, unknown>> = {
   dbSchema: () => Promise<DatabaseSchema>
   /** Get full RPC schema */
   schema: () => Promise<RpcSchema>
+  /** Invoke a streaming RPC method */
+  stream: <R>(method: string, ...args: unknown[]) => Promise<import('./types.js').StreamResponse<R>>
+  /** Subscribe to a topic for real-time updates */
+  subscribe: <R>(topic: string, options?: import('./types.js').SubscribeOptions) => Promise<import('./types.js').Subscription<R>>
   /** Close the connection */
   close: () => Promise<void>
 } & RpcProxy<T>
@@ -754,6 +783,57 @@ export function createDOClient<T extends object = Record<string, unknown>>(
           const t = await getTransport()
           // Safe: SCHEMA returns RpcSchema from the server
           return asRpcSchema(await t.call(INTERNAL_METHODS.SCHEMA, []))
+        }
+      }
+
+      if (prop === 'stream') {
+        return async <R>(method: string, ...args: unknown[]): Promise<import('./types.js').StreamResponse<R>> => {
+          const t = await getTransport()
+          // Get the base URL from transport if available, otherwise use SSE streaming
+          // For streaming, we need to get the URL from the transport context
+          // The transport returns a stream ID that we can use to connect to SSE endpoint
+          const streamId = await t.call(INTERNAL_METHODS.STREAM, [method, args]) as string
+
+          // Import streaming module dynamically
+          const { sseStream } = await import('./transports/streaming.js')
+
+          // Construct SSE URL - the server should provide this or we derive from transport
+          // For now, we assume the transport URL can be derived and we append /stream
+          const baseUrl = (t as unknown as { url?: string }).url || ''
+          const sseUrl = baseUrl ? `${baseUrl.replace(/\/$/, '')}/stream/${streamId}` : `/stream/${streamId}`
+
+          // Build options, only adding auth if defined
+          const transportAuth = (t as unknown as { auth?: () => Promise<string | null> }).auth
+          const sseOpts: import('./transports/streaming.js').SSEStreamOptions = {}
+          if (transportAuth !== undefined) {
+            sseOpts.auth = transportAuth
+          }
+
+          return sseStream<R>(sseUrl, { method, args }, sseOpts)
+        }
+      }
+
+      if (prop === 'subscribe') {
+        return async <R>(topic: string, options?: import('./types.js').SubscribeOptions): Promise<import('./types.js').Subscription<R>> => {
+          const t = await getTransport()
+
+          // Import streaming module dynamically
+          const { wsSubscribe } = await import('./transports/streaming.js')
+
+          // Get WebSocket URL from transport or derive it
+          const baseUrl = (t as unknown as { url?: string }).url || ''
+          const wsUrl = baseUrl ? baseUrl.replace(/^http/, 'ws').replace(/\/$/, '') + '/ws' : '/ws'
+
+          // Build options, only adding auth if defined
+          const transportAuth = (t as unknown as { auth?: () => Promise<string | null> }).auth
+          const wsOpts: import('./transports/streaming.js').WSSubscribeOptions = {
+            ...options,
+          }
+          if (transportAuth !== undefined) {
+            wsOpts.auth = transportAuth
+          }
+
+          return wsSubscribe<R>(wsUrl, topic, wsOpts)
         }
       }
 

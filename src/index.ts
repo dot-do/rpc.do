@@ -32,6 +32,12 @@ export type {
   SqlQueryString,
   RpcMethodPath,
   AuthToken,
+  // Streaming types
+  StreamResponse,
+  Subscription,
+  StreamOptions,
+  SubscribeOptions,
+  StreamableResponse,
 } from './types'
 
 // Export branded type helper functions
@@ -253,6 +259,10 @@ export interface DOClientFeatures {
   dbSchema: () => Promise<DatabaseSchema>
   /** Get full RPC schema */
   schema: () => Promise<RpcSchema>
+  /** Invoke a streaming RPC method */
+  stream: <R>(method: string, ...args: unknown[]) => Promise<import('./types').StreamResponse<R>>
+  /** Subscribe to a topic for real-time updates */
+  subscribe: <R>(topic: string, options?: import('./types').SubscribeOptions) => Promise<import('./types').Subscription<R>>
 }
 
 // Import types for DOClientFeatures
@@ -360,6 +370,19 @@ export {
 
 export { withMiddleware, withRetry, type RetryOptions } from './middleware/index.js'
 
+// Streaming transport utilities
+export {
+  sseStream,
+  wsSubscribe,
+  wrapAsyncIterable,
+  collectStream,
+  takeFromStream,
+  mapStream,
+  filterStream,
+  type SSEStreamOptions,
+  type WSSubscribeOptions,
+} from './transports/streaming.js'
+
 // DO Client - remote access to DO sql/storage/collections
 export {
   createDOClient,
@@ -435,7 +458,10 @@ let _$: ReturnType<typeof RPC> | undefined
 export const $: ReturnType<typeof RPC> = new Proxy({} as ReturnType<typeof RPC>, {
   get(_, prop) {
     if (!_$) _$ = RPC('https://rpc.do')
-    return (_$ as any)[prop]
+    // Safe property access: _$ is a Proxy object that handles all property access dynamically.
+    // Using a type guard to access properties on the initialized proxy.
+    const client = _$ as Record<string | symbol, unknown>
+    return client[prop]
   },
 })
 

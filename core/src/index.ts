@@ -795,3 +795,90 @@ export {
   type ServerLoggingOptions,
   type ServerTimingOptions,
 } from './middleware.js'
+
+// ============================================================================
+// Composition API (Alternative to Inheritance)
+// ============================================================================
+
+/**
+ * Composition-based DurableRPC
+ *
+ * The composition API provides an alternative to class inheritance for creating
+ * DurableRPC instances. Instead of `class MyDO extends DurableRPC { ... }`,
+ * you can use `createDurableRPC({ plugins: [...], methods: { ... } })`.
+ *
+ * Benefits:
+ * - Explicit control over which features are included
+ * - Smaller bundles via tree-shaking
+ * - Better type inference for the $ context
+ * - Easier testing with injectable plugins
+ *
+ * @example
+ * ```typescript
+ * // Inheritance approach (still supported):
+ * class MyDO extends DurableRPC {
+ *   getUser(id: string) {
+ *     return this.sql`SELECT * FROM users WHERE id = ${id}`.first()
+ *   }
+ * }
+ *
+ * // Composition approach (new):
+ * const MyDO = createDurableRPC({
+ *   plugins: [sqlPlugin(), storagePlugin()],
+ *   methods: {
+ *     getUser: async ($, id: string) => $.sql`SELECT * FROM users WHERE id = ${id}`.first()
+ *   }
+ * })
+ * ```
+ */
+export {
+  // Factory function
+  createDurableRPC,
+
+  // Plugin factories
+  sqlPlugin,
+  storagePlugin,
+  collectionPlugin,
+  authPlugin,
+  coloPlugin,
+
+  // Plugin types
+  type Plugin,
+  type PluginInitContext,
+  type PluginRuntimeContext,
+
+  // Context types
+  type BaseContext,
+  type SqlContext,
+  type StorageContext,
+  type CollectionContext,
+  type AuthContext,
+  type ColoContext as CompositionColoContext,
+
+  // Plugin interfaces
+  type SqlPlugin,
+  type StoragePlugin,
+  type CollectionPlugin,
+  type AuthPlugin,
+  type ColoPlugin,
+  type AuthPluginOptions,
+
+  // Factory types
+  type CreateDurableRPCConfig,
+  type ComposedContext,
+  type MethodDefinition,
+  type NamespaceDefinition,
+  type MethodsOrNamespaces,
+  type ComposedDurableObjectClass,
+
+  // Plugin option types
+  type SqlPluginOptions,
+  type StoragePluginOptions,
+  type CollectionPluginOptions,
+  type ColoPluginOptions,
+
+  // Utility types
+  type PluginContext,
+  type BuiltinPlugin,
+  type MergeContexts,
+} from './composition/index.js'

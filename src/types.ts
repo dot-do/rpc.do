@@ -185,7 +185,14 @@ export type RpcFunction<TInput = unknown, TOutput = unknown> = (input: TInput) =
 export type RPCFunction<TInput = unknown, TOutput = unknown> = RpcFunction<TInput, TOutput>
 
 /**
- * Recursively converts an API definition to async proxy type
+ * Recursively converts an API definition to async proxy type.
+ *
+ * Note: Uses `(...args: any[]) => any` intentionally in the conditional type.
+ * TypeScript requires `any` (not `unknown`) for function type inference to work
+ * correctly. Using `unknown` here would prevent TypeScript from properly
+ * inferring function types in the mapped type. This is a well-known TypeScript
+ * pattern for generic function type handling. See: TS Handbook on Conditional Types.
+ *
  * @example
  * interface API {
  *   ai: { generate: (p: { prompt: string }) => { text: string } }
@@ -194,6 +201,7 @@ export type RPCFunction<TInput = unknown, TOutput = unknown> = RpcFunction<TInpu
  * // Client.ai.generate is now (p: { prompt: string }) => Promise<{ text: string }>
  */
 export type RpcProxy<T extends object> = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Required for function type inference
   [K in keyof T]: T[K] extends (...args: any[]) => any
     ? AsyncFunction<T[K]>
     : T[K] extends object
@@ -231,10 +239,15 @@ export type RPCProxy<T extends object> = RpcProxy<T>
 export type RPCPromise<T> = Promise<T>
 
 /**
- * Infer the return type of an RPC function
+ * Infer the return type of an RPC function.
+ *
+ * Note: Uses `(...args: any[])` intentionally. TypeScript requires `any` for
+ * conditional type inference to work correctly with function types.
+ *
  * @example
  * type Result = RpcResult<typeof rpc.ai.generate> // { text: string }
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Required for return type inference
 export type RpcResult<T extends (...args: unknown[]) => Promise<unknown>> = T extends (...args: any[]) => Promise<infer R> ? R : never
 
 /**
@@ -246,10 +259,15 @@ export type RpcResult<T extends (...args: unknown[]) => Promise<unknown>> = T ex
 export type RPCResult<T extends (...args: unknown[]) => Promise<unknown>> = RpcResult<T>
 
 /**
- * Infer the input type of an RPC function
+ * Infer the input type of an RPC function.
+ *
+ * Note: Uses `=> any` intentionally. TypeScript requires `any` for conditional
+ * type inference to work correctly. The return type is discarded (we only want `I`).
+ *
  * @example
  * type Params = RpcInput<typeof rpc.ai.generate> // { prompt: string }
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Required for input type inference
 export type RpcInput<T extends (...args: unknown[]) => unknown> = T extends (input: infer I) => any ? I : never
 
 /**
@@ -299,3 +317,256 @@ export type RpcClientMiddleware = {
  * @deprecated Use `RpcClientMiddleware` instead (lowercase 'pc' for consistency with capnweb convention). Planned removal: v2.0
  */
 export type RPCClientMiddleware = RpcClientMiddleware
+
+// ============================================================================
+// Streaming Types
+// ============================================================================
+
+/**
+ * Options for configuring stream behavior
+ */
+export interface StreamOptions {
+  /**
+   * Buffer size for backpressure handling
+   * When the buffer reaches this size, the stream will pause consuming from source
+   * @default 16
+   */
+  bufferSize?: number
+
+  /**
+   * Timeout in ms for waiting for the next chunk
+   * If exceeded, stream will emit an error
+   * @default 30000
+   */
+  chunkTimeout?: number
+
+  /**
+   * Whether to automatically reconnect on connection loss
+   * @default true
+   */
+  autoReconnect?: boolean
+
+  /**
+   * Maximum reconnection attempts before giving up
+   * @default 3
+   */
+  maxReconnectAttempts?: number
+
+  /**
+   * Callback when stream starts
+   */
+  onStart?: () => void
+
+  /**
+   * Callback when stream ends successfully
+   */
+  onEnd?: () => void
+
+  /**
+   * Callback when stream errors
+   */
+  onError?: (error: Error) => void
+
+  /**
+   * Callback when attempting to reconnect
+   */
+  onReconnect?: (attempt: number) => void
+}
+
+/**
+ * A streaming RPC response that can be consumed as an AsyncIterable.
+ *
+ * StreamResponse wraps the underlying stream and provides:
+ * - AsyncIterable interface for `for await...of` loops
+ * - Manual iteration via `next()`
+ * - Stream lifecycle control via `close()`
+ * - Backpressure handling
+ *
+ * @typeParam T - The type of each chunk in the stream
+ *
+ * @example Basic streaming
+ * ```typescript
+ * const stream = await $.ai.generateStream({ prompt: 'Hello' })
+ *
+ * for await (const chunk of stream) {
+ *   console.log(chunk.text)
+ * }
+ * ```
+ *
+ * @example Manual iteration
+ * ```typescript
+ * const stream = await $.ai.generateStream({ prompt: 'Hello' })
+ *
+ * while (true) {
+ *   const { value, done } = await stream.next()
+ *   if (done) break
+ *   process.stdout.write(value.text)
+ * }
+ * ```
+ *
+ * @example With cleanup
+ * ```typescript
+ * const stream = await $.events.subscribe('user:123')
+ *
+ * try {
+ *   for await (const event of stream) {
+ *     handleEvent(event)
+ *   }
+ * } finally {
+ *   await stream.close()
+ * }
+ * ```
+ */
+export interface StreamResponse<T> extends AsyncIterable<T> {
+  /**
+   * Get the next chunk from the stream
+   * @returns Promise resolving to the next value or done indicator
+   */
+  next(): Promise<IteratorResult<T, void>>
+
+  /**
+   * Close the stream and release resources
+   * Safe to call multiple times
+   */
+  close(): Promise<void>
+
+  /**
+   * Whether the stream has been closed
+   */
+  readonly closed: boolean
+
+  /**
+   * The stream ID (for reconnection and debugging)
+   */
+  readonly id: string
+}
+
+/**
+ * A subscription to real-time updates from the server.
+ *
+ * Subscriptions are similar to streams but are specifically designed for
+ * event-driven updates where the client subscribes to a topic or channel
+ * and receives updates as they occur.
+ *
+ * @typeParam T - The type of each event/update
+ *
+ * @example Subscribe to user updates
+ * ```typescript
+ * const subscription = await $.users.subscribe('user:123')
+ *
+ * subscription.on('data', (user) => {
+ *   console.log('User updated:', user)
+ * })
+ *
+ * subscription.on('error', (error) => {
+ *   console.error('Subscription error:', error)
+ * })
+ *
+ * // Later: unsubscribe
+ * await subscription.unsubscribe()
+ * ```
+ *
+ * @example Using as AsyncIterable
+ * ```typescript
+ * const subscription = await $.events.subscribe({ channel: 'notifications' })
+ *
+ * for await (const event of subscription) {
+ *   showNotification(event)
+ * }
+ * ```
+ */
+export interface Subscription<T> extends AsyncIterable<T> {
+  /**
+   * Unique subscription ID
+   */
+  readonly id: string
+
+  /**
+   * The topic/channel being subscribed to
+   */
+  readonly topic: string
+
+  /**
+   * Whether the subscription is active
+   */
+  readonly active: boolean
+
+  /**
+   * Add an event listener
+   * @param event - Event type: 'data', 'error', 'end', 'reconnect'
+   * @param handler - Event handler function
+   */
+  on(event: 'data', handler: (data: T) => void): void
+  on(event: 'error', handler: (error: Error) => void): void
+  on(event: 'end', handler: () => void): void
+  on(event: 'reconnect', handler: (attempt: number) => void): void
+
+  /**
+   * Remove an event listener
+   * @param event - Event type
+   * @param handler - Event handler to remove
+   */
+  off(event: 'data' | 'error' | 'end' | 'reconnect', handler: (...args: unknown[]) => void): void
+
+  /**
+   * Unsubscribe and close the subscription
+   */
+  unsubscribe(): Promise<void>
+
+  /**
+   * Pause receiving updates (for backpressure)
+   */
+  pause(): void
+
+  /**
+   * Resume receiving updates
+   */
+  resume(): void
+}
+
+/**
+ * Server-side type for methods that return a stream.
+ *
+ * Use this to type RPC methods that yield multiple values over time.
+ *
+ * @typeParam T - The type of each chunk in the stream
+ *
+ * @example Defining a streaming method
+ * ```typescript
+ * class MyDO extends DurableRPC {
+ *   async *generateStream(prompt: string): StreamableResponse<{ text: string }> {
+ *     for await (const chunk of ai.generate(prompt)) {
+ *       yield { text: chunk }
+ *     }
+ *   }
+ * }
+ * ```
+ */
+export type StreamableResponse<T> = AsyncGenerator<T, void, unknown>
+
+/**
+ * Options for subscribing to a topic
+ */
+export interface SubscribeOptions {
+  /**
+   * Filter for specific events
+   */
+  filter?: Record<string, unknown>
+
+  /**
+   * Start from a specific position (for replay)
+   */
+  startFrom?: string | number
+
+  /**
+   * Whether to receive historical events on subscribe
+   * @default false
+   */
+  includeHistory?: boolean
+
+  /**
+   * Maximum events to buffer
+   * @default 100
+   */
+  bufferSize?: number
+}

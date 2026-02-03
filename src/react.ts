@@ -93,7 +93,12 @@ export type MethodPaths<T, Prefix extends string = ''> = T extends object
  * Extracts the function type from PathValue, using Extract to satisfy
  * TypeScript's constraint checking when PathValue can't be statically proven
  * to resolve to a function type.
+ *
+ * Note: Uses `(...args: any[]) => any` intentionally. TypeScript requires `any`
+ * for Extract to properly match and extract function types from union types.
+ * Using `unknown` here would prevent the Extract utility from working correctly.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Required for Extract to match function types
 type PathFn<T, P extends string> = Extract<PathValue<T, P>, (...args: any[]) => any>
 
 // ============================================================================

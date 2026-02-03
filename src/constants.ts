@@ -56,6 +56,12 @@ export const INTERNAL_METHODS = {
   COLLECTION_CLEAR: '__collectionClear',
   COLLECTION_NAMES: '__collectionNames',
   COLLECTION_STATS: '__collectionStats',
+
+  // Streaming methods
+  STREAM: '__stream',
+  STREAM_CANCEL: '__streamCancel',
+  SUBSCRIBE: '__subscribe',
+  UNSUBSCRIBE: '__unsubscribe',
 } as const
 
 /**

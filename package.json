@@ -67,6 +67,14 @@
     "./middleware/validation": {
       "types": "./dist/middleware/validation.d.ts",
       "import": "./dist/middleware/validation.js"
+    },
+    "./nextjs": {
+      "types": "./dist/adapters/nextjs.d.ts",
+      "import": "./dist/adapters/nextjs.js"
+    },
+    "./sveltekit": {
+      "types": "./dist/adapters/sveltekit.d.ts",
+      "import": "./dist/adapters/sveltekit.js"
     }
   },
   "files": [

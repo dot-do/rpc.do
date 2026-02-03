@@ -14,10 +14,12 @@ export default defineConfig([
       'src/middleware/index.ts',
       'src/middleware/logging.ts',
       'src/middleware/timing.ts',
+      'src/adapters/nextjs.ts',
+      'src/adapters/sveltekit.ts',
     ],
     format: ['esm'],
     dts: true,
-    external: ['capnweb', '@dotdo/capnweb', '@dotdo/capnweb/server', 'oauth.do', 'cloudflare:workers'],
+    external: ['capnweb', '@dotdo/capnweb', '@dotdo/capnweb/server', 'oauth.do', 'cloudflare:workers', 'react'],
   },
   // Type extraction utilities (Node.js only, uses ts-morph)
   {
