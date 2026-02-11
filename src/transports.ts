@@ -362,6 +362,12 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
         if (timeoutId !== undefined) {
           clearTimeout(timeoutId)
         }
+        // Reset session after batch completes — capnweb HTTP batch sessions are
+        // single-use (one HTTP request per batch). After the response is consumed,
+        // the session is dead. Resetting here lets the next sequential call create
+        // a fresh session. Concurrent calls via Promise.all share the same session
+        // (and thus batch) because they all hit getSession() before any resolves.
+        sessionPromise = null
       }
     },
     close() {
@@ -583,6 +589,13 @@ export function capnweb(
       } catch (error) {
         // Wrap errors from capnweb into appropriate error types
         throw wrapTransportError(error)
+      } finally {
+        // Reset session after batch completes for HTTP batch mode — capnweb HTTP
+        // batch sessions are single-use. WebSocket sessions persist (handled by
+        // reconnecting transport), but HTTP batch needs fresh session per call.
+        if (!useWebSocket) {
+          sessionPromise = null
+        }
       }
     },
     close() {
