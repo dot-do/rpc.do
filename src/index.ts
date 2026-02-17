@@ -198,15 +198,16 @@ export function RPC<T extends object = Record<string, unknown>>(
     const url = urlOrTransport
     const isWebSocket = url.startsWith('ws://') || url.startsWith('wss://')
 
-    if (isWebSocket) {
-      // Build options object, only adding defined values to satisfy exactOptionalPropertyTypes
+    if (isWebSocket || options?.reconnect) {
+      // WebSocket transport — persistent connection, avoids TLS handshake per request
+      const wsUrl = isWebSocket ? url : url.replace(/^http/, 'ws')
       const capnwebOpts: import('./transports').CapnwebTransportOptions = {
         reconnect: options?.reconnect ?? true,
       }
       if (options?.auth !== undefined) capnwebOpts.auth = options.auth
-      transport = capnweb(url, capnwebOpts)
+      transport = capnweb(wsUrl, capnwebOpts)
     } else {
-      // Build options object, only adding defined values to satisfy exactOptionalPropertyTypes
+      // HTTP batch transport — single-use session per request
       const httpOpts: import('./transports').HttpTransportOptions = {}
       if (options?.auth !== undefined) httpOpts.auth = options.auth
       if (options?.timeout !== undefined) httpOpts.timeout = options.timeout
