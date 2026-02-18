@@ -14,6 +14,8 @@ export default defineConfig([
       'src/middleware/index.ts',
       'src/middleware/logging.ts',
       'src/middleware/timing.ts',
+      'src/middleware/batching.ts',
+      'src/middleware/validation.ts',
       'src/adapters/nextjs.ts',
       'src/adapters/sveltekit.ts',
     ],
