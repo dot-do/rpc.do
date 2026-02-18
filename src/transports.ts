@@ -5,7 +5,7 @@
 import type { Transport, RpcMethodPath } from './types'
 import type { ServerMessage as TypesServerMessage } from '@dotdo/types/rpc'
 import { ConnectionError, RPCError } from './errors'
-import { loadCapnweb } from './capnweb-loader.js'
+import { loadCapnweb, getCapnwebModuleSync } from './capnweb-loader.js'
 
 // ============================================================================
 // Type Guards
@@ -328,7 +328,16 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
     return sessionPromise
   }
 
-  return {
+  // Pipelining support: microtask-scoped sessions for synchronous access.
+  // All synchronous property accesses within the same microtask share a session
+  // (enabling both pipelining AND batching via Promise.all).
+  let pipelineSession: unknown = null
+  let pipelineResetScheduled = false
+
+  // Build transport with pipelining support.
+  // Extra methods (getSessionSync, primeSession) are not part of MinimalTransport
+  // but are accessed via duck typing in DOClient for promise pipelining.
+  const transport = {
     async call(method: string, args: unknown[]) {
       const session = await getSession()
 
@@ -370,6 +379,34 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
         sessionPromise = null
       }
     },
+    /**
+     * Get a capnweb session synchronously for promise pipelining.
+     * Returns null if capnweb module isn't loaded yet.
+     * Sessions are scoped to the current microtask — all synchronous
+     * calls within the same tick share a session (enabling batching).
+     */
+    getSessionSync(): unknown | null {
+      const mod = getCapnwebModuleSync()
+      if (!mod) return null
+      if (!pipelineSession) {
+        pipelineSession = mod.newHttpBatchRpcSession(url)
+        if (!pipelineResetScheduled) {
+          pipelineResetScheduled = true
+          queueMicrotask(() => {
+            pipelineSession = null
+            pipelineResetScheduled = false
+          })
+        }
+      }
+      return pipelineSession
+    },
+    /**
+     * Start loading the capnweb module eagerly so getSessionSync()
+     * is ready by the time the first method is called.
+     */
+    primeSession() {
+      void loadCapnweb()
+    },
     close() {
       // Resolve the current session synchronously if available, then dispose
       if (sessionPromise) {
@@ -380,8 +417,9 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
         })
       }
       sessionPromise = null
-    }
+    },
   }
+  return transport
 }
 
 /**
@@ -555,6 +593,7 @@ export function capnweb(
   // Use a promise to prevent concurrent calls from creating multiple sessions.
   // For non-reconnecting mode, auth is handled via in-band RPC methods
   let sessionPromise: Promise<unknown> | null = null
+  let cachedWsSession: unknown = null
 
   async function getSession(): Promise<unknown> {
     if (!sessionPromise) {
@@ -564,7 +603,9 @@ export function capnweb(
 
         if (useWebSocket) {
           const wsUrl = url.replace(/^http/, 'ws')
-          return capnwebModule.newWebSocketRpcSession(wsUrl)
+          const session = capnwebModule.newWebSocketRpcSession(wsUrl)
+          cachedWsSession = session
+          return session
         } else {
           return capnwebModule.newHttpBatchRpcSession(url)
         }
@@ -573,7 +614,13 @@ export function capnweb(
     return sessionPromise
   }
 
-  return {
+  // Pipelining support: microtask-scoped sessions for HTTP batch,
+  // persistent session for WebSocket.
+  let pipelineSession: unknown = null
+  let pipelineResetScheduled = false
+
+  // Build transport with pipelining support.
+  const capnwebTransport = {
     async call(method: string, args: unknown[]) {
       const session = await getSession()
 
@@ -598,6 +645,40 @@ export function capnweb(
         }
       }
     },
+    /**
+     * Get a capnweb session synchronously for promise pipelining.
+     * For WebSocket: returns the persistent cached session.
+     * For HTTP batch: returns a microtask-scoped session (shared within same tick).
+     */
+    getSessionSync(): unknown | null {
+      if (useWebSocket) {
+        return cachedWsSession
+      }
+      const mod = getCapnwebModuleSync()
+      if (!mod) return null
+      if (!pipelineSession) {
+        pipelineSession = mod.newHttpBatchRpcSession(url)
+        if (!pipelineResetScheduled) {
+          pipelineResetScheduled = true
+          queueMicrotask(() => {
+            pipelineSession = null
+            pipelineResetScheduled = false
+          })
+        }
+      }
+      return pipelineSession
+    },
+    /**
+     * Start loading the capnweb module eagerly so getSessionSync()
+     * is ready by the time the first method is called.
+     */
+    primeSession() {
+      if (useWebSocket) {
+        void getSession()
+      } else {
+        void loadCapnweb()
+      }
+    },
     close() {
       // Resolve the current session synchronously if available, then dispose
       if (sessionPromise) {
@@ -608,8 +689,10 @@ export function capnweb(
         })
       }
       sessionPromise = null
-    }
+      cachedWsSession = null
+    },
   }
+  return capnwebTransport
 }
 
 /**
@@ -622,6 +705,7 @@ function createReconnectingCapnwebTransport(
   // Use a promise to prevent concurrent calls from creating multiple sessions.
   let sessionPromise: Promise<unknown> | null = null
   let transport: { close: () => void } | null = null
+  let cachedSession: unknown = null
 
   async function getSession(): Promise<unknown> {
     if (!sessionPromise) {
@@ -650,13 +734,16 @@ function createReconnectingCapnwebTransport(
 
         // Create RpcSession with the transport
         const rpcSession = new capnwebModule.RpcSession(reconnectTransport, options?.localMain)
-        return rpcSession.getRemoteMain()
+        const session = rpcSession.getRemoteMain()
+        cachedSession = session
+        return session
       })()
     }
     return sessionPromise
   }
 
-  return {
+  // Build transport with pipelining support.
+  const reconnectingTransport = {
     async call(method: string, args: unknown[]) {
       const session = await getSession()
 
@@ -674,12 +761,26 @@ function createReconnectingCapnwebTransport(
         throw wrapTransportError(error)
       }
     },
+    /**
+     * Get the persistent WebSocket session synchronously for pipelining.
+     */
+    getSessionSync(): unknown | null {
+      return cachedSession
+    },
+    /**
+     * Start establishing the WebSocket connection eagerly.
+     */
+    primeSession() {
+      void getSession()
+    },
     close() {
       transport?.close()
       sessionPromise = null
       transport = null
-    }
+      cachedSession = null
+    },
   }
+  return reconnectingTransport
 }
 
 /**

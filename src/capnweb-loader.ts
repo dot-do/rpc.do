@@ -53,6 +53,13 @@ export interface CapnwebModule {
 let modulePromise: Promise<CapnwebModule> | null = null
 
 /**
+ * Resolved module reference - for synchronous access after first load.
+ * This enables promise pipelining by allowing transports to create
+ * capnweb sessions without an async boundary.
+ */
+let resolvedModule: CapnwebModule | null = null
+
+/**
  * Mock module for testing - when set, this is returned instead of the real module
  */
 let mockModule: CapnwebModule | null = null
@@ -86,7 +93,12 @@ export async function loadCapnweb(): Promise<CapnwebModule> {
     return mockModule
   }
 
-  // Return cached promise if already loading/loaded
+  // Fast path: already resolved
+  if (resolvedModule) {
+    return Promise.resolve(resolvedModule)
+  }
+
+  // Return cached promise if already loading
   if (modulePromise) {
     return modulePromise
   }
@@ -112,11 +124,13 @@ export async function loadCapnweb(): Promise<CapnwebModule> {
         throw new RPCError('capnweb.RpcSession not found', 'MODULE_ERROR')
       }
 
-      return {
+      const result: CapnwebModule = {
         newHttpBatchRpcSession,
         newWebSocketRpcSession,
         RpcSession,
       }
+      resolvedModule = result
+      return result
     } catch (error) {
       // Clear cache on error so retry is possible
       modulePromise = null
@@ -176,6 +190,19 @@ export function setCapnwebMock(mock: CapnwebModule | null): void {
 }
 
 /**
+ * Get the capnweb module synchronously if already loaded.
+ *
+ * Returns the cached module without an async boundary, enabling
+ * transports to create sessions synchronously for promise pipelining.
+ * Returns null if the module hasn't been loaded yet.
+ *
+ * @returns The cached capnweb module or null
+ */
+export function getCapnwebModuleSync(): CapnwebModule | null {
+  return mockModule ?? resolvedModule
+}
+
+/**
  * Clear the cached module
  *
  * This is primarily useful for testing to ensure a fresh load.
@@ -183,6 +210,7 @@ export function setCapnwebMock(mock: CapnwebModule | null): void {
  */
 export function clearCapnwebCache(): void {
   modulePromise = null
+  resolvedModule = null
 }
 
 /**

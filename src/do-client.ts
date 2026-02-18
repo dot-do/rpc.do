@@ -690,6 +690,18 @@ export function createDOClient<T extends object = Record<string, unknown>>(
   let _transport: Transport | null = null
   let _transportPromise: Promise<Transport> | null = null
 
+  // Store raw transport reference for pipelining (bypasses middleware).
+  // Pipelining requires synchronous session access — we check for
+  // getSessionSync() on the raw transport to return native RpcPromise.
+  const rawTransport: (Transport & { getSessionSync?(): unknown | null; primeSession?(): void }) | null =
+    typeof transport === 'function' ? null : (transport as Transport & { getSessionSync?(): unknown | null; primeSession?(): void })
+
+  // Prime the transport eagerly so getSessionSync() is ready
+  // by the time the first method call happens.
+  if (rawTransport?.primeSession) {
+    rawTransport.primeSession()
+  }
+
   const getTransport = async (): Promise<Transport> => {
     if (_transport) return _transport
     if (_transportPromise) return _transportPromise
@@ -736,6 +748,30 @@ export function createDOClient<T extends object = Record<string, unknown>>(
         return createMethodProxy([...path, prop])
       },
       apply(_, __, args: unknown[]) {
+        // Try pipelining: use raw capnweb session directly.
+        // This preserves native RpcPromise objects, enabling .map(),
+        // property pipelining (e.g. .docs, .totalDocs), and automatic
+        // batching of concurrent calls within the same microtask.
+        if (rawTransport?.getSessionSync) {
+          const session = rawTransport.getSessionSync()
+          if (session) {
+            // Navigate the capnweb session proxy to the method path
+            let target: unknown = session
+            for (const part of path) {
+              if ((typeof target !== 'object' && typeof target !== 'function') || target === null) {
+                target = undefined
+                break
+              }
+              target = (target as Record<string, unknown>)[part]
+            }
+            if (typeof target === 'function') {
+              return (target as (...a: unknown[]) => unknown)(...args)
+            }
+          }
+        }
+
+        // Fallback: standard async call (first call before capnweb loads,
+        // or non-capnweb transport). No pipelining — returns plain Promise.
         return (async () => {
           const t = await getTransport()
           return t.call(path.join('.'), args)
