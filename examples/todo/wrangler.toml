@@ -20,6 +20,11 @@ class_name = "TodoList"
 tag = "v1"
 new_sqlite_classes = ["TodoList"]
 
+# Cloudflare Pipeline for event streaming (headlessly_events)
+[[pipelines]]
+binding = "EVENTS_PIPELINE"
+pipeline = "d8f32274e86b42f68624144111579a26"
+
 # Development settings
 [dev]
 port = 8787
