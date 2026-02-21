@@ -36,6 +36,7 @@ export {
   CDCCollection,
   type DurableEvent,
   type EventEmitterOptions,
+  type PipelineLike,
   type EventBatch,
   type BaseEvent,
   type RpcCallEvent,
@@ -45,16 +46,14 @@ export {
   type Collection as EventsCollection,
 } from '@dotdo/events'
 
-import { EventEmitter, type EventEmitterOptions } from '@dotdo/events'
+import { EventEmitter, type PipelineLike, type EventEmitterOptions } from '@dotdo/events'
 
 /**
  * Options for creating an EventEmitter from DurableRPC context
  */
-export interface CreateEventEmitterOptions extends Omit<EventEmitterOptions, 'endpoint'> {
-  /** Custom endpoint (defaults to events.do) */
-  endpoint?: string
-  /** API key for authentication with events endpoint */
-  apiKey?: string
+export interface CreateEventEmitterOptions extends Omit<EventEmitterOptions, 'pipeline'> {
+  /** Pipeline binding for event transport */
+  pipeline?: PipelineLike
 }
 
 /**
@@ -72,7 +71,7 @@ export interface DurableRpcContext {
  * Creates an EventEmitter configured for use with DurableRPC
  *
  * This is the recommended way to create an EventEmitter inside a DurableRPC class.
- * It automatically uses the DO's context and environment.
+ * It automatically uses the DO's context and discovers the Pipeline binding from env.
  *
  * @param durableRpc - The DurableRPC instance (pass `this` from your DO class)
  * @param options - Optional configuration for the event emitter
@@ -84,17 +83,11 @@ export interface DurableRpcContext {
  * import { createEventEmitter, CDCCollection } from '@dotdo/rpc/events'
  *
  * export class MyDO extends DurableRPC {
- *   // Create event emitter with CDC enabled
+ *   // Create event emitter with CDC enabled (auto-discovers EVENTS_PIPELINE from env)
  *   events = createEventEmitter(this, { cdc: true })
  *
  *   // Wrap collection with CDC
  *   users = new CDCCollection(this.collection('users'), this.events, 'users')
- *
- *   // Custom events
- *   async processOrder(orderId: string) {
- *     // ... process order
- *     this.events.emit({ type: 'order.processed', orderId })
- *   }
  *
  *   // Required: Forward alarm to event emitter for retries
  *   async alarm() {
@@ -107,13 +100,6 @@ export function createEventEmitter(
   durableRpc: DurableRpcContext,
   options: CreateEventEmitterOptions = {}
 ): EventEmitter {
-  const emitterOptions: EventEmitterOptions = {}
-  if (options.endpoint !== undefined) emitterOptions.endpoint = options.endpoint
-  if (options.batchSize !== undefined) emitterOptions.batchSize = options.batchSize
-  if (options.flushIntervalMs !== undefined) emitterOptions.flushIntervalMs = options.flushIntervalMs
-  if (options.cdc !== undefined) emitterOptions.cdc = options.cdc
-  if (options.r2Bucket !== undefined) emitterOptions.r2Bucket = options.r2Bucket
-  if (options.trackPrevious !== undefined) emitterOptions.trackPrevious = options.trackPrevious
-  if (options.apiKey !== undefined) emitterOptions.apiKey = options.apiKey
-  return new EventEmitter(durableRpc.ctx, durableRpc.env, emitterOptions)
+  const pipeline = options.pipeline ?? (durableRpc.env.EVENTS_PIPELINE as PipelineLike | undefined) ?? { send: async () => {} }
+  return new EventEmitter(pipeline, options, durableRpc.ctx)
 }

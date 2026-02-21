@@ -2,10 +2,9 @@
  * Example: DurableRPC with Events, CDC, and Snapshots
  *
  * Shows full integration of:
- * - Event emission for RPC calls
+ * - Pipeline-first event emission
  * - CDC (Change Data Capture) for collections
- * - R2 streaming for lakehouse queries
- * - Alarm-based retries
+ * - Alarm-based retries (only on Pipeline failure)
  * - Point-in-time snapshots
  */
 
@@ -15,10 +14,11 @@ import {
   CDCCollection,
   createSnapshot,
   restoreSnapshot,
+  type PipelineLike,
 } from '@dotdo/rpc/events'
 
 interface Env {
-  EVENTS_BUCKET: R2Bucket
+  EVENTS_PIPELINE: PipelineLike
   SNAPSHOTS_BUCKET: R2Bucket
 }
 
@@ -36,7 +36,7 @@ interface Message {
 }
 
 export class ChatRoom extends DurableRPC {
-  // Event emitter with CDC enabled
+  // Pipeline-first event emitter with CDC enabled
   private events: EventEmitter
 
   // CDC-wrapped collections
@@ -46,15 +46,12 @@ export class ChatRoom extends DurableRPC {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
 
-    // Initialize event emitter
-    this.events = new EventEmitter(ctx, env, {
-      endpoint: 'https://events.workers.do/ingest',
-      cdc: true,
-      trackPrevious: true,  // Enable diffs in CDC events
-      r2Bucket: env.EVENTS_BUCKET,
-      batchSize: 50,
-      flushIntervalMs: 500,
-    })
+    // Initialize event emitter — Pipeline is primary transport, ctx enables alarm retry
+    this.events = new EventEmitter(
+      env.EVENTS_PIPELINE,
+      { cdc: true, trackPrevious: true, batchSize: 50, flushIntervalMs: 500 },
+      ctx,
+    )
 
     // Wrap collections with CDC
     this._users = new CDCCollection(
@@ -69,13 +66,7 @@ export class ChatRoom extends DurableRPC {
     )
   }
 
-  // Override fetch to enrich events with request context
-  async fetch(request: Request): Promise<Response> {
-    this.events.enrichFromRequest(request)
-    return super.fetch(request)
-  }
-
-  // Override alarm to handle event retries
+  // Override alarm to handle event retries (only fires on Pipeline failure)
   async alarm(): Promise<void> {
     await this.events.handleAlarm()
   }
@@ -98,10 +89,8 @@ export class ChatRoom extends DurableRPC {
       // Emit RPC call event
       this.events.emit({
         type: 'rpc.call',
-        method: 'users.create',
-        namespace: 'users',
-        durationMs: Date.now() - start,
-        success: true,
+        event: 'users.create',
+        data: { durationMs: Date.now() - start, success: true },
       })
 
       return { id, ...user }
@@ -113,10 +102,8 @@ export class ChatRoom extends DurableRPC {
 
       this.events.emit({
         type: 'rpc.call',
-        method: 'users.get',
-        namespace: 'users',
-        durationMs: Date.now() - start,
-        success: user !== null,
+        event: 'users.get',
+        data: { durationMs: Date.now() - start, success: user !== null },
       })
 
       return user
@@ -128,11 +115,8 @@ export class ChatRoom extends DurableRPC {
       if (!existing) {
         this.events.emit({
           type: 'rpc.call',
-          method: 'users.update',
-          namespace: 'users',
-          durationMs: Date.now() - start,
-          success: false,
-          error: 'User not found',
+          event: 'users.update',
+          data: { durationMs: Date.now() - start, success: false, error: 'User not found' },
         })
         throw new Error('User not found')
       }
@@ -141,10 +125,8 @@ export class ChatRoom extends DurableRPC {
 
       this.events.emit({
         type: 'rpc.call',
-        method: 'users.update',
-        namespace: 'users',
-        durationMs: Date.now() - start,
-        success: true,
+        event: 'users.update',
+        data: { durationMs: Date.now() - start, success: true },
       })
 
       return this._users.get(id)
@@ -156,10 +138,8 @@ export class ChatRoom extends DurableRPC {
 
       this.events.emit({
         type: 'rpc.call',
-        method: 'users.delete',
-        namespace: 'users',
-        durationMs: Date.now() - start,
-        success: deleted,
+        event: 'users.delete',
+        data: { durationMs: Date.now() - start, success: deleted },
       })
 
       return { deleted }
@@ -171,10 +151,8 @@ export class ChatRoom extends DurableRPC {
 
       this.events.emit({
         type: 'rpc.call',
-        method: 'users.list',
-        namespace: 'users',
-        durationMs: Date.now() - start,
-        success: true,
+        event: 'users.list',
+        data: { durationMs: Date.now() - start, success: true },
       })
 
       return users
@@ -202,10 +180,8 @@ export class ChatRoom extends DurableRPC {
 
       this.events.emit({
         type: 'rpc.call',
-        method: 'messages.send',
-        namespace: 'messages',
-        durationMs: Date.now() - start,
-        success: true,
+        event: 'messages.send',
+        data: { durationMs: Date.now() - start, success: true },
       })
 
       return { id, ...message }
@@ -224,46 +200,35 @@ export class ChatRoom extends DurableRPC {
   // Snapshot Management
   // ==========================================================================
 
-  /**
-   * Create a point-in-time snapshot of all collections
-   * Call periodically or before major operations
-   */
   async createSnapshot(): Promise<{ key: string; collections: string[]; totalDocs: number }> {
     const env = this.env as Env
 
     this.events.emit({
       type: 'do.snapshot',
-      action: 'create',
-    } as any)
+      event: 'snapshot.create',
+      data: {},
+    })
 
     return createSnapshot(this.sql, this.ctx.id.toString(), {
       bucket: env.SNAPSHOTS_BUCKET,
     })
   }
 
-  /**
-   * Restore from a specific snapshot
-   * Use for disaster recovery or time-travel
-   */
   async restoreFromSnapshot(snapshotKey: string): Promise<{ collections: string[]; totalDocs: number }> {
     const env = this.env as Env
 
     this.events.emit({
       type: 'do.snapshot',
-      action: 'restore',
-      snapshotKey,
-    } as any)
+      event: 'snapshot.restore',
+      data: { snapshotKey },
+    })
 
     return restoreSnapshot(this.sql, env.SNAPSHOTS_BUCKET, snapshotKey)
   }
 
-  /**
-   * List available snapshots
-   */
   async listSnapshots(limit = 10): Promise<R2Objects> {
     const env = this.env as Env
     const prefix = `snapshots/${this.ctx.id.toString()}/`
-
     return env.SNAPSHOTS_BUCKET.list({ prefix, limit })
   }
 
@@ -272,27 +237,22 @@ export class ChatRoom extends DurableRPC {
   // ==========================================================================
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    this.events.emit({ type: 'ws.message' })
+    this.events.emit({ type: 'ws', event: 'ws.message', data: {} })
     return super.webSocketMessage(ws, message)
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
     this.events.emit({
-      type: 'ws.close',
-      connectionCount: this.connectionCount - 1,
-      code,
-      reason,
+      type: 'ws',
+      event: 'ws.close',
+      data: { connectionCount: this.connectionCount - 1, code, reason },
     })
-
-    // Persist event batch before potential hibernation
-    await this.events.persistBatch()
-
     return super.webSocketClose(ws, code, reason, wasClean)
   }
 }
 
 // ============================================================================
-// Worker with DO Class Header Injection
+// Worker
 // ============================================================================
 
 export default {
@@ -303,58 +263,6 @@ export default {
     const id = env.CHAT_ROOM.idFromName(roomId)
     const stub = env.CHAT_ROOM.get(id)
 
-    // Inject DO metadata for event enrichment
-    const headers = new Headers(request.headers)
-    headers.set('X-DO-Class', 'ChatRoom')
-    headers.set('X-DO-Name', roomId)
-
-    return stub.fetch(new Request(request.url, {
-      method: request.method,
-      headers,
-      body: request.body,
-    }))
+    return stub.fetch(request)
   },
 }
-
-// ============================================================================
-// Example: Querying the Lakehouse
-// ============================================================================
-
-/**
- * Query events with DuckDB (run from analytics worker or CLI)
- *
- * ```sql
- * -- All CDC events for a specific DO in the last hour
- * SELECT *
- * FROM read_json_auto('r2://events-bucket/events/2024/01/15/12/*.jsonl')
- * WHERE type LIKE 'collection.%'
- *   AND "do".id = 'abc123'
- * ORDER BY ts DESC;
- *
- * -- Slow RPC calls across all DOs
- * SELECT
- *   "do".class,
- *   method,
- *   AVG(durationMs) as avg_duration,
- *   MAX(durationMs) as max_duration,
- *   COUNT(*) as call_count
- * FROM read_json_auto('r2://events-bucket/events/2024/01/**/*.jsonl')
- * WHERE type = 'rpc.call'
- *   AND durationMs > 100
- * GROUP BY "do".class, method
- * ORDER BY avg_duration DESC;
- *
- * -- Reconstruct document history (time travel)
- * SELECT
- *   ts,
- *   type,
- *   docId,
- *   doc,
- *   prev
- * FROM read_json_auto('r2://events-bucket/events/2024/**/*.jsonl')
- * WHERE type LIKE 'collection.%'
- *   AND collection = 'users'
- *   AND docId = 'user-123'
- * ORDER BY ts ASC;
- * ```
- */
