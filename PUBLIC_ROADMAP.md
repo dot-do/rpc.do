@@ -19,7 +19,7 @@ This document outlines the development roadmap for `rpc.do` and `@dotdo/rpc`, in
 - Key-value storage via `$.storage`
 - MongoDB-style collections via `$.collection()`
 - Zero-config type generation (`npx rpc.do generate`)
-- Promise pipelining via `@dotdo/capnweb`
+- Promise pipelining via `capnweb`
 - Authentication providers (static, OAuth, cached)
 - Colo awareness (location, distance, latency estimation)
 - Events integration (`@dotdo/rpc/events`)

@@ -2,11 +2,11 @@
  * expose() Tests
  *
  * Tests for the SDK-to-RpcTarget wrapper factory.
- * Uses real @dotdo/capnweb/server RpcTarget (only mocks cloudflare:workers).
+ * Uses real capnweb RpcTarget (only mocks cloudflare:workers).
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { RpcTarget } from '@dotdo/capnweb/server'
+import { RpcTarget } from 'capnweb'
 import { expose } from './expose'
 
 // Mock WorkerEntrypoint since we're not in a Cloudflare Workers environment

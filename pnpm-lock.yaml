@@ -8,12 +8,12 @@ importers:
 
   .:
     dependencies:
-      '@dotdo/capnweb':
-        specifier: ^0.4.0
-        version: 0.4.0(@dotdo/types@0.1.1(typescript@5.9.3))
       '@dotdo/types':
         specifier: '>=0.1.0'
         version: 0.1.1(typescript@5.9.3)
+      capnweb:
+        specifier: ^0.12.0
+        version: 0.12.0
       oauth.do:
         specifier: ^0.2.0
         version: 0.2.0(hono@4.11.7)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -32,7 +32,7 @@ importers:
         version: 4.20260123.0
       '@dotdo/rpc':
         specifier: file:core
-        version: file:core(csorpyb3bqf7wplzz6scjbez3m)
+        version: file:core(89382e3e283cbe87045060884310ae3e)
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.9
@@ -3079,6 +3079,9 @@ packages:
 
   capnweb@0.1.0:
     resolution: {integrity: sha512-+pygKx1JFTZTRdd1hHgaBRg5BwULEDZq8ZoHXkYP2GXNV3lrjXLj5qzlGz+SgBCJjWUmNBtlh7JPWdr0wIbY8w==}
+
+  capnweb@0.12.0:
+    resolution: {integrity: sha512-jgZ/LMtMVTi+RVlooIslH78Gg23XbDTdvcLghWx3oz17D6u5GuJARt+uhZk/wcTo+f81eeabfnow4d3zLBj+JQ==}
 
   capnweb@0.2.0:
     resolution: {integrity: sha512-fQSW5h6HIefRM4rHZMyAsWcu/qE/6Qr2OC8B99whifjDJatI5KLFcODSykKmpyCCKF50N3HvZ5lB26YBdh0fRg==}
@@ -7057,7 +7060,7 @@ snapshots:
   '@ai-sdk/openai@1.3.24(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 1.1.3
-      '@ai-sdk/provider-utils': 2.2.8(zod@4.3.6)
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.76)
       zod: 3.25.76
 
   '@ai-sdk/openai@1.3.24(zod@4.3.6)':
@@ -7129,6 +7132,16 @@ snapshots:
     dependencies:
       json-schema: 0.4.0
 
+  '@ai-sdk/react@1.2.12(react@18.3.1)(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.76)
+      '@ai-sdk/ui-utils': 1.2.11(zod@3.25.76)
+      react: 18.3.1
+      swr: 2.4.0(react@18.3.1)
+      throttleit: 2.1.0
+    optionalDependencies:
+      zod: 3.25.76
+
   '@ai-sdk/react@1.2.12(react@18.3.1)(zod@4.3.6)':
     dependencies:
       '@ai-sdk/provider-utils': 2.2.8(zod@4.3.6)
@@ -7138,6 +7151,13 @@ snapshots:
       throttleit: 2.1.0
     optionalDependencies:
       zod: 4.3.6
+
+  '@ai-sdk/ui-utils@1.2.11(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 1.1.3
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.76)
+      zod: 3.25.76
+      zod-to-json-schema: 3.25.1(zod@3.25.76)
 
   '@ai-sdk/ui-utils@1.2.11(zod@4.3.6)':
     dependencies:
@@ -7543,7 +7563,7 @@ snapshots:
     transitivePeerDependencies:
       - typescript
 
-  '@dotdo/do@0.1.6(et2amaqqt53cjq7xv2zot3p344)':
+  '@dotdo/do@0.1.6(89382e3e283cbe87045060884310ae3e)':
     dependencies:
       '@cloudflare/workers-types': 4.20260123.0
       '@dotdo/apis': 0.1.0(@cloudflare/workers-types@4.20260123.0)(@dotdo/capnweb@0.4.0(@dotdo/types@0.1.1(typescript@5.9.3)))(@dotdo/pglite@0.1.4)(@dotdo/postgres@0.1.3(@dotdo/capnweb@0.4.0(@dotdo/types@0.1.1(typescript@5.9.3)))(@dotdo/types@0.1.1(typescript@5.9.3))(oauth.do@0.2.0(hono@4.11.7)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)))(@dotdo/types@0.1.1(typescript@5.9.3))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -7704,16 +7724,17 @@ snapshots:
       - drizzle-orm
       - oauth.do
 
-  '@dotdo/rpc@file:core(csorpyb3bqf7wplzz6scjbez3m)':
+  '@dotdo/rpc@file:core(89382e3e283cbe87045060884310ae3e)':
     dependencies:
       '@cloudflare/workers-types': 4.20260123.0
-      '@dotdo/capnweb': 0.4.0(@dotdo/types@0.1.1(typescript@5.9.3))
       '@dotdo/collections': 0.1.1(@cloudflare/workers-types@4.20260123.0)(typescript@5.9.3)
-      '@dotdo/do': 0.1.6(et2amaqqt53cjq7xv2zot3p344)
+      '@dotdo/do': 0.1.6(89382e3e283cbe87045060884310ae3e)
+      capnweb: 0.12.0
     optionalDependencies:
       '@dotdo/types': 0.1.1(typescript@5.9.3)
     transitivePeerDependencies:
       - '@babel/core'
+      - '@dotdo/capnweb'
       - '@dotdo/pglite'
       - '@dotdo/postgres'
       - '@edge-runtime/vm'
@@ -10052,7 +10073,7 @@ snapshots:
       '@ai-sdk/google-vertex': 2.2.27(zod@3.25.76)
       '@ai-sdk/openai': 1.3.24(zod@3.25.76)
       ai: 4.3.19(react@18.3.1)(zod@3.25.76)
-      composio-core: 0.5.39(@ai-sdk/openai@1.3.24(zod@4.3.6))(@cloudflare/workers-types@4.20260123.0)(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(@langchain/openai@1.2.4(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(ws@8.19.0))(ai@4.3.19(react@18.3.1)(zod@4.3.6))(langchain@1.2.16(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(zod-to-json-schema@3.25.1(zod@3.25.76)))(openai@6.17.0(ws@8.19.0)(zod@3.25.76))
+      composio-core: 0.5.39(@ai-sdk/openai@1.3.24(zod@4.3.6))(@cloudflare/workers-types@4.20260123.0)(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(@langchain/openai@1.2.4(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(ws@8.19.0))(ai@4.3.19(react@18.3.1)(zod@3.25.76))(langchain@1.2.16(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(zod-to-json-schema@3.25.1(zod@3.25.76)))(openai@6.17.0(ws@8.19.0)(zod@3.25.76))
       language-models: 0.1.0(@types/debug@4.1.12)(sass@1.69.4)(terser@5.46.0)
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
@@ -10087,7 +10108,7 @@ snapshots:
       '@ai-sdk/google-vertex': 2.2.27(zod@4.3.6)
       '@ai-sdk/openai': 1.3.24(zod@4.3.6)
       ai: 4.3.19(react@18.3.1)(zod@3.25.76)
-      composio-core: 0.5.39(@ai-sdk/openai@1.3.24(zod@4.3.6))(@cloudflare/workers-types@4.20260123.0)(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(@langchain/openai@1.2.4(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(ws@8.19.0))(ai@4.3.19(react@18.3.1)(zod@4.3.6))(langchain@1.2.16(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(zod-to-json-schema@3.25.1(zod@3.25.76)))(openai@6.17.0(ws@8.19.0)(zod@3.25.76))
+      composio-core: 0.5.39(@ai-sdk/openai@1.3.24(zod@4.3.6))(@cloudflare/workers-types@4.20260123.0)(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(@langchain/openai@1.2.4(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(ws@8.19.0))(ai@4.3.19(react@18.3.1)(zod@3.25.76))(langchain@1.2.16(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(zod-to-json-schema@3.25.1(zod@3.25.76)))(openai@6.17.0(ws@8.19.0)(zod@3.25.76))
       language-models: 0.1.0(@types/debug@4.1.12)(sass@1.69.4)(terser@5.46.0)
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
@@ -10268,9 +10289,9 @@ snapshots:
   ai@4.3.19(react@18.3.1)(zod@3.25.76):
     dependencies:
       '@ai-sdk/provider': 1.1.3
-      '@ai-sdk/provider-utils': 2.2.8(zod@4.3.6)
-      '@ai-sdk/react': 1.2.12(react@18.3.1)(zod@4.3.6)
-      '@ai-sdk/ui-utils': 1.2.11(zod@4.3.6)
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.76)
+      '@ai-sdk/react': 1.2.12(react@18.3.1)(zod@3.25.76)
+      '@ai-sdk/ui-utils': 1.2.11(zod@3.25.76)
       '@opentelemetry/api': 1.9.0
       jsondiffpatch: 0.6.0
       zod: 3.25.76
@@ -10609,6 +10630,8 @@ snapshots:
 
   capnweb@0.1.0: {}
 
+  capnweb@0.12.0: {}
+
   capnweb@0.2.0: {}
 
   capnweb@0.4.0: {}
@@ -10752,7 +10775,7 @@ snapshots:
 
   commander@8.3.0: {}
 
-  composio-core@0.5.39(@ai-sdk/openai@1.3.24(zod@4.3.6))(@cloudflare/workers-types@4.20260123.0)(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(@langchain/openai@1.2.4(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(ws@8.19.0))(ai@4.3.19(react@18.3.1)(zod@4.3.6))(langchain@1.2.16(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(zod-to-json-schema@3.25.1(zod@3.25.76)))(openai@6.17.0(ws@8.19.0)(zod@3.25.76)):
+  composio-core@0.5.39(@ai-sdk/openai@1.3.24(zod@4.3.6))(@cloudflare/workers-types@4.20260123.0)(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(@langchain/openai@1.2.4(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(ws@8.19.0))(ai@4.3.19(react@18.3.1)(zod@3.25.76))(langchain@1.2.16(@langchain/core@1.1.18(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76)))(@opentelemetry/api@1.9.0)(openai@6.17.0(ws@8.19.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(zod-to-json-schema@3.25.1(zod@3.25.76)))(openai@6.17.0(ws@8.19.0)(zod@3.25.76)):
     dependencies:
       '@ai-sdk/openai': 1.3.24(zod@4.3.6)
       '@cloudflare/workers-types': 4.20260123.0

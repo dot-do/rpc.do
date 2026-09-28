@@ -8,15 +8,15 @@ importers:
 
   .:
     dependencies:
-      '@dotdo/capnweb':
-        specifier: ^0.4.0
-        version: 0.4.0(@dotdo/types@0.1.0(typescript@5.9.3))
       '@dotdo/collections':
         specifier: ^0.1.0
         version: 0.1.0(@cloudflare/workers-types@4.20260124.0)(@dotdo/do@0.1.4(@cloudflare/workers-types@4.20260124.0)(@dotdo/pglite@0.1.4)(@dotdo/postgres@0.1.3(oauth.do@0.2.4(hono@4.11.6)))(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(@types/debug@4.1.12)(@types/node@25.0.10)(esbuild@0.27.2)(openai@4.104.0(ws@8.18.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(terser@5.46.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@25.0.10)(terser@5.46.0))(ws@8.18.0)(yaml@2.8.2))
       '@dotdo/do':
         specifier: ^0.1.0
         version: 0.1.4(@cloudflare/workers-types@4.20260124.0)(@dotdo/pglite@0.1.4)(@dotdo/postgres@0.1.3(oauth.do@0.2.4(hono@4.11.6)))(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(@types/debug@4.1.12)(@types/node@25.0.10)(esbuild@0.27.2)(openai@4.104.0(ws@8.18.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(terser@5.46.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@25.0.10)(terser@5.46.0))(ws@8.18.0)(yaml@2.8.2)
+      capnweb:
+        specifier: ^0.12.0
+        version: 0.12.0
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20241205.0
@@ -296,14 +296,6 @@ packages:
 
   '@dotdo/apis@0.1.0':
     resolution: {integrity: sha512-VFi0LFS9vE5M/3K73m9+78L7jGEIoPX5RjkFjaQ/O0H9Fn03yQQcXAar/qDsPzg/SU8zd2LqVcDRltCTBgWDkQ==}
-
-  '@dotdo/capnweb@0.4.0':
-    resolution: {integrity: sha512-0EF06g63tc7i5x9y95ObQ1wjG22lCISx2IyGQqsxb1jKysYcYLmgsY9lFuXXO1hzI4UXw8K86At4fFZ5wXZdDQ==}
-    peerDependencies:
-      '@dotdo/types': '>=0.1.0'
-    peerDependenciesMeta:
-      '@dotdo/types':
-        optional: true
 
   '@dotdo/collections@0.1.0':
     resolution: {integrity: sha512-dvm1NPzQrrrwg2aMVTH914mO1HF5z/y3QAVmCtq4AGHiJimPueDD8hubDOYn5dB71tbYy0OqGzHf2gP72K/Z5Q==}
@@ -2206,6 +2198,9 @@ packages:
 
   capnweb@0.1.0:
     resolution: {integrity: sha512-+pygKx1JFTZTRdd1hHgaBRg5BwULEDZq8ZoHXkYP2GXNV3lrjXLj5qzlGz+SgBCJjWUmNBtlh7JPWdr0wIbY8w==}
+
+  capnweb@0.12.0:
+    resolution: {integrity: sha512-jgZ/LMtMVTi+RVlooIslH78Gg23XbDTdvcLghWx3oz17D6u5GuJARt+uhZk/wcTo+f81eeabfnow4d3zLBj+JQ==}
 
   capnweb@0.2.0:
     resolution: {integrity: sha512-fQSW5h6HIefRM4rHZMyAsWcu/qE/6Qr2OC8B99whifjDJatI5KLFcODSykKmpyCCKF50N3HvZ5lB26YBdh0fRg==}
@@ -5898,10 +5893,6 @@ snapshots:
       - jose
       - utf-8-validate
 
-  '@dotdo/capnweb@0.4.0(@dotdo/types@0.1.0(typescript@5.9.3))':
-    optionalDependencies:
-      '@dotdo/types': 0.1.0(typescript@5.9.3)
-
   '@dotdo/collections@0.1.0(@cloudflare/workers-types@4.20260124.0)(@dotdo/do@0.1.4(@cloudflare/workers-types@4.20260124.0)(@dotdo/pglite@0.1.4)(@dotdo/postgres@0.1.3(oauth.do@0.2.4(hono@4.11.6)))(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(@types/debug@4.1.12)(@types/node@25.0.10)(esbuild@0.27.2)(openai@4.104.0(ws@8.18.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(terser@5.46.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@25.0.10)(terser@5.46.0))(ws@8.18.0)(yaml@2.8.2))':
     optionalDependencies:
       '@cloudflare/workers-types': 4.20260124.0
@@ -8340,6 +8331,8 @@ snapshots:
   caniuse-lite@1.0.30001766: {}
 
   capnweb@0.1.0: {}
+
+  capnweb@0.12.0: {}
 
   capnweb@0.2.0: {}
 

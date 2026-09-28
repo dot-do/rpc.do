@@ -2,14 +2,14 @@
  * rpc.do Tests
  *
  * Tests for RPC proxy, transports, and auth.
- * Uses real @dotdo/capnweb protocol (no mocking capnweb).
+ * Uses real capnweb protocol (no mocking capnweb).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { RPC, binding, composite } from './index'
 import { auth } from './auth'
 import { RPCError } from './errors'
-import { RpcTarget, newHttpBatchRpcResponse } from '@dotdo/capnweb/server'
+import { RpcTarget, newHttpBatchRpcResponse } from 'capnweb'
 import type { Transport } from './index'
 
 // ============================================================================

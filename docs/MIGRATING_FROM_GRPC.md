@@ -429,7 +429,7 @@ try {
 ### 1. Install rpc.do
 
 ```bash
-npm install rpc.do @dotdo/capnweb
+npm install rpc.do capnweb
 ```
 
 ### 2. Create TypeScript Interface from Proto

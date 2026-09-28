@@ -2,7 +2,7 @@
  * Server Tests
  *
  * Tests for rpc.do/server: createTarget, createHandler
- * Uses real @dotdo/capnweb protocol end-to-end.
+ * Uses real capnweb protocol end-to-end.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
@@ -185,7 +185,7 @@ describe('createHandler()', () => {
     const handler = createHandler(target)
 
     // Simulate a capnweb HTTP batch request
-    const { newHttpBatchRpcSession } = await import('@dotdo/capnweb')
+    const { newHttpBatchRpcSession } = await import('capnweb')
 
     // We can't easily test the handler directly without a full capnweb client,
     // but we can verify it returns a function

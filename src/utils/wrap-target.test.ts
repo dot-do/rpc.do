@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { RpcTarget } from '@dotdo/capnweb/server'
+import { RpcTarget } from 'capnweb'
 import {
   hasNestedFunctions,
   collectObjectProperties,

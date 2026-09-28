@@ -192,7 +192,7 @@ describe('Capnweb Loader - Caching', () => {
 
 describe('Capnweb Loader - Real Module Loading', () => {
   it('should load real module when no mock is set', async () => {
-    // This test requires @dotdo/capnweb to be installed
+    // This test requires capnweb to be installed
     // It verifies the real module can be loaded and has expected exports
 
     const capnweb = await loadCapnweb()

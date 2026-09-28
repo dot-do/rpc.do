@@ -5,7 +5,7 @@
  * used by both index.ts (full) and lite.ts (minimal) entry points.
  */
 
-import { RpcTarget } from '@dotdo/capnweb/server'
+import { RpcTarget } from 'capnweb'
 import { INTERNAL_METHOD_NAMES } from './constants.js'
 import {
   type ServerMiddleware,

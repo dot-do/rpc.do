@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Transports, http, capnweb, binding, composite } from './transports'
 import type { Transport } from './types'
 import { RPCError } from './errors'
-import { RpcTarget, newHttpBatchRpcResponse } from '@dotdo/capnweb/server'
+import { RpcTarget, newHttpBatchRpcResponse } from 'capnweb'
 
 // ============================================================================
 // Test Target for HTTP Transport

@@ -510,6 +510,6 @@ See the full [@dotdo/rpc documentation](../core/README.md).
 |---------|-------------|
 | [`@dotdo/rpc`](../core/README.md) | Abstract DO server library (DurableRPC base class) |
 | [`@dotdo/types`](https://github.com/dot-do/types) | Core platform type definitions |
-| [`@dotdo/capnweb`](https://github.com/dot-do/capnweb) | Capnproto-style RPC protocol |
+| [`capnweb`](https://github.com/cloudflare/capnweb) | Capnproto-style RPC protocol |
 | [`oauth.do`](https://github.com/dot-do/oauth.do) | OAuth authentication |
 | [`colo.do`](https://github.com/dot-do/colo.do) | Cloudflare colo location data |

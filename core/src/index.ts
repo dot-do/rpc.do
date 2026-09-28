@@ -44,11 +44,10 @@ export type {
 import {
   RpcSession,
   RpcTarget,
-  HibernatableWebSocketTransport,
-  TransportRegistry,
   type RpcTransport,
   type RpcSessionOptions,
-} from '@dotdo/capnweb/server'
+} from 'capnweb'
+import { HibernatableWebSocketTransport, TransportRegistry } from './hibernatable-ws.js'
 
 // Colo awareness (using tiny entry point for minimal bundle)
 import {

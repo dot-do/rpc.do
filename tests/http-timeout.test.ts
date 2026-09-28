@@ -1,12 +1,12 @@
 /**
  * HTTP Transport Timeout Tests
  *
- * Tests timeout functionality using real @dotdo/capnweb protocol.
+ * Tests timeout functionality using real capnweb protocol.
  * Intercepts fetch to route to a real RpcTarget server with simulated delays.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { RpcTarget, newHttpBatchRpcResponse } from '@dotdo/capnweb/server'
+import { RpcTarget, newHttpBatchRpcResponse } from 'capnweb'
 
 // ============================================================================
 // Test RpcTarget - methods must be class methods, not instance properties

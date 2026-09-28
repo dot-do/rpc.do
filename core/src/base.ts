@@ -14,10 +14,9 @@
 import {
   RpcSession,
   newHttpBatchRpcResponse,
-  HibernatableWebSocketTransport,
-  TransportRegistry,
   type RpcSessionOptions,
-} from '@dotdo/capnweb/server'
+} from 'capnweb'
+import { HibernatableWebSocketTransport, TransportRegistry } from './hibernatable-ws.js'
 
 import { RpcInterface, type RpcWrappable } from './rpc-interface.js'
 

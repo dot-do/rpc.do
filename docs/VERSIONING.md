@@ -94,7 +94,7 @@ When upgrading between major versions, use this template as a guide:
 #### Step 1: Update Dependencies
 
 ```bash
-npm install rpc.do@^1.0.0 @dotdo/rpc@^1.0.0 @dotdo/capnweb@^0.4.0
+npm install rpc.do@^1.0.0 @dotdo/rpc@^1.0.0 capnweb@^0.12.0
 ```
 
 #### Step 2: Update Import Paths (if needed)
@@ -138,10 +138,10 @@ npx tsc --noEmit
 
 ## Version Support Matrix
 
-| rpc.do | @dotdo/rpc | @dotdo/capnweb | Node.js | Cloudflare Workers |
+| rpc.do | @dotdo/rpc | capnweb | Node.js | Cloudflare Workers |
 |--------|------------|----------------|---------|-------------------|
-| 1.x | 1.x | 0.4.x | 18+ | Supported |
-| 0.2.x | 0.2.x | 0.4.x | 18+ | Supported |
+| 1.x | 1.x | capnweb 0.12.x | 18+ | Supported |
+| 0.2.x | 0.2.x | @dotdo/capnweb 0.4.x | 18+ | Supported |
 | 0.1.x | 0.1.x | 0.3.x | 18+ | Supported |
 
 ---

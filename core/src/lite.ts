@@ -29,9 +29,8 @@ import {
   RpcTarget,
   type RpcTransport,
   type RpcSessionOptions,
-  HibernatableWebSocketTransport,
-  TransportRegistry,
-} from '@dotdo/capnweb/server'
+} from 'capnweb'
+import { HibernatableWebSocketTransport, TransportRegistry } from './hibernatable-ws.js'
 import { SKIP_PROPS_BASE } from './rpc-interface.js'
 
 // Shared base class

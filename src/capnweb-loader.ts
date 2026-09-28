@@ -1,7 +1,7 @@
 /**
  * Capnweb Module Loader
  *
- * Centralizes the dynamic import of @dotdo/capnweb to:
+ * Centralizes the dynamic import of capnweb (upstream, github.com/cloudflare/capnweb) to:
  * - Handle the dynamic import once and cache the result
  * - Provide typed exports for capnweb functions
  * - Allow injection of mocks for testing
@@ -20,7 +20,8 @@ import { RPCError } from './errors.js'
  */
 export type RpcSessionConstructor = new (
   transport: unknown,
-  localMain?: unknown
+  localMain?: unknown,
+  options?: unknown
 ) => {
   getRemoteMain(): unknown
   [Symbol.dispose]?: () => void
@@ -32,7 +33,7 @@ export type RpcSessionConstructor = new (
 export type SessionFactory = (url: string) => unknown
 
 /**
- * Capnweb module interface - the exports we use from @dotdo/capnweb
+ * Capnweb module interface - the exports we use from capnweb
  */
 export interface CapnwebModule {
   /** Create an HTTP batch RPC session */
@@ -71,7 +72,7 @@ let mockModule: CapnwebModule | null = null
 /**
  * Load the capnweb module
  *
- * This function handles dynamic importing of @dotdo/capnweb with:
+ * This function handles dynamic importing of capnweb with:
  * - Single-load caching (module is only imported once)
  * - Type-safe exports
  * - Mock injection support for testing
@@ -107,7 +108,7 @@ export async function loadCapnweb(): Promise<CapnwebModule> {
   modulePromise = (async (): Promise<CapnwebModule> => {
     try {
       // Dynamic import capnweb (optional dependency)
-      const mod = await import('@dotdo/capnweb') as Record<string, unknown>
+      const mod = await import('capnweb') as Record<string, unknown>
 
       // Validate required exports exist
       const newHttpBatchRpcSession = mod['newHttpBatchRpcSession'] as SessionFactory | undefined
@@ -142,13 +143,13 @@ export async function loadCapnweb(): Promise<CapnwebModule> {
       // Handle module not found
       if (error instanceof Error && error.message.includes('Cannot find module')) {
         throw new RPCError(
-          '@dotdo/capnweb is not installed. Install it with: npm install @dotdo/capnweb',
+          'capnweb is not installed. Install it with: npm install capnweb',
           'MODULE_NOT_FOUND'
         )
       }
 
       throw new RPCError(
-        `Failed to load @dotdo/capnweb: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to load capnweb: ${error instanceof Error ? error.message : String(error)}`,
         'MODULE_ERROR'
       )
     }

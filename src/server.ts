@@ -1,7 +1,8 @@
 /**
  * rpc.do/server - Capnweb server utilities with convenience wrappers
  *
- * Re-exports capnweb/server and adds helpers for common patterns.
+ * Re-exports the server-side surface of upstream `capnweb`, plus the hibernatable
+ * WebSocket transport rpc.do carries itself, and adds helpers for common patterns.
  *
  * @example
  * // Wrap any object/SDK as an RpcTarget and serve it
@@ -28,27 +29,36 @@
  * }
  */
 
-// Re-export everything from capnweb/server
+// Re-export the server-side surface of capnweb. This is the same set the
+// @dotdo/capnweb fork exposed as '@dotdo/capnweb/server', plus
+// newWorkersWebSocketRpcResponse, nodeHttpBatchRpcResponse and RpcLimits/DEFAULT_LIMITS,
+// which upstream capnweb exports from its single entry point.
 export {
   RpcTarget,
   RpcSession,
   RpcStub,
   newWorkersRpcResponse,
   newHttpBatchRpcResponse,
-  HibernatableWebSocketTransport,
-  TransportRegistry,
+  newWorkersWebSocketRpcResponse,
+  nodeHttpBatchRpcResponse,
   serialize,
   deserialize,
-} from '@dotdo/capnweb/server'
+  DEFAULT_LIMITS,
+} from 'capnweb'
 
 export type {
   RpcCompatible,
   RpcSessionOptions,
   RpcTransport,
-} from '@dotdo/capnweb/server'
+  RpcLimits,
+} from 'capnweb'
 
-import { RpcTarget, RpcSession, newHttpBatchRpcResponse, newWorkersRpcResponse } from '@dotdo/capnweb/server'
-import type { RpcTransport } from '@dotdo/capnweb/server'
+// The one runtime addition the @dotdo/capnweb fork made; upstream has no equivalent.
+export { HibernatableWebSocketTransport, TransportRegistry } from './hibernatable-ws.js'
+export type { PendingReceive } from './hibernatable-ws.js'
+
+import { RpcTarget, RpcSession, newHttpBatchRpcResponse, newWorkersRpcResponse } from 'capnweb'
+import type { RpcTransport } from 'capnweb'
 import { wrapObjectAsTarget, DEFAULT_SKIP_PROPS } from './utils/wrap-target'
 
 // ============================================================================
@@ -67,9 +77,9 @@ export interface HandleRpcOptions {
   authTimeout?: number
   /**
    * Override the capnweb functions used internally.
-   * Use this in monorepos where multiple copies of @dotdo/capnweb exist
+   * Use this in monorepos where multiple copies of capnweb exist
    * (pnpm peer dependency resolution can cause class identity mismatches).
-   * Pass functions from YOUR copy of @dotdo/capnweb/server.
+   * Pass functions from YOUR copy of capnweb.
    */
   capnweb?: {
     newHttpBatchRpcResponse?: (request: Request, localMain: unknown) => Promise<Response>
@@ -100,7 +110,7 @@ export interface HandleRpcContext {
  * so it works with any copy of capnweb (no class identity / instanceof issues).
  *
  * @example
- * import { RpcSession, newWorkersRpcResponse } from '@dotdo/capnweb/server'
+ * import { RpcSession, newWorkersRpcResponse } from 'capnweb'
  * import { AuthenticatingWebSocketTransport } from 'rpc.do/server'
  *
  * const pair = new WebSocketPair()

@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { RPC, binding, composite, type Transport } from './index'
 import { http } from './transports'
 import { RPCError } from './errors'
-import { RpcTarget, newHttpBatchRpcResponse } from '@dotdo/capnweb/server'
+import { RpcTarget, newHttpBatchRpcResponse } from 'capnweb'
 import { mockRPC, mockTransport, createSpy } from './testing'
 
 // ============================================================================

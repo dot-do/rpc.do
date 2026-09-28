@@ -64,9 +64,9 @@
     "directory": "core"
   },
   "dependencies": {
-    "@dotdo/capnweb": "^0.4.0",
     "@dotdo/collections": "^0.1.0",
-    "@dotdo/do": "^0.1.0"
+    "@dotdo/do": "^0.1.0",
+    "capnweb": "^0.12.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
