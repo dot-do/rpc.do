@@ -320,7 +320,7 @@ describe('Assertion Functions', () => {
 
     it('should throw for false conditions', () => {
       expect(() => assert(false)).toThrow()
-      expect(() => assert(1 === 2)).toThrow()
+      expect(() => assert(Number("1") === 2)).toThrow()
     })
 
     it('should throw with custom message', () => {

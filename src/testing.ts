@@ -162,7 +162,8 @@ function getNestedValue(obj: unknown, path: string[]): unknown {
  */
 export type MockResponse =
   | { error: string | { message: string; code?: string; data?: unknown } }
-  | ((...args: unknown[]) => unknown | Promise<unknown>)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- `any[]` so handlers with typed parameters are assignable (parameters are contravariant)
+  | ((...args: any[]) => unknown)
   | Record<string, unknown>
   | string
   | number
@@ -581,7 +582,10 @@ export function deferred<T>(): {
  * expect(spy.results).toEqual([10, 20])
  * ```
  */
-export function createSpy<T extends (...args: unknown[]) => unknown>(
+export function createSpy<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- `any` so functions with typed parameters satisfy the constraint (parameters are contravariant)
+  T extends (...args: any[]) => any = (...args: any[]) => any,
+>(
   impl?: T
 ): T & {
   calls: Parameters<T>[]

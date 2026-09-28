@@ -251,7 +251,7 @@ describe('createQueryFn', () => {
 
     expect(typeof queryFn).toBe('function')
     // Should not be thenable itself
-    expect((queryFn as unknown as Record<string, unknown>).then).toBeUndefined()
+    expect((queryFn as unknown as Record<string,unknown>)['then']).toBeUndefined()
   })
 })
 
@@ -417,7 +417,7 @@ describe('createMutationFn', () => {
     const mutationFn = createMutationFn(rpc, 'users.create')
 
     expect(typeof mutationFn).toBe('function')
-    expect((mutationFn as unknown as Record<string, unknown>).then).toBeUndefined()
+    expect((mutationFn as unknown as Record<string,unknown>)['then']).toBeUndefined()
   })
 })
 
