@@ -27,6 +27,9 @@ importers:
       '@dotdo/types':
         specifier: ^0.1.0
         version: 0.1.0(typescript@5.9.3)
+      colo.do:
+        specifier: ^0.1.1
+        version: 0.1.1(@cloudflare/workers-types@4.20260124.0)(@dotdo/do@0.1.4(@cloudflare/workers-types@4.20260124.0)(@dotdo/pglite@0.1.4)(@dotdo/postgres@0.1.3(oauth.do@0.2.4(hono@4.11.6)))(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(@types/debug@4.1.12)(@types/node@25.0.10)(esbuild@0.27.2)(openai@4.104.0(ws@8.18.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(terser@5.46.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@25.0.10)(terser@5.46.0))(ws@8.18.0)(yaml@2.8.2))(@dotdo/types@0.1.0(typescript@5.9.3))
       esbuild:
         specifier: ^0.27.2
         version: 0.27.2
@@ -306,6 +309,17 @@ packages:
       '@cloudflare/workers-types':
         optional: true
       '@dotdo/do':
+        optional: true
+
+  '@dotdo/colo@0.1.5':
+    resolution: {integrity: sha512-vc3yq86vlEyiiVHMwxxWOk906Ud7R9DdwJ3vULIPWWn4/aU39Jsa95HeCeWq5Pe1RX0xD9NmnWEXxTTxov49sQ==}
+    peerDependencies:
+      '@cloudflare/workers-types': '>=4.0.0'
+      '@dotdo/types': '>=0.1.0'
+    peerDependenciesMeta:
+      '@cloudflare/workers-types':
+        optional: true
+      '@dotdo/types':
         optional: true
 
   '@dotdo/do@0.1.4':
@@ -2291,6 +2305,9 @@ packages:
 
   collapse-white-space@2.1.0:
     resolution: {integrity: sha512-loKTxY1zCOuG4j9f6EPnuyyYkf58RnhhWTvRoZEokgB+WbdXehfjFviyOVYkqzEWz1Q5kRiZdBYS5SwxbQYwzw==}
+
+  colo.do@0.1.1:
+    resolution: {integrity: sha512-lb4MdgSFPOFcvJECZIzlF91yLCusT1gtyOTqsQ74Bd6BIaTRgrWZISHCet/xKwbevLE44h6bQqDqd7hIXdqrCQ==}
 
   color-convert@2.0.1:
     resolution: {integrity: sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==}
@@ -5898,6 +5915,16 @@ snapshots:
       '@cloudflare/workers-types': 4.20260124.0
       '@dotdo/do': 0.1.4(@cloudflare/workers-types@4.20260124.0)(@dotdo/pglite@0.1.4)(@dotdo/postgres@0.1.3(oauth.do@0.2.4(hono@4.11.6)))(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(@types/debug@4.1.12)(@types/node@25.0.10)(esbuild@0.27.2)(openai@4.104.0(ws@8.18.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(terser@5.46.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@25.0.10)(terser@5.46.0))(ws@8.18.0)(yaml@2.8.2)
 
+  '@dotdo/colo@0.1.5(@cloudflare/workers-types@4.20260124.0)(@dotdo/do@0.1.4(@cloudflare/workers-types@4.20260124.0)(@dotdo/pglite@0.1.4)(@dotdo/postgres@0.1.3(oauth.do@0.2.4(hono@4.11.6)))(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(@types/debug@4.1.12)(@types/node@25.0.10)(esbuild@0.27.2)(openai@4.104.0(ws@8.18.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(terser@5.46.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@25.0.10)(terser@5.46.0))(ws@8.18.0)(yaml@2.8.2))(@dotdo/types@0.1.0(typescript@5.9.3))':
+    dependencies:
+      '@dotdo/collections': 0.1.0(@cloudflare/workers-types@4.20260124.0)(@dotdo/do@0.1.4(@cloudflare/workers-types@4.20260124.0)(@dotdo/pglite@0.1.4)(@dotdo/postgres@0.1.3(oauth.do@0.2.4(hono@4.11.6)))(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(@types/debug@4.1.12)(@types/node@25.0.10)(esbuild@0.27.2)(openai@4.104.0(ws@8.18.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(terser@5.46.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@25.0.10)(terser@5.46.0))(ws@8.18.0)(yaml@2.8.2))
+      capnweb: 0.4.0
+    optionalDependencies:
+      '@cloudflare/workers-types': 4.20260124.0
+      '@dotdo/types': 0.1.0(typescript@5.9.3)
+    transitivePeerDependencies:
+      - '@dotdo/do'
+
   '@dotdo/do@0.1.4(@cloudflare/workers-types@4.20260124.0)(@dotdo/pglite@0.1.4)(@dotdo/postgres@0.1.3(oauth.do@0.2.4(hono@4.11.6)))(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(@types/debug@4.1.12)(@types/node@25.0.10)(esbuild@0.27.2)(openai@4.104.0(ws@8.18.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(terser@5.46.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@25.0.10)(terser@5.46.0))(ws@8.18.0)(yaml@2.8.2)':
     dependencies:
       '@cloudflare/workers-types': 4.20260124.0
@@ -8426,6 +8453,14 @@ snapshots:
   clsx@2.1.1: {}
 
   collapse-white-space@2.1.0: {}
+
+  colo.do@0.1.1(@cloudflare/workers-types@4.20260124.0)(@dotdo/do@0.1.4(@cloudflare/workers-types@4.20260124.0)(@dotdo/pglite@0.1.4)(@dotdo/postgres@0.1.3(oauth.do@0.2.4(hono@4.11.6)))(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(@types/debug@4.1.12)(@types/node@25.0.10)(esbuild@0.27.2)(openai@4.104.0(ws@8.18.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(terser@5.46.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@25.0.10)(terser@5.46.0))(ws@8.18.0)(yaml@2.8.2))(@dotdo/types@0.1.0(typescript@5.9.3)):
+    dependencies:
+      '@dotdo/colo': 0.1.5(@cloudflare/workers-types@4.20260124.0)(@dotdo/do@0.1.4(@cloudflare/workers-types@4.20260124.0)(@dotdo/pglite@0.1.4)(@dotdo/postgres@0.1.3(oauth.do@0.2.4(hono@4.11.6)))(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(@types/debug@4.1.12)(@types/node@25.0.10)(esbuild@0.27.2)(openai@4.104.0(ws@8.18.0)(zod@3.25.76))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(terser@5.46.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@25.0.10)(terser@5.46.0))(ws@8.18.0)(yaml@2.8.2))(@dotdo/types@0.1.0(typescript@5.9.3))
+    transitivePeerDependencies:
+      - '@cloudflare/workers-types'
+      - '@dotdo/do'
+      - '@dotdo/types'
 
   color-convert@2.0.1:
     dependencies:

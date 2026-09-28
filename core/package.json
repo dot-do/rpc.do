@@ -72,6 +72,7 @@
     "@cloudflare/workers-types": "^4.20241205.0",
     "@dotdo/events": "^0.1.0",
     "@dotdo/types": "^0.1.0",
+    "colo.do": "^0.1.1",
     "esbuild": "^0.27.2",
     "sql.js": "^1.13.0",
     "tsup": "^8.0.0",
