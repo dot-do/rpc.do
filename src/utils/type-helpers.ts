@@ -15,7 +15,7 @@
  * @internal These helpers are for internal use within the rpc.do client
  */
 
-import type { SqlQueryResult, RpcSchema, DatabaseSchema } from '@dotdo/rpc'
+import type { SqlQueryResult, RpcSchema, DatabaseSchema } from '../schema-types.js'
 
 // ============================================================================
 // SQL Query Result Helpers

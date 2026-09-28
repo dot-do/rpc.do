@@ -88,6 +88,16 @@ function isTraversable(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Dispose a capnweb session stub if it is disposable. Stubs are proxies (objects or
+ * functions) that implement `Symbol.dispose`.
+ */
+function disposeSession(session: unknown): void {
+  if (!isTraversable(session)) return
+  const dispose = (session as { [Symbol.dispose]?: unknown })[Symbol.dispose]
+  if (typeof dispose === 'function') dispose.call(session)
+}
+
+/**
  * Navigate a dotted method path (e.g. "users.create") on a root object.
  *
  * Accepts both plain strings (for backward compatibility) and branded RpcMethodPath
@@ -177,9 +187,8 @@ export function navigateBindingMethodPath(root: unknown, method: string | RpcMet
  * Checks for common `status` or `statusCode` properties used by HTTP libraries.
  */
 function getErrorStatusCode(error: Error): number | undefined {
-  const err = error as Record<string, unknown>
-  if (typeof err['status'] === 'number') return err['status']
-  if (typeof err['statusCode'] === 'number') return err['statusCode']
+  if ('status' in error && typeof error.status === 'number') return error.status
+  if ('statusCode' in error && typeof error.statusCode === 'number') return error.statusCode
   return undefined
 }
 
@@ -427,11 +436,7 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
     close() {
       // Dispose the most recent session once it resolves
       if (lastSessionPromise) {
-        void lastSessionPromise.then((session) => {
-          if (isNonNullObject(session) && typeof session[Symbol.dispose] === 'function') {
-            (session[Symbol.dispose] as () => void)()
-          }
-        })
+        void lastSessionPromise.then(disposeSession)
       }
       sessionPromise = null
       lastSessionPromise = null
@@ -705,11 +710,7 @@ export function capnweb(
     close() {
       // Dispose the most recent session once it resolves
       if (lastSessionPromise) {
-        void lastSessionPromise.then((session) => {
-          if (isTraversable(session) && typeof session[Symbol.dispose] === 'function') {
-            (session[Symbol.dispose] as () => void)()
-          }
-        })
+        void lastSessionPromise.then(disposeSession)
       }
       sessionPromise = null
       lastSessionPromise = null

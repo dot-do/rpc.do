@@ -61,8 +61,7 @@ import {
   asRpcSchema,
 } from './utils/type-helpers.js'
 
-// Import schema types from @dotdo/rpc (canonical location)
-// These are bundled by tsup so no runtime dependency is added
+// Schema types (structural copies of @dotdo/rpc's; see schema-types.ts)
 import type {
   SqlQueryResult,
   RpcSchema,
@@ -72,7 +71,7 @@ import type {
   TableSchema,
   ColumnSchema,
   IndexSchema,
-} from '@dotdo/rpc'
+} from './schema-types.js'
 
 // Re-export schema types for consumers
 export type {
