@@ -2,11 +2,11 @@
  * expose() Tests
  *
  * Tests for the SDK-to-RpcTarget wrapper factory.
- * Uses real @dotdo/capnweb/server RpcTarget (only mocks cloudflare:workers).
+ * Uses real capnweb RpcTarget (only mocks cloudflare:workers).
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { RpcTarget } from '@dotdo/capnweb/server'
+import { RpcTarget } from 'capnweb'
 import { expose } from './expose'
 
 // Mock WorkerEntrypoint since we're not in a Cloudflare Workers environment
@@ -49,7 +49,7 @@ describe('expose()', () => {
     it('should return a real RpcTarget', () => {
       const Worker = expose(() => ({ test: () => 'ok' }))
       const instance = createInstance(Worker)
-      const target = instance.getRpcTarget()
+      const target = instance.getRpcTarget() as Record<string, any>
       expect(target).toBeInstanceOf(RpcTarget)
     })
 
@@ -78,12 +78,12 @@ describe('expose()', () => {
 
       const Worker = expose(() => sdk)
       const instance = createInstance(Worker)
-      const target = instance.getRpcTarget()
+      const target = instance.getRpcTarget() as Record<string, any>
 
-      expect(typeof target.greet).toBe('function')
-      expect(typeof target.add).toBe('function')
-      expect(target.greet('world')).toBe('Hello, world!')
-      expect(target.add(2, 3)).toBe(5)
+      expect(typeof target['greet']).toBe('function')
+      expect(typeof target['add']).toBe('function')
+      expect(target['greet']('world')).toBe('Hello, world!')
+      expect(target['add'](2, 3)).toBe(5)
     })
 
     it('should expose nested namespace methods', () => {
@@ -96,14 +96,14 @@ describe('expose()', () => {
 
       const Worker = expose(() => sdk)
       const instance = createInstance(Worker)
-      const target = instance.getRpcTarget()
+      const target = instance.getRpcTarget() as Record<string, any>
 
-      expect(target.users).toBeDefined()
-      expect(typeof target.users.list).toBe('function')
-      expect(typeof target.users.get).toBe('function')
+      expect(target['users']).toBeDefined()
+      expect(typeof target['users'].list).toBe('function')
+      expect(typeof target['users'].get).toBe('function')
 
-      expect(target.users.list()).toEqual([{ id: '1' }, { id: '2' }])
-      expect(target.users.get('123')).toEqual({ id: '123', name: 'Test' })
+      expect(target['users'].list()).toEqual([{ id: '1' }, { id: '2' }])
+      expect(target['users'].get('123')).toEqual({ id: '123', name: 'Test' })
     })
 
     it('should skip private properties (starting with _)', () => {
@@ -114,10 +114,10 @@ describe('expose()', () => {
 
       const Worker = expose(() => sdk)
       const instance = createInstance(Worker)
-      const target = instance.getRpcTarget()
+      const target = instance.getRpcTarget() as Record<string, any>
 
-      expect(typeof target.publicMethod).toBe('function')
-      expect(target._privateMethod).toBeUndefined()
+      expect(typeof target['publicMethod']).toBe('function')
+      expect(target['_privateMethod']).toBeUndefined()
     })
 
     it('should cache the RpcTarget on repeated calls', () => {
@@ -128,8 +128,8 @@ describe('expose()', () => {
       })
       const instance = createInstance(Worker)
 
-      const target1 = instance.getRpcTarget()
-      const target2 = instance.getRpcTarget()
+      const target1 = instance.getRpcTarget() as Record<string, any>
+      const target2 = instance.getRpcTarget() as Record<string, any>
 
       expect(target1).toBe(target2)
       expect(factoryCallCount).toBe(1)
@@ -152,13 +152,13 @@ describe('expose()', () => {
       })
 
       const instance = createInstance(Worker)
-      const target = instance.getRpcTarget()
+      const target = instance.getRpcTarget() as Record<string, any>
 
-      expect(typeof target.customMethod).toBe('function')
-      expect(target.customMethod()).toEqual({ custom: true })
+      expect(typeof target['customMethod']).toBe('function')
+      expect(target['customMethod']()).toEqual({ custom: true })
 
-      expect(typeof target.apiCall).toBe('function')
-      expect(target.apiCall()).toEqual({ status: 'ok' })
+      expect(typeof target['apiCall']).toBe('function')
+      expect(target['apiCall']()).toEqual({ status: 'ok' })
     })
 
     it('should provide sdk and env in custom method context', () => {
@@ -177,9 +177,9 @@ describe('expose()', () => {
       })
 
       const instance = createInstance(Worker)
-      const target = instance.getRpcTarget()
+      const target = instance.getRpcTarget() as Record<string, any>
 
-      expect(target.combined()).toEqual({ data: 'from-sdk', enhanced: true })
+      expect(target['combined']()).toEqual({ data: 'from-sdk', enhanced: true })
     })
   })
 
@@ -205,20 +205,20 @@ describe('expose()', () => {
       })
 
       const instance = createInstance(Worker)
-      const target = instance.getRpcTarget()
+      const target = instance.getRpcTarget() as Record<string, any>
 
-      expect(target.cf).toBeDefined()
-      expect(target.gh).toBeDefined()
-      expect(target.cf).toBeInstanceOf(RpcTarget)
-      expect(target.gh).toBeInstanceOf(RpcTarget)
+      expect(target['cf']).toBeDefined()
+      expect(target['gh']).toBeDefined()
+      expect(target['cf']).toBeInstanceOf(RpcTarget)
+      expect(target['gh']).toBeInstanceOf(RpcTarget)
 
-      expect(target.cf.zones).toBeDefined()
-      expect(typeof target.cf.zones.list).toBe('function')
-      expect(target.cf.zones.list()).toEqual([{ name: 'example.com' }])
+      expect(target['cf'].zones).toBeDefined()
+      expect(typeof target['cf'].zones.list).toBe('function')
+      expect(target['cf'].zones.list()).toEqual([{ name: 'example.com' }])
 
-      expect(target.gh.repos).toBeDefined()
-      expect(typeof target.gh.repos.get).toBe('function')
-      expect(target.gh.repos.get()).toEqual({ name: 'repo' })
+      expect(target['gh'].repos).toBeDefined()
+      expect(typeof target['gh'].repos.get).toBe('function')
+      expect(target['gh'].repos.get()).toEqual({ name: 'repo' })
     })
 
     it('should add custom methods alongside SDK sub-targets', () => {
@@ -234,11 +234,11 @@ describe('expose()', () => {
       })
 
       const instance = createInstance(Worker)
-      const target = instance.getRpcTarget()
+      const target = instance.getRpcTarget() as Record<string, any>
 
-      expect(typeof target.healthCheck).toBe('function')
-      expect(target.healthCheck()).toEqual({ ok: true })
-      expect(target.api).toBeDefined()
+      expect(typeof target['healthCheck']).toBe('function')
+      expect(target['healthCheck']()).toEqual({ ok: true })
+      expect(target['api']).toBeDefined()
     })
   })
 

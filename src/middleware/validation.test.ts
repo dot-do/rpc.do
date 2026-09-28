@@ -152,11 +152,11 @@ describe('withValidation', () => {
         call: async () => ({ id: '123', name: 'John' }),
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas)],
       })
 
-      const result = await rpc.users.create({ name: 'John', email: 'john@example.com' })
+      const result = await rpc['users'].create({ name: 'John', email: 'john@example.com' })
       expect(result).toEqual({ id: '123', name: 'John' })
     })
 
@@ -174,11 +174,11 @@ describe('withValidation', () => {
         call: async () => ({ id: '123' }),
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas)],
       })
 
-      await expect(rpc.users.create({ name: 'John', email: 'invalid' })).rejects.toThrow(ValidationError)
+      await expect(rpc['users'].create({ name: 'John', email: 'invalid' })).rejects.toThrow(ValidationError)
     })
 
     it('should include method name in error', async () => {
@@ -192,12 +192,12 @@ describe('withValidation', () => {
         call: async () => ({}),
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas)],
       })
 
       try {
-        await rpc.users.create(123)
+        await rpc['users'].create(123)
         expect.fail('Should have thrown')
       } catch (error) {
         expect(error).toBeInstanceOf(ValidationError)
@@ -221,17 +221,17 @@ describe('withValidation', () => {
         call: async () => ({}),
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas)],
       })
 
       try {
-        await rpc.users.update({ user: { name: 123 } })
+        await rpc['users'].update({ user: { name: 123 } })
         expect.fail('Should have thrown')
       } catch (error) {
         expect(error).toBeInstanceOf(ValidationError)
         const ve = error as ValidationError
-        expect(ve.issues[0].path).toEqual(['user', 'name'])
+        expect(ve.issues[0]!.path).toEqual(['user', 'name'])
       }
     })
 
@@ -246,12 +246,12 @@ describe('withValidation', () => {
         call: async () => ({ ok: true }),
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas)],
       })
 
       // users.list has no schema, should not throw
-      const result = await rpc.users.list({ invalid: 'data' })
+      const result = await rpc['users'].list({ invalid: 'data' })
       expect(result).toEqual({ ok: true })
     })
 
@@ -270,11 +270,11 @@ describe('withValidation', () => {
         },
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas)],
       })
 
-      await rpc.test('valid', 'second-arg', 'third-arg')
+      await rpc['test']('valid', 'second-arg', 'third-arg')
 
       expect(calls[0]).toEqual(['valid', 'second-arg', 'third-arg'])
     })
@@ -295,11 +295,11 @@ describe('withValidation', () => {
         call: async () => ({ id: '123', name: 'John' }),
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas)],
       })
 
-      const result = await rpc.users.get('123')
+      const result = await rpc['users'].get('123')
       expect(result).toEqual({ id: '123', name: 'John' })
     })
 
@@ -317,12 +317,12 @@ describe('withValidation', () => {
         call: async () => ({ id: 123, name: 'John' }), // id should be string
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas)],
       })
 
       try {
-        await rpc.users.get('123')
+        await rpc['users'].get('123')
         expect.fail('Should have thrown')
       } catch (error) {
         expect(error).toBeInstanceOf(ValidationError)
@@ -345,11 +345,11 @@ describe('withValidation', () => {
         call: async () => null,
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas)],
       })
 
-      const result = await rpc.users.get('nonexistent')
+      const result = await rpc['users'].get('nonexistent')
       expect(result).toBeNull()
     })
 
@@ -368,11 +368,11 @@ describe('withValidation', () => {
         call: async () => [{ id: '1' }, { id: '2' }],
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas)],
       })
 
-      const result = await rpc.users.list()
+      const result = await rpc['users'].list()
       expect(result).toEqual([{ id: '1' }, { id: '2' }])
     })
 
@@ -391,17 +391,17 @@ describe('withValidation', () => {
         call: async () => [{ id: '1' }, { id: 123 }], // Second item has invalid id
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas)],
       })
 
       try {
-        await rpc.users.list()
+        await rpc['users'].list()
         expect.fail('Should have thrown')
       } catch (error) {
         expect(error).toBeInstanceOf(ValidationError)
         const ve = error as ValidationError
-        expect(ve.issues[0].path).toEqual([1, 'id'])
+        expect(ve.issues[0]!.path).toEqual([1, 'id'])
       }
     })
   })
@@ -424,11 +424,11 @@ describe('withValidation', () => {
         call: async () => ({ id: '123', name: 'John' }),
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas)],
       })
 
-      const result = await rpc.users.create({ name: 'John' })
+      const result = await rpc['users'].create({ name: 'John' })
       expect(result).toEqual({ id: '123', name: 'John' })
     })
 
@@ -444,11 +444,11 @@ describe('withValidation', () => {
 
       const mockTransport: Transport = { call: callMock }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas)],
       })
 
-      await expect(rpc.users.create({ name: 123 })).rejects.toThrow(ValidationError)
+      await expect(rpc['users'].create({ name: 123 })).rejects.toThrow(ValidationError)
 
       // Transport should not be called if input validation fails
       expect(callMock).not.toHaveBeenCalled()
@@ -465,12 +465,12 @@ describe('withValidation', () => {
         call: async () => ({ ok: true }),
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas, { validateInput: false })],
       })
 
       // Should not throw even with invalid input
-      const result = await rpc.test(123)
+      const result = await rpc['test'](123)
       expect(result).toEqual({ ok: true })
     })
 
@@ -483,12 +483,12 @@ describe('withValidation', () => {
         call: async () => 123, // Invalid output
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas, { validateOutput: false })],
       })
 
       // Should not throw even with invalid output
-      const result = await rpc.test()
+      const result = await rpc['test']()
       expect(result).toBe(123)
     })
 
@@ -503,11 +503,11 @@ describe('withValidation', () => {
         call: async () => ({}),
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas, { onValidationError })],
       })
 
-      await expect(rpc.test(123)).rejects.toThrow(ValidationError)
+      await expect(rpc['test'](123)).rejects.toThrow(ValidationError)
 
       expect(onValidationError).toHaveBeenCalledTimes(1)
       expect(onValidationError).toHaveBeenCalledWith('test', 'input', expect.any(ValidationError))
@@ -524,12 +524,12 @@ describe('withValidation', () => {
         call: async () => ({ ok: true }),
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas, { throwOnError: false, onValidationError })],
       })
 
       // Should not throw
-      const result = await rpc.test(123)
+      const result = await rpc['test'](123)
       expect(result).toEqual({ ok: true })
 
       // But callback should still be called
@@ -547,11 +547,11 @@ describe('withValidation', () => {
         call: async () => 123,
       }
 
-      const rpc = RPC(mockTransport, {
+      const rpc = RPC<any>(mockTransport, {
         middleware: [withValidation(schemas, { onValidationError })],
       })
 
-      await expect(rpc.test()).rejects.toThrow(ValidationError)
+      await expect(rpc['test']()).rejects.toThrow(ValidationError)
 
       expect(onValidationError).toHaveBeenCalledWith('test', 'output', expect.any(ValidationError))
     })
@@ -634,11 +634,11 @@ describe('ValidationError', () => {
 
     const json = error.toJSON()
 
-    expect(json.name).toBe('ValidationError')
-    expect(json.method).toBe('test')
-    expect(json.type).toBe('input')
-    expect(json.issues).toEqual([{ path: ['field'], message: 'Invalid' }])
-    expect(json.message).toContain('field: Invalid')
+    expect(json['name']).toBe('ValidationError')
+    expect(json['method']).toBe('test')
+    expect(json['type']).toBe('input')
+    expect(json['issues']).toEqual([{ path: ['field'], message: 'Invalid' }])
+    expect(json['message']).toContain('field: Invalid')
   })
 
   it('should be instanceof Error', () => {
@@ -661,8 +661,8 @@ describe('prefixSchemas', () => {
     const prefixed = prefixSchemas('users', schemas)
 
     expect(Object.keys(prefixed)).toEqual(['users.create', 'users.get'])
-    expect(prefixed['users.create']).toBe(schemas.create)
-    expect(prefixed['users.get']).toBe(schemas.get)
+    expect(prefixed['users.create']).toBe(schemas['create'])
+    expect(prefixed['users.get']).toBe(schemas['get'])
   })
 
   it('should handle empty schemas', () => {
@@ -707,7 +707,7 @@ describe('mergeSchemas', () => {
 
     const merged = mergeSchemas(first, second)
 
-    expect(merged.test).toBe(second.test)
+    expect(merged['test']).toBe(second['test'])
   })
 
   it('should handle empty arrays', () => {
@@ -742,8 +742,8 @@ describe('withValidation integration', () => {
     const logs: string[] = []
 
     const loggingMiddleware = {
-      onRequest: () => logs.push('logging:request'),
-      onResponse: () => logs.push('logging:response'),
+      onRequest: () => { logs.push('logging:request') },
+      onResponse: () => { logs.push('logging:response') },
     }
 
     const schemas: ValidationSchemas = {
@@ -760,11 +760,11 @@ describe('withValidation integration', () => {
       },
     }
 
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [loggingMiddleware, withValidation(schemas)],
     })
 
-    await rpc.test('valid')
+    await rpc['test']('valid')
 
     // Logging middleware runs first, then validation (which doesn't log),
     // then transport call, then response hooks in same order
@@ -780,11 +780,11 @@ describe('withValidation integration', () => {
 
     const mockTransport: Transport = { call: callMock }
 
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [withValidation(schemas)],
     })
 
-    await expect(rpc.test(123)).rejects.toThrow(ValidationError)
+    await expect(rpc['test'](123)).rejects.toThrow(ValidationError)
     expect(callMock).not.toHaveBeenCalled()
   })
 
@@ -799,13 +799,13 @@ describe('withValidation integration', () => {
       call: async () => ({ id: '123' }),
     }
 
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [withValidation(schemas)],
     })
 
-    const result = await rpc.api.v1.users.create({ name: 'John' })
+    const result = await rpc['api'].v1.users.create({ name: 'John' })
     expect(result).toEqual({ id: '123' })
 
-    await expect(rpc.api.v1.users.create({ name: 123 })).rejects.toThrow(ValidationError)
+    await expect(rpc['api'].v1.users.create({ name: 123 })).rejects.toThrow(ValidationError)
   })
 })

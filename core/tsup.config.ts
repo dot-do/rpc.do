@@ -15,5 +15,5 @@ export default defineConfig({
   sourcemap: true,
   treeshake: true,
   minify: false,
-  external: ['@dotdo/capnweb', '@dotdo/collections', '@dotdo/do', '@dotdo/events', 'colo.do', '@cloudflare/workers-types', 'cloudflare:workers'],
+  external: ['capnweb', '@dotdo/collections', '@dotdo/do', '@dotdo/events', 'colo.do', '@cloudflare/workers-types', 'cloudflare:workers'],
 })

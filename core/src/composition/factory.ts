@@ -33,11 +33,10 @@
 import {
   RpcSession,
   newHttpBatchRpcResponse,
-  HibernatableWebSocketTransport,
-  TransportRegistry,
   RpcTarget,
   type RpcSessionOptions,
-} from '@dotdo/capnweb/server'
+} from 'capnweb'
+import { HibernatableWebSocketTransport, TransportRegistry } from '../hibernatable-ws.js'
 
 import {
   createWebSocketAttachment,

@@ -1,12 +1,12 @@
 /**
  * Capnweb Transport Tests
  *
- * End-to-end tests using real @dotdo/capnweb.
+ * End-to-end tests using real capnweb.
  * Creates a real RpcTarget server and intercepts fetch to route requests to it.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { RpcTarget, newHttpBatchRpcResponse } from '@dotdo/capnweb/server'
+import { RpcTarget, newHttpBatchRpcResponse } from 'capnweb'
 
 // ============================================================================
 // Test RpcTarget - real capnweb server

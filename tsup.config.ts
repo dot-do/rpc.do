@@ -21,7 +21,7 @@ export default defineConfig([
     ],
     format: ['esm'],
     dts: true,
-    external: ['capnweb', '@dotdo/capnweb', '@dotdo/capnweb/server', 'oauth.do', 'cloudflare:workers', 'react'],
+    external: ['capnweb', 'oauth.do', 'cloudflare:workers', 'react'],
   },
   // Type extraction utilities (Node.js only, uses ts-morph)
   {
@@ -42,7 +42,7 @@ export default defineConfig([
     entry: ['src/testing.ts'],
     format: ['esm'],
     dts: true,
-    external: ['capnweb', '@dotdo/capnweb', '@dotdo/capnweb/server', 'oauth.do', 'cloudflare:workers', 'node:http'],
+    external: ['capnweb', 'oauth.do', 'cloudflare:workers', 'node:http'],
   },
   // CLI (Node.js only, uses ts-morph and glob via extract/detect)
   {

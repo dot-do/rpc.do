@@ -41,6 +41,14 @@ import type { RpcProxy, RpcResult, RpcInput, RPCProxy, RPCResult, RPCInput } fro
 // ============================================================================
 
 /**
+ * Parameter list every function type is assignable to. `unknown[]` would reject
+ * `(id: string) => ...` (parameters are contravariant), so method paths, argument
+ * extraction and the React Query helpers would only accept zero-argument methods.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Required so functions with typed parameters match
+type AnyArgs = any[]
+
+/**
  * Extract nested type from object by dot-notation path
  *
  * @example
@@ -68,7 +76,7 @@ export type PathValue<T, P extends string> = P extends `${infer K}.${infer Rest}
  */
 export type ObjectPaths<T, Prefix extends string = ''> = T extends object
   ? {
-      [K in keyof T & string]: T[K] extends (...args: unknown[]) => unknown
+      [K in keyof T & string]: T[K] extends (...args: AnyArgs) => unknown
         ? `${Prefix}${K}`
         : T[K] extends object
         ? `${Prefix}${K}` | ObjectPaths<T[K], `${Prefix}${K}.`>
@@ -81,7 +89,7 @@ export type ObjectPaths<T, Prefix extends string = ''> = T extends object
  */
 export type MethodPaths<T, Prefix extends string = ''> = T extends object
   ? {
-      [K in keyof T & string]: T[K] extends (...args: unknown[]) => unknown
+      [K in keyof T & string]: T[K] extends (...args: AnyArgs) => unknown
         ? `${Prefix}${K}`
         : T[K] extends object
         ? MethodPaths<T[K], `${Prefix}${K}.`>
@@ -114,7 +122,7 @@ type PathFn<T, P extends string> = Extract<PathValue<T, P>, (...args: any[]) => 
  * type Args = ExtractFnArgs<Fn> // [id: string, name: string]
  * ```
  */
-export type ExtractFnArgs<T extends (...args: unknown[]) => unknown> = T extends (...args: infer A) => unknown ? A : never
+export type ExtractFnArgs<T extends (...args: AnyArgs) => unknown> = T extends (...args: infer A) => unknown ? A : never
 
 /**
  * Extracts the awaited return type from a function type.
@@ -126,7 +134,7 @@ export type ExtractFnArgs<T extends (...args: unknown[]) => unknown> = T extends
  * type Return = ExtractFnReturn<Fn> // User (not Promise<User>)
  * ```
  */
-export type ExtractFnReturn<T extends (...args: unknown[]) => unknown> = T extends (...args: unknown[]) => infer R ? Awaited<R> : never
+export type ExtractFnReturn<T extends (...args: AnyArgs) => unknown> = T extends (...args: AnyArgs) => infer R ? Awaited<R> : never
 
 /**
  * Wraps a function type to return a Promise of its awaited return type.
@@ -139,7 +147,7 @@ export type ExtractFnReturn<T extends (...args: unknown[]) => unknown> = T exten
  * type Wrapped = AsyncWrapperFn<Fn> // (id: string) => Promise<User>
  * ```
  */
-export type AsyncWrapperFn<T extends (...args: unknown[]) => unknown> = T extends (...args: infer A) => unknown
+export type AsyncWrapperFn<T extends (...args: AnyArgs) => unknown> = T extends (...args: infer A) => unknown
   ? (...args: A) => Promise<ExtractFnReturn<T>>
   : never
 
@@ -308,7 +316,7 @@ export function createMutationFn<T extends object, P extends MethodPaths<T> & st
  * // { id: string; name: string; email: string }
  * ```
  */
-export type QueryData<T extends (...args: unknown[]) => Promise<unknown>> = T extends (...args: unknown[]) => Promise<infer R> ? R : never
+export type QueryData<T extends (...args: AnyArgs) => Promise<unknown>> = T extends (...args: AnyArgs) => Promise<infer R> ? R : never
 
 /**
  * Extract the variables/input type for a query or mutation
@@ -319,7 +327,7 @@ export type QueryData<T extends (...args: unknown[]) => Promise<unknown>> = T ex
  * // { id: string }
  * ```
  */
-export type QueryVariables<T extends (...args: unknown[]) => unknown> = T extends (arg: infer A) => unknown ? A : never
+export type QueryVariables<T extends (...args: AnyArgs) => unknown> = T extends (arg: infer A) => unknown ? A : never
 
 /**
  * Helper type for creating React Query useQuery options
@@ -334,7 +342,7 @@ export type QueryVariables<T extends (...args: unknown[]) => unknown> = T extend
  * }
  * ```
  */
-export interface UseQueryOptions<TMethod extends (...args: unknown[]) => Promise<unknown>> {
+export interface UseQueryOptions<TMethod extends (...args: AnyArgs) => Promise<unknown>> {
   queryKey: readonly unknown[]
   queryFn: () => Promise<QueryData<TMethod>>
   enabled?: boolean
@@ -358,7 +366,7 @@ export interface UseQueryOptions<TMethod extends (...args: unknown[]) => Promise
  * }
  * ```
  */
-export interface UseMutationOptions<TMethod extends (...args: unknown[]) => Promise<unknown>> {
+export interface UseMutationOptions<TMethod extends (...args: AnyArgs) => Promise<unknown>> {
   mutationFn: (variables: QueryVariables<TMethod>) => Promise<QueryData<TMethod>>
   onSuccess?: (data: QueryData<TMethod>, variables: QueryVariables<TMethod>) => void | Promise<void>
   onError?: (error: Error, variables: QueryVariables<TMethod>) => void | Promise<void>
@@ -386,14 +394,14 @@ export interface UseMutationOptions<TMethod extends (...args: unknown[]) => Prom
  * useSWR(['user', { id: '123' }], fetcher)
  * ```
  */
-export type SWRFetcher<TMethod extends (...args: unknown[]) => Promise<unknown>> = (
+export type SWRFetcher<TMethod extends (...args: AnyArgs) => Promise<unknown>> = (
   key: [string, QueryVariables<TMethod>]
 ) => Promise<QueryData<TMethod>>
 
 /**
  * Helper type for SWR mutation trigger functions
  */
-export type SWRMutationFetcher<TMethod extends (...args: unknown[]) => Promise<unknown>> = (
+export type SWRMutationFetcher<TMethod extends (...args: AnyArgs) => Promise<unknown>> = (
   key: string,
   options: { arg: QueryVariables<TMethod> }
 ) => Promise<QueryData<TMethod>>

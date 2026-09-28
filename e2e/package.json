@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@dotdo/rpc": "file:../core",
-    "capnweb": "^0.4.0",
+    "capnweb": "^0.12.0",
     "colo.do": "file:../../colo"
   },
   "devDependencies": {

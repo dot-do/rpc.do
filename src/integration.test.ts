@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { RPC, binding, composite, type Transport } from './index'
 import { http } from './transports'
 import { RPCError } from './errors'
-import { RpcTarget, newHttpBatchRpcResponse } from '@dotdo/capnweb/server'
+import { RpcTarget, newHttpBatchRpcResponse } from 'capnweb'
 import { mockRPC, mockTransport, createSpy } from './testing'
 
 // ============================================================================
@@ -212,7 +212,7 @@ function createRpcClient(target: RpcTarget): ReturnType<typeof RPC> {
   globalThis.fetch = createFetchMock(target)
 
   const transport = http('https://test-rpc.example.com')
-  const rpc = RPC(transport)
+  const rpc = RPC<any>(transport)
 
   // Add cleanup method
   const cleanup = () => {
@@ -242,94 +242,94 @@ describe('Integration: Simple Method Calls', () => {
 
   it('should call a simple method and return primitive result', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const result = await rpc.ping()
+    const result = await rpc['ping']()
     expect(result).toBe('pong')
   })
 
   it('should call method with string argument and return string', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const result = await rpc.simple.greet('World')
+    const result = await rpc['simple'].greet('World')
     expect(result).toBe('Hello, World!')
   })
 
   it('should call method with multiple arguments', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const result = await rpc.simple.add(5, 3)
+    const result = await rpc['simple'].add(5, 3)
     expect(result).toBe(8)
   })
 
   it('should return object from server', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const result = await rpc.simple.getObject()
+    const result = await rpc['simple'].getObject()
     expect(result).toEqual({ id: '123', name: 'Test', active: true })
   })
 
   it('should return array from server', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const result = await rpc.simple.getArray()
+    const result = await rpc['simple'].getArray()
     expect(result).toEqual([1, 2, 3, 4, 5])
   })
 
   it('should echo string values', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    expect(await rpc.simple.echo('hello')).toBe('hello')
+    expect(await rpc['simple'].echo('hello')).toBe('hello')
   })
 
   it('should echo number values', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    expect(await rpc.simple.echo(42)).toBe(42)
+    expect(await rpc['simple'].echo(42)).toBe(42)
   })
 
   it('should echo boolean values', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    expect(await rpc.simple.echo(true)).toBe(true)
+    expect(await rpc['simple'].echo(true)).toBe(true)
   })
 
   it('should echo null values', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    expect(await rpc.simple.echo(null)).toBe(null)
+    expect(await rpc['simple'].echo(null)).toBe(null)
   })
 
   it('should echo object values', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
     const obj = { foo: 'bar', nested: { a: 1 } }
-    expect(await rpc.simple.echo(obj)).toEqual(obj)
+    expect(await rpc['simple'].echo(obj)).toEqual(obj)
   })
 
   it('should echo array values', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
     const arr = [1, 'two', { three: 3 }]
-    expect(await rpc.simple.echo(arr)).toEqual(arr)
+    expect(await rpc['simple'].echo(arr)).toEqual(arr)
   })
 
   it('should handle async server methods', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
     const start = Date.now()
-    const result = await rpc.simple.asyncMethod(50)
+    const result = await rpc['simple'].asyncMethod(50)
     const elapsed = Date.now() - start
 
     expect(result).toEqual({ delayed: true })
@@ -356,9 +356,9 @@ describe('Integration: Nested Namespace Calls', () => {
 
   it('should call methods in first-level namespace', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const users = await rpc.users.list()
+    const users = await rpc['users'].list()
     expect(users).toHaveLength(2)
     expect(users[0]).toEqual({ id: '1', name: 'Alice' })
     expect(users[1]).toEqual({ id: '2', name: 'Bob' })
@@ -366,9 +366,9 @@ describe('Integration: Nested Namespace Calls', () => {
 
   it('should pass arguments to nested namespace methods', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const user = await rpc.users.get('123')
+    const user = await rpc['users'].get('123')
     expect(user).toEqual({
       id: '123',
       name: 'User 123',
@@ -378,9 +378,9 @@ describe('Integration: Nested Namespace Calls', () => {
 
   it('should call methods with object arguments in nested namespace', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const newUser = await rpc.users.create({
+    const newUser = await rpc['users'].create({
       name: 'Charlie',
       email: 'charlie@example.com',
     })
@@ -394,49 +394,49 @@ describe('Integration: Nested Namespace Calls', () => {
 
   it('should call deeply nested namespace methods (3 levels)', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const result = await rpc.admin.users.ban('user-123')
+    const result = await rpc['admin'].users.ban('user-123')
     expect(result).toEqual({ banned: true, userId: 'user-123' })
   })
 
   it('should call users namespace', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const users = await rpc.users.list()
+    const users = await rpc['users'].list()
     expect(users).toHaveLength(2)
   })
 
   it('should call posts namespace', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const posts = await rpc.posts.list()
+    const posts = await rpc['posts'].list()
     expect(posts).toHaveLength(2)
   })
 
   it('should call admin namespace', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const stats = await rpc.admin.stats()
+    const stats = await rpc['admin'].stats()
     expect(stats).toEqual({ totalUsers: 100, totalPosts: 500 })
   })
 
   it('should call methods without optional arguments', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const allPosts = await rpc.posts.list()
+    const allPosts = await rpc['posts'].list()
     expect(allPosts).toHaveLength(2)
   })
 
   it('should call methods with optional arguments', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const userPosts = await rpc.posts.list('1')
+    const userPosts = await rpc['posts'].list('1')
     expect(userPosts).toHaveLength(1)
     expect(userPosts[0].authorId).toBe('1')
   })
@@ -461,17 +461,17 @@ describe('Integration: Error Handling Round-Trip', () => {
 
   it('should propagate simple errors from server', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    await expect(rpc.errors.throwSimple()).rejects.toThrow('Simple error')
+    await expect(rpc['errors'].throwSimple()).rejects.toThrow('Simple error')
   })
 
   it('should propagate RPCError with code', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
     try {
-      await rpc.errors.throwWithCode()
+      await rpc['errors'].throwWithCode()
       expect.fail('Should have thrown')
     } catch (error) {
       expect(error).toBeInstanceOf(Error)
@@ -482,10 +482,10 @@ describe('Integration: Error Handling Round-Trip', () => {
 
   it('should propagate RPCError with data', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
     try {
-      await rpc.errors.throwWithData()
+      await rpc['errors'].throwWithData()
       expect.fail('Should have thrown')
     } catch (error) {
       expect(error).toBeInstanceOf(Error)
@@ -496,17 +496,17 @@ describe('Integration: Error Handling Round-Trip', () => {
 
   it('should handle conditional errors - success case', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const success = await rpc.errors.conditionalError(false)
+    const success = await rpc['errors'].conditionalError(false)
     expect(success).toEqual({ success: true })
   })
 
   it('should handle conditional errors - error case', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    await expect(rpc.errors.conditionalError(true)).rejects.toThrow('Conditional error')
+    await expect(rpc['errors'].conditionalError(true)).rejects.toThrow('Conditional error')
   })
 })
 
@@ -529,45 +529,45 @@ describe('Integration: Type Preservation', () => {
 
   it('should preserve number types', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const result = await rpc.simple.add(1.5, 2.5)
+    const result = await rpc['simple'].add(1.5, 2.5)
     expect(result).toBe(4)
     expect(typeof result).toBe('number')
   })
 
   it('should preserve boolean types in returned objects', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const result = await rpc.simple.getObject()
+    const result = await rpc['simple'].getObject()
     expect(typeof result.active).toBe('boolean')
     expect(result.active).toBe(true)
   })
 
   it('should preserve string types', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const result = await rpc.simple.greet('Test')
+    const result = await rpc['simple'].greet('Test')
     expect(typeof result).toBe('string')
   })
 
   it('should preserve array types', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const result = await rpc.simple.getArray()
+    const result = await rpc['simple'].getArray()
     expect(Array.isArray(result)).toBe(true)
-    expect(result.every(n => typeof n === 'number')).toBe(true)
+    expect(result.every((n: unknown) => typeof n === 'number')).toBe(true)
   })
 
   it('should preserve nested object structure', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
     const nested = { level1: { level2: { value: 'deep' } } }
-    const result = await rpc.simple.echo(nested)
+    const result = await rpc['simple'].echo(nested)
 
     expect(result).toEqual(nested)
     expect(result.level1.level2.value).toBe('deep')
@@ -648,10 +648,10 @@ describe('Integration: Mock Transport Integration', () => {
       'api.echo': (value: unknown) => value,
     })
 
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    expect(await rpc.api.test()).toEqual({ result: 'mocked' })
-    expect(await rpc.api.echo('hello')).toBe('hello')
+    expect(await rpc['api'].test()).toEqual({ result: 'mocked' })
+    expect(await rpc['api'].echo('hello')).toBe('hello')
   })
 
   it('should work with mockRPC for handler-based testing', async () => {
@@ -680,10 +680,10 @@ describe('Integration: Mock Transport Integration', () => {
       'greet': spy,
     })
 
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    await rpc.greet('Alice')
-    await rpc.greet('Bob')
+    await rpc['greet']('Alice')
+    await rpc['greet']('Bob')
 
     expect(spy.calls).toEqual([['Alice'], ['Bob']])
     expect(spy.results).toEqual([
@@ -713,16 +713,16 @@ describe('Integration: Binding Transport', () => {
     }
 
     const transport = binding(mockBinding)
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const user = await rpc.users.get('123')
+    const user = await rpc['users'].get('123')
     expect(user).toEqual({ id: '123', name: 'User 123' })
     expect(mockBinding.users.get).toHaveBeenCalledWith('123')
 
-    const users = await rpc.users.list()
+    const users = await rpc['users'].list()
     expect(users).toEqual([{ id: '1' }, { id: '2' }])
 
-    const post = await rpc.posts.create({ title: 'New Post' })
+    const post = await rpc['posts'].create({ title: 'New Post' })
     expect(post).toEqual({ id: 'new-post', title: 'New Post' })
   })
 
@@ -734,9 +734,9 @@ describe('Integration: Binding Transport', () => {
     }
 
     const transport = binding(mockBinding)
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    await expect(rpc.nonexistent.method()).rejects.toThrow(/Unknown namespace/)
+    await expect(rpc['nonexistent'].method()).rejects.toThrow(/Unknown namespace/)
   })
 
   it('should throw for unknown method in binding', async () => {
@@ -745,9 +745,9 @@ describe('Integration: Binding Transport', () => {
     }
 
     const transport = binding(mockBinding)
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    await expect(rpc.namespace.unknownMethod()).rejects.toThrow(/Unknown method/)
+    await expect(rpc['namespace'].unknownMethod()).rejects.toThrow(/Unknown method/)
   })
 })
 
@@ -768,9 +768,9 @@ describe('Integration: Composite Transport', () => {
     })
 
     const transport = composite(failingTransport, workingTransport)
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const result = await rpc.test.method()
+    const result = await rpc['test'].method()
     expect(result).toEqual({ source: 'second' })
   })
 
@@ -784,9 +784,9 @@ describe('Integration: Composite Transport', () => {
     })
 
     const transport = composite(firstTransport, secondTransport)
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const result = await rpc.test.method()
+    const result = await rpc['test'].method()
     expect(result).toEqual({ source: 'first' })
   })
 
@@ -810,9 +810,9 @@ describe('Integration: Composite Transport', () => {
     }
 
     const transport = composite(transport1, transport2, transport3)
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    await expect(rpc.any.method()).rejects.toThrow('Error 3')
+    await expect(rpc['any'].method()).rejects.toThrow('Error 3')
   })
 
   it('should close all transports', () => {
@@ -842,11 +842,11 @@ describe('Integration: Composite Transport', () => {
 describe('Integration: RPC Proxy Behavior', () => {
   it('should not be thenable (avoid promise confusion)', () => {
     const transport = mockTransport({})
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    expect((rpc as unknown as Record<string, unknown>).then).toBeUndefined()
-    expect((rpc as unknown as Record<string, unknown>).catch).toBeUndefined()
-    expect((rpc as unknown as Record<string, unknown>).finally).toBeUndefined()
+    expect((rpc as unknown as Record<string,unknown>)['then']).toBeUndefined()
+    expect((rpc as unknown as Record<string,unknown>)['catch']).toBeUndefined()
+    expect((rpc as unknown as Record<string,unknown>)['finally']).toBeUndefined()
   })
 
   it('should support close() method on proxy', async () => {
@@ -858,7 +858,7 @@ describe('Integration: RPC Proxy Behavior', () => {
       },
     }
 
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
     await rpc.close?.()
 
     expect(closed).toBe(true)
@@ -874,13 +874,13 @@ describe('Integration: RPC Proxy Behavior', () => {
       })
     }
 
-    const rpc = RPC(factory)
+    const rpc = RPC<any>(factory)
 
     // Factory not called yet
     expect(initialized).toBe(false)
 
     // First call triggers initialization
-    await rpc.test()
+    await rpc['test']()
     expect(initialized).toBe(true)
   })
 
@@ -894,8 +894,8 @@ describe('Integration: RPC Proxy Behavior', () => {
       return transport
     }
 
-    const rpc = RPC(asyncFactory)
-    const result = await rpc.delayed.method()
+    const rpc = RPC<any>(asyncFactory)
+    const result = await rpc['delayed'].method()
 
     expect(result).toEqual({ delayed: true })
   })
@@ -920,17 +920,17 @@ describe('Integration: End-to-End Scenarios', () => {
 
   it('should list users in CRUD workflow', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const initialUsers = await rpc.users.list()
+    const initialUsers = await rpc['users'].list()
     expect(initialUsers.length).toBeGreaterThan(0)
   })
 
   it('should create user in CRUD workflow', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const newUser = await rpc.users.create({
+    const newUser = await rpc['users'].create({
       name: 'New User',
       email: 'new@example.com',
     })
@@ -940,34 +940,34 @@ describe('Integration: End-to-End Scenarios', () => {
 
   it('should get user in CRUD workflow', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const fetchedUser = await rpc.users.get('new-id')
+    const fetchedUser = await rpc['users'].get('new-id')
     expect(fetchedUser.id).toBe('new-id')
   })
 
   it('should delete user in CRUD workflow', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const deleteResult = await rpc.users.delete('new-id')
+    const deleteResult = await rpc['users'].delete('new-id')
     expect(deleteResult.deleted).toBe(true)
   })
 
   it('should handle version request', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
-    const version = await rpc.version()
+    const version = await rpc['version']()
     expect(version.version).toBe('1.0.0')
   })
 
   it('should get posts filtered by user id', async () => {
     const transport = http('https://test-rpc.example.com')
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
     // Get posts for user '1'
-    const userPosts = await rpc.posts.list('1')
-    expect(userPosts.every(p => p.authorId === '1')).toBe(true)
+    const userPosts = await rpc['posts'].list('1')
+    expect(userPosts.every((p: { authorId: string }) => p.authorId === '1')).toBe(true)
   })
 })

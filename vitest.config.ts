@@ -1,13 +1,16 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   resolve: {
     alias: {
       // Mock optional peer dependency for testing
-      'colo.do/tiny': '/Users/nathanclevenger/projects/rpc.do/tests/__mocks__/colo.do-tiny.ts',
+      'colo.do/tiny': fileURLToPath(new URL('./tests/__mocks__/colo.do-tiny.ts', import.meta.url)),
     },
   },
   test: {
+    // The CLI tests run dist/cli.js; build it first when a fresh checkout has no dist/
+    globalSetup: ['./tests/global-setup.ts'],
     exclude: [
       '**/node_modules/**',
       '**/dist/**',

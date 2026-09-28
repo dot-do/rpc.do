@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { INTERNAL_METHODS as CLIENT_METHODS, INTERNAL_METHOD_NAMES as CLIENT_METHOD_NAMES } from './constants'
+import { INTERNAL_METHODS as CLIENT_METHODS, INTERNAL_METHOD_NAMES as CLIENT_METHOD_NAMES } from '../src/constants'
 import { INTERNAL_METHODS as SERVER_METHODS, INTERNAL_METHOD_NAMES as SERVER_METHOD_NAMES } from '../core/src/constants'
 
 describe('Constants Sync', () => {

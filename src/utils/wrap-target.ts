@@ -5,7 +5,7 @@
  * Used by server.ts, expose.ts, and core/src/rpc-interface.ts.
  */
 
-import { RpcTarget } from '@dotdo/capnweb/server'
+import { RpcTarget } from 'capnweb'
 
 // ============================================================================
 // Security Blocklist and Default Skip Properties

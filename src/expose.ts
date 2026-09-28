@@ -40,7 +40,7 @@
  */
 
 import { WorkerEntrypoint } from 'cloudflare:workers'
-import { RpcTarget } from '@dotdo/capnweb/server'
+import { RpcTarget } from 'capnweb'
 import {
   wrapObjectAsTarget,
   wrapObjectWithCustomMethods,

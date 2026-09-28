@@ -585,7 +585,7 @@ users = new CDCCollection(this.collection('users'), this.events, 'users')
 | [`rpc.do`](../README.md) | Managed client implementation with platform integrations |
 | [`@dotdo/collections`](https://github.com/dot-do/collections) | Core collections library |
 | [`@dotdo/events`](https://github.com/dot-do/events) | Event streaming and CDC |
-| [`@dotdo/capnweb`](https://github.com/dot-do/capnweb) | Capnproto-style RPC protocol |
+| [`capnweb`](https://github.com/cloudflare/capnweb) | Capnproto-style RPC protocol |
 | [`colo.do`](https://github.com/dot-do/colo.do) | Cloudflare colo location data |
 | [`@dotdo/types`](https://github.com/dot-do/types) | Core platform type definitions |
 

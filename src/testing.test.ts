@@ -108,9 +108,9 @@ describe('mockRPC', () => {
 
   it('should not be thenable (not a promise)', () => {
     const mock = mockRPC({})
-    expect((mock as unknown as Record<string, unknown>).then).toBeUndefined()
-    expect((mock as unknown as Record<string, unknown>).catch).toBeUndefined()
-    expect((mock as unknown as Record<string, unknown>).finally).toBeUndefined()
+    expect((mock as unknown as Record<string,unknown>)['then']).toBeUndefined()
+    expect((mock as unknown as Record<string,unknown>)['catch']).toBeUndefined()
+    expect((mock as unknown as Record<string,unknown>)['finally']).toBeUndefined()
   })
 
   it('should handle handlers with multiple arguments', async () => {
@@ -248,10 +248,10 @@ describe('mockTransport', () => {
 
     const calls = transport.getCalls()
     expect(calls).toHaveLength(2)
-    expect(calls[0].method).toBe('test.method')
-    expect(calls[0].args).toEqual([1, 2])
-    expect(calls[1].args).toEqual([3, 4])
-    expect(typeof calls[0].timestamp).toBe('number')
+    expect(calls[0]!.method).toBe('test.method')
+    expect(calls[0]!.args).toEqual([1, 2])
+    expect(calls[1]!.args).toEqual([3, 4])
+    expect(typeof calls[0]!.timestamp).toBe('number')
   })
 
   it('should filter calls with getCallsFor()', async () => {
@@ -267,7 +267,7 @@ describe('mockTransport', () => {
 
     const userCalls = transport.getCallsFor('users.get')
     expect(userCalls).toHaveLength(1)
-    expect(userCalls[0].method).toBe('users.get')
+    expect(userCalls[0]!.method).toBe('users.get')
   })
 
   it('should count calls with getCallCount()', async () => {
@@ -305,8 +305,8 @@ describe('mockTransport', () => {
       'users.get': { id: '123', name: 'Test' }
     })
 
-    const rpc = RPC(transport)
-    const result = await rpc.users.get('123')
+    const rpc = RPC<any>(transport)
+    const result = await rpc['users'].get('123')
     expect(result).toEqual({ id: '123', name: 'Test' })
   })
 
@@ -370,7 +370,7 @@ describe('TestServer', () => {
     await server.start()
 
     const response = await fetch(server.url)
-    const data = await response.json()
+    const data = (await response.json()) as { method: string; url: string }
 
     expect(data.method).toBe('GET')
     expect(data.url).toBe(server.url + '/')
@@ -389,7 +389,7 @@ describe('TestServer', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hello: 'world' })
     })
-    const data = await response.json()
+    const data = (await response.json()) as { echo: unknown }
 
     expect(data.echo).toEqual({ hello: 'world' })
   })
@@ -403,7 +403,7 @@ describe('TestServer', () => {
     await server.start()
 
     const response = await fetch(server.url)
-    const data = await response.json()
+    const data = (await response.json()) as { async: boolean }
 
     expect(data.async).toBe(true)
   })
@@ -418,7 +418,7 @@ describe('TestServer', () => {
     const response = await fetch(server.url)
     expect(response.status).toBe(500)
 
-    const data = await response.json()
+    const data = (await response.json()) as { error: string }
     expect(data.error).toBe('Handler error')
   })
 
@@ -460,7 +460,7 @@ describe('TestServer', () => {
     const response = await fetch(server.url, {
       headers: { 'Authorization': 'Bearer token123' }
     })
-    const data = await response.json()
+    const data = (await response.json()) as { auth: string }
 
     expect(data.auth).toBe('Bearer token123')
   })
@@ -657,11 +657,11 @@ describe('Testing Utilities Integration', () => {
     }) as Transport & MockTransportExtras
 
     // Create RPC client
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
     // Make calls
-    await rpc.users.get('alice')
-    await rpc.users.get('bob')
+    await rpc['users'].get('alice')
+    await rpc['users'].get('bob')
 
     // Assert with spy
     expect(getUserSpy.calls).toEqual([['alice'], ['bob']])
@@ -672,7 +672,7 @@ describe('Testing Utilities Integration', () => {
 
     // Assert with transport tracker
     expect(transport.getCallCount('users.get')).toBe(2)
-    expect(transport.getCallsFor('users.get')[0].args).toEqual(['alice'])
+    expect(transport.getCallsFor('users.get')[0]!.args).toEqual(['alice'])
   })
 
   it('should support async flow testing with deferred', async () => {
@@ -682,10 +682,10 @@ describe('Testing Utilities Integration', () => {
       'status.check': () => promise
     }) as Transport & MockTransportExtras
 
-    const rpc = RPC(transport)
+    const rpc = RPC<any>(transport)
 
     // Start the call (won't resolve yet)
-    const statusPromise = rpc.status.check()
+    const statusPromise = rpc['status'].check()
 
     // Use waitFor to check the call was made
     await waitFor(() => transport.getCallCount('status.check') > 0)

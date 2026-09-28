@@ -25,8 +25,8 @@ describe('Middleware', () => {
 
     const middleware: RPCClientMiddleware = { onRequest }
 
-    const rpc = RPC(mockTransport, { middleware: [middleware] })
-    await rpc.users.list({ active: true })
+    const rpc = RPC<any>(mockTransport, { middleware: [middleware] })
+    await rpc['users'].list({ active: true })
 
     expect(onRequest).toHaveBeenCalledTimes(1)
     expect(onRequest).toHaveBeenCalledWith('users.list', [{ active: true }])
@@ -41,8 +41,8 @@ describe('Middleware', () => {
 
     const middleware: RPCClientMiddleware = { onResponse }
 
-    const rpc = RPC(mockTransport, { middleware: [middleware] })
-    await rpc.users.list()
+    const rpc = RPC<any>(mockTransport, { middleware: [middleware] })
+    await rpc['users'].list()
 
     expect(onResponse).toHaveBeenCalledTimes(1)
     expect(onResponse).toHaveBeenCalledWith('users.list', { users: ['john', 'jane'] })
@@ -60,9 +60,9 @@ describe('Middleware', () => {
 
     const middleware: RPCClientMiddleware = { onError }
 
-    const rpc = RPC(mockTransport, { middleware: [middleware] })
+    const rpc = RPC<any>(mockTransport, { middleware: [middleware] })
 
-    await expect(rpc.users.list()).rejects.toThrow('Connection failed')
+    await expect(rpc['users'].list()).rejects.toThrow('Connection failed')
     expect(onError).toHaveBeenCalledTimes(1)
     expect(onError).toHaveBeenCalledWith('users.list', testError)
   })
@@ -92,8 +92,8 @@ describe('Middleware', () => {
       call: async () => ({ ok: true }),
     }
 
-    const rpc = RPC(mockTransport, { middleware: [middleware1, middleware2] })
-    await rpc.test()
+    const rpc = RPC<any>(mockTransport, { middleware: [middleware1, middleware2] })
+    await rpc['test']()
 
     expect(order).toEqual(['mw1-request', 'mw2-request', 'mw1-response', 'mw2-response'])
   })
@@ -119,8 +119,8 @@ describe('Middleware', () => {
       },
     }
 
-    const rpc = RPC(mockTransport, { middleware: [asyncMiddleware] })
-    await rpc.test()
+    const rpc = RPC<any>(mockTransport, { middleware: [asyncMiddleware] })
+    await rpc['test']()
 
     expect(events).toEqual(['async-request', 'call', 'async-response'])
   })
@@ -130,8 +130,8 @@ describe('Middleware', () => {
       call: async () => ({ success: true }),
     }
 
-    const rpc = RPC(mockTransport)
-    const result = await rpc.test()
+    const rpc = RPC<any>(mockTransport)
+    const result = await rpc['test']()
 
     expect(result).toEqual({ success: true })
   })
@@ -141,8 +141,8 @@ describe('Middleware', () => {
       call: async () => ({ success: true }),
     }
 
-    const rpc = RPC(mockTransport, { middleware: [] })
-    const result = await rpc.test()
+    const rpc = RPC<any>(mockTransport, { middleware: [] })
+    const result = await rpc['test']()
 
     expect(result).toEqual({ success: true })
   })
@@ -154,8 +154,8 @@ describe('Middleware', () => {
       call: async (method) => ({ method }),
     }
 
-    const rpc = RPC(mockTransport, { middleware: [{ onRequest }] })
-    await rpc.api.v1.users.list()
+    const rpc = RPC<any>(mockTransport, { middleware: [{ onRequest }] })
+    await rpc['api'].v1.users.list()
 
     expect(onRequest).toHaveBeenCalledWith('api.v1.users.list', [])
   })
@@ -173,11 +173,11 @@ describe('loggingMiddleware', () => {
       call: async () => ({ id: '123' }),
     }
 
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [loggingMiddleware({ log })],
     })
 
-    await rpc.users.get('123')
+    await rpc['users'].get('123')
 
     expect(log).toHaveBeenCalledTimes(2)
     expect(log).toHaveBeenCalledWith('[RPC] Calling users.get with args:', ['123'])
@@ -195,11 +195,11 @@ describe('loggingMiddleware', () => {
       },
     }
 
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [loggingMiddleware({ log, error })],
     })
 
-    await expect(rpc.users.get('999')).rejects.toThrow('Not found')
+    await expect(rpc['users'].get('999')).rejects.toThrow('Not found')
 
     expect(log).toHaveBeenCalledTimes(1) // Only request logged
     expect(error).toHaveBeenCalledTimes(1)
@@ -213,11 +213,11 @@ describe('loggingMiddleware', () => {
       call: async () => ({}),
     }
 
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [loggingMiddleware({ log, prefix: '[API]' })],
     })
 
-    await rpc.test()
+    await rpc['test']()
 
     expect(log).toHaveBeenCalledWith('[API] Calling test with args:', [])
   })
@@ -229,11 +229,11 @@ describe('loggingMiddleware', () => {
       call: async () => ({}),
     }
 
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [loggingMiddleware({ log, logArgs: false })],
     })
 
-    await rpc.users.create({ name: 'secret', password: 'secret123' })
+    await rpc['users'].create({ name: 'secret', password: 'secret123' })
 
     expect(log).toHaveBeenCalledWith('[RPC] Calling users.create')
   })
@@ -245,11 +245,11 @@ describe('loggingMiddleware', () => {
       call: async () => ({ token: 'secret-token' }),
     }
 
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [loggingMiddleware({ log, logResult: false })],
     })
 
-    await rpc.auth.login()
+    await rpc['auth'].login()
 
     expect(log).toHaveBeenNthCalledWith(2, '[RPC] auth.login completed')
   })
@@ -270,14 +270,14 @@ describe('timingMiddleware', () => {
       },
     }
 
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [timingMiddleware({ log })],
     })
 
-    await rpc.test()
+    await rpc['test']()
 
     expect(log).toHaveBeenCalledTimes(1)
-    expect(log.mock.calls[0][0]).toMatch(/\[RPC Timing\] test took \d+\.\d+ms/)
+    expect(log.mock.calls[0]![0]).toMatch(/\[RPC Timing\] test took \d+\.\d+ms/)
   })
 
   it('should respect threshold option', async () => {
@@ -287,11 +287,11 @@ describe('timingMiddleware', () => {
       call: async () => ({ ok: true }), // Very fast call
     }
 
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [timingMiddleware({ log, threshold: 1000 })],
     })
 
-    await rpc.test()
+    await rpc['test']()
 
     // Should not log because call is under 1000ms threshold
     expect(log).not.toHaveBeenCalled()
@@ -304,15 +304,15 @@ describe('timingMiddleware', () => {
       call: async () => ({ ok: true }),
     }
 
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [timingMiddleware({ onTiming })],
     })
 
-    await rpc.users.list()
+    await rpc['users'].list()
 
     expect(onTiming).toHaveBeenCalledTimes(1)
-    expect(onTiming.mock.calls[0][0]).toBe('users.list')
-    expect(typeof onTiming.mock.calls[0][1]).toBe('number')
+    expect(onTiming.mock.calls[0]![0]).toBe('users.list')
+    expect(typeof onTiming.mock.calls[0]![1]).toBe('number')
   })
 
   it('should track timing for failed calls', async () => {
@@ -325,14 +325,14 @@ describe('timingMiddleware', () => {
       },
     }
 
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [timingMiddleware({ onTiming, log })],
     })
 
-    await expect(rpc.test()).rejects.toThrow('Failed')
+    await expect(rpc['test']()).rejects.toThrow('Failed')
 
     expect(onTiming).toHaveBeenCalledTimes(1)
-    expect(log.mock.calls[0][0]).toMatch(/\[RPC Timing\] test failed after \d+\.\d+ms/)
+    expect(log.mock.calls[0]![0]).toMatch(/\[RPC Timing\] test failed after \d+\.\d+ms/)
   })
 
   it('should support custom prefix', async () => {
@@ -342,13 +342,13 @@ describe('timingMiddleware', () => {
       call: async () => ({ ok: true }),
     }
 
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [timingMiddleware({ log, prefix: '[PERF]' })],
     })
 
-    await rpc.test()
+    await rpc['test']()
 
-    expect(log.mock.calls[0][0]).toMatch(/\[PERF\] test took \d+\.\d+ms/)
+    expect(log.mock.calls[0]![0]).toMatch(/\[PERF\] test took \d+\.\d+ms/)
   })
 
   it('should support custom ttl and cleanupInterval options', async () => {
@@ -360,7 +360,7 @@ describe('timingMiddleware', () => {
     }
 
     // Create middleware with custom TTL options - just verify it works
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [
         timingMiddleware({
           log,
@@ -371,7 +371,7 @@ describe('timingMiddleware', () => {
       ],
     })
 
-    await rpc.test()
+    await rpc['test']()
 
     expect(onTiming).toHaveBeenCalledTimes(1)
     expect(log).toHaveBeenCalledTimes(1)
@@ -419,7 +419,7 @@ describe('Combined Middleware', () => {
       call: async () => ({ ok: true }),
     }
 
-    const rpc = RPC(mockTransport, {
+    const rpc = RPC<any>(mockTransport, {
       middleware: [
         loggingMiddleware({
           log: (msg) => logs.push(msg),
@@ -432,11 +432,11 @@ describe('Combined Middleware', () => {
       ],
     })
 
-    await rpc.users.list()
+    await rpc['users'].list()
 
     expect(logs.length).toBe(3) // Request log, completion log, timing log
     expect(timings.length).toBe(1)
-    expect(timings[0].method).toBe('users.list')
+    expect(timings[0]!.method).toBe('users.list')
   })
 })
 
@@ -465,11 +465,11 @@ describe('retryMiddleware', () => {
       initialDelay: 10,
     })
 
-    const rpc = RPC(mockTransport, { middleware: [middleware] })
+    const rpc = RPC<any>(mockTransport, { middleware: [middleware] })
 
     // Note: The middleware tracks retry state but doesn't actually retry
     // The actual retry happens in withRetry transport wrapper
-    await expect(rpc.test()).rejects.toThrow('Network error')
+    await expect(rpc['test']()).rejects.toThrow('Network error')
     expect(onRetry).toHaveBeenCalled()
   })
 
@@ -744,12 +744,12 @@ describe('withMiddleware', () => {
 
     const wrappedTransport = withMiddleware(mockTransport, [
       {
-        onRequest: () => order.push('mw1-request'),
-        onResponse: () => order.push('mw1-response'),
+        onRequest: () => { order.push('mw1-request') },
+        onResponse: () => { order.push('mw1-response') },
       },
       {
-        onRequest: () => order.push('mw2-request'),
-        onResponse: () => order.push('mw2-response'),
+        onRequest: () => { order.push('mw2-request') },
+        onResponse: () => { order.push('mw2-response') },
       },
     ])
 

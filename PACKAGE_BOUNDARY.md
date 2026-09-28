@@ -26,8 +26,8 @@ graph TB
     end
 
     subgraph "Shared Dependencies"
-        capnweb["@dotdo/capnweb"]
-        capnweb_server["@dotdo/capnweb/server"]
+        capnweb["capnweb"]
+        capnweb_server["capnweb (server exports)"]
         types["@dotdo/types"]
     end
 
@@ -118,7 +118,7 @@ graph TB
 
 - **Runs in:** Cloudflare Workers (Durable Objects only)
 - **Requires:** `@cloudflare/workers-types`, Workers runtime
-- **Dependencies:** `@dotdo/capnweb/server`, `@dotdo/collections`, `@dotdo/do`
+- **Dependencies:** `capnweb`, `@dotdo/collections`, `@dotdo/do`
 
 ---
 
@@ -127,7 +127,7 @@ graph TB
 ```
 rpc.do
   dependencies:
-    @dotdo/capnweb (required - RPC protocol)
+    capnweb (required - RPC protocol)
   peerDependencies:
     @dotdo/types (optional - enhanced type definitions)
     oauth.do (optional - authentication)
@@ -136,7 +136,7 @@ rpc.do
 
 @dotdo/rpc
   dependencies:
-    @dotdo/capnweb (required - RPC protocol)
+    capnweb (required - RPC protocol)
     @dotdo/collections (required - document store)
     @dotdo/do (required - DO utilities)
   peerDependencies:

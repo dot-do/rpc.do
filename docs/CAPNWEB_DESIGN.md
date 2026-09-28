@@ -42,7 +42,7 @@ CapnWeb is a capability-based RPC protocol inspired by Cap'n Proto, designed for
    $.users.get()             over WebSocket          to DO methods
 ```
 
-The `@dotdo/capnweb` library provides:
+The `capnweb` library (github.com/cloudflare/capnweb) provides:
 - `newHttpBatchRpcSession()` - HTTP transport with request batching
 - `newWebSocketRpcSession()` - WebSocket transport with bidirectional RPC
 - `RpcSession` - Session management for custom transports
@@ -644,7 +644,7 @@ import { RPC } from 'rpc.do'
 Need efficient RPC over HTTP and WebSocket with support for Durable Object hibernation.
 
 **Decision:**
-Use `@dotdo/capnweb` as the underlying protocol library.
+Use `capnweb` as the underlying protocol library.
 
 **Rationale:**
 
@@ -672,7 +672,7 @@ const api = session.getRemoteMain()
 ```
 
 **Tradeoffs:**
-- External dependency (@dotdo/capnweb)
+- External dependency (capnweb)
 - Protocol complexity abstracted away (debugging can be harder)
 - Dynamic import required for tree-shaking
 

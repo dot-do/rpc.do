@@ -26,7 +26,7 @@
  * @example
  * ```typescript
  * import { ReconnectingWebSocketTransport } from 'rpc.do/transports/reconnecting-ws'
- * import { RpcSession } from '@dotdo/capnweb'
+ * import { RpcSession } from 'capnweb'
  * import { oauthProvider } from 'rpc.do/auth'
  *
  * const transport = new ReconnectingWebSocketTransport('wss://api.example.com/rpc', {
@@ -40,7 +40,7 @@
  * ```
  */
 
-import type { RpcTransport } from '@dotdo/capnweb'
+import type { RpcTransport } from 'capnweb'
 import { ConnectionError } from '../errors.js'
 import type { AuthProvider } from '../auth.js'
 import { loadCapnweb } from '../capnweb-loader.js'
@@ -827,7 +827,7 @@ export class ReconnectingWebSocketTransport implements RpcTransport {
  * @example
  * ```typescript
  * import { reconnectingWs } from 'rpc.do/transports/reconnecting-ws'
- * import { RpcSession } from '@dotdo/capnweb'
+ * import { RpcSession } from 'capnweb'
  * import { oauthProvider } from 'rpc.do/auth'
  *
  * const transport = reconnectingWs('wss://api.example.com/rpc', {

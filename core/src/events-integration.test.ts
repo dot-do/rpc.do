@@ -585,6 +585,23 @@ describe('createEventEmitter factory', () => {
   })
 
   it('should create EventEmitter with provided context', async () => {
+    // createEventEmitter targets the Pipeline-first EventEmitter(pipeline, options, ctx) API.
+    // The only published @dotdo/events (0.1.0) still has EventEmitter(ctx, env, options), so, like
+    // the rest of this file, this test mocks @dotdo/events and checks the wiring.
+    const constructed: unknown[][] = []
+    vi.resetModules()
+    vi.doMock('@dotdo/events', async (importOriginal) => ({
+      ...(await importOriginal<Record<string, unknown>>()),
+      EventEmitter: class {
+        constructor(...args: unknown[]) {
+          constructed.push(args)
+        }
+        emit() {}
+        emitChange() {}
+        async flush() {}
+        async handleAlarm() {}
+      },
+    }))
     const { createEventEmitter } = await import('./events-integration.js')
 
     const mockCtx = {
@@ -607,5 +624,20 @@ describe('createEventEmitter factory', () => {
     expect(typeof emitter.emitChange).toBe('function')
     expect(typeof emitter.flush).toBe('function')
     expect(typeof emitter.handleAlarm).toBe('function')
+
+    // No EVENTS_PIPELINE in env: a no-op pipeline, then the options, then the DO context.
+    expect(constructed).toHaveLength(1)
+    const [pipeline, options, ctx] = constructed[0]!
+    expect(typeof (pipeline as { send: unknown }).send).toBe('function')
+    expect(options).toEqual({ cdc: true })
+    expect(ctx).toBe(mockCtx)
+
+    // An EVENTS_PIPELINE binding in env is discovered.
+    const binding = { send: async () => {} }
+    createEventEmitter({ ctx: mockCtx, env: { EVENTS_PIPELINE: binding } })
+    expect(constructed[1]![0]).toBe(binding)
+
+    vi.doUnmock('@dotdo/events')
+    vi.resetModules()
   })
 })

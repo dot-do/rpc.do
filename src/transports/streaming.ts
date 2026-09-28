@@ -71,6 +71,8 @@ interface WSSubscriptionMessage {
   data?: unknown
   error?: { message: string; code?: string }
   filter?: Record<string, unknown>
+  startFrom?: string | number
+  includeHistory?: boolean
 }
 
 // ============================================================================
@@ -261,17 +263,16 @@ export async function sseStream<T>(
     let i = 0
 
     for (; i < lines.length; i++) {
-      const line = lines[i]
+      const line = lines[i]! // i < lines.length
 
       // Empty line signals end of message
       if (line === '') {
         if (dataLines.length > 0 || currentMessage.event) {
-          messages.push({
-            event: currentMessage.event,
-            data: dataLines.join('\n'),
-            id: currentMessage.id,
-            retry: currentMessage.retry,
-          })
+          const message: SSEMessage = { data: dataLines.join('\n') }
+          if (currentMessage.event !== undefined) message.event = currentMessage.event
+          if (currentMessage.id !== undefined) message.id = currentMessage.id
+          if (currentMessage.retry !== undefined) message.retry = currentMessage.retry
+          messages.push(message)
           currentMessage = {}
           dataLines = []
         }
@@ -605,7 +606,8 @@ export async function wsSubscribe<T>(
       try {
         // Convert http(s) to ws(s)
         const wsUrl = url.replace(/^http/, 'ws')
-        state.ws = new WebSocket(wsUrl, protocols)
+        const ws = new WebSocket(wsUrl, protocols)
+        state.ws = ws
 
         const connectionTimeout = setTimeout(() => {
           if (state.ws?.readyState !== WebSocket.OPEN) {
@@ -614,7 +616,7 @@ export async function wsSubscribe<T>(
           }
         }, 30000)
 
-        state.ws.onopen = () => {
+        ws.addEventListener('open', () => {
           clearTimeout(connectionTimeout)
 
           // Send auth if provided
@@ -627,14 +629,14 @@ export async function wsSubscribe<T>(
             type: 'subscribe',
             subscriptionId: state.id,
             topic,
-            filter,
+            ...(filter !== undefined ? { filter } : {}),
             ...(startFrom !== undefined ? { startFrom } : {}),
             ...(includeHistory ? { includeHistory } : {}),
           }
           state.ws?.send(JSON.stringify(subscribeMessage))
-        }
+        })
 
-        state.ws.onmessage = (event) => {
+        ws.addEventListener('message', (event: MessageEvent) => {
           try {
             const message = JSON.parse(event.data as string) as WSSubscriptionMessage
 
@@ -679,9 +681,9 @@ export async function wsSubscribe<T>(
           } catch {
             // Ignore parse errors
           }
-        }
+        })
 
-        state.ws.onerror = () => {
+        ws.addEventListener('error', () => {
           clearTimeout(connectionTimeout)
           const error = ConnectionError.connectionLost('WebSocket error')
 
@@ -690,9 +692,9 @@ export async function wsSubscribe<T>(
           } else {
             handleError(error)
           }
-        }
+        })
 
-        state.ws.onclose = (event) => {
+        ws.addEventListener('close', (event: CloseEvent) => {
           clearTimeout(connectionTimeout)
 
           if (state.active && !event.wasClean && autoReconnect && state.reconnectAttempts < maxReconnectAttempts) {
@@ -711,7 +713,7 @@ export async function wsSubscribe<T>(
           } else if (!state.active) {
             reject(ConnectionError.connectionLost(`WebSocket closed: ${event.code}`))
           }
-        }
+        })
       } catch (error) {
         reject(error)
       }
@@ -784,7 +786,7 @@ export async function wsSubscribe<T>(
   await connect()
 
   // Create the Subscription
-  const subscription: Subscription<T> = {
+  const subscription: Subscription<T> & { next(): Promise<IteratorResult<T, void>> } = {
     id: state.id,
     topic: state.topic,
 
@@ -792,7 +794,10 @@ export async function wsSubscribe<T>(
       return state.active
     },
 
-    on(event: 'data' | 'error' | 'end' | 'reconnect', handler: (...args: unknown[]) => void): void {
+    on(
+      event: 'data' | 'error' | 'end' | 'reconnect',
+      handler: ((data: T) => void) | ((error: Error) => void) | (() => void) | ((attempt: number) => void)
+    ): void {
       switch (event) {
         case 'data':
           state.handlers.data.add(handler as (data: T) => void)

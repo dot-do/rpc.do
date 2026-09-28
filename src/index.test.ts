@@ -2,14 +2,14 @@
  * rpc.do Tests
  *
  * Tests for RPC proxy, transports, and auth.
- * Uses real @dotdo/capnweb protocol (no mocking capnweb).
+ * Uses real capnweb protocol (no mocking capnweb).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { RPC, binding, composite } from './index'
 import { auth } from './auth'
 import { RPCError } from './errors'
-import { RpcTarget, newHttpBatchRpcResponse } from '@dotdo/capnweb/server'
+import { RpcTarget, newHttpBatchRpcResponse } from 'capnweb'
 import type { Transport } from './index'
 
 // ============================================================================
@@ -27,13 +27,13 @@ describe('RPC Proxy', () => {
       }
     }
 
-    const rpc = RPC(mockTransport)
+    const rpc = RPC<any>(mockTransport)
 
-    await rpc.ai.generate({ prompt: 'hello' })
+    await rpc['ai'].generate({ prompt: 'hello' })
 
     expect(calls).toHaveLength(1)
-    expect(calls[0].method).toBe('ai.generate')
-    expect(calls[0].args).toEqual([{ prompt: 'hello' }])
+    expect(calls[0]!.method).toBe('ai.generate')
+    expect(calls[0]!.args).toEqual([{ prompt: 'hello' }])
   })
 
   it('should handle deeply nested method paths', async () => {
@@ -46,12 +46,12 @@ describe('RPC Proxy', () => {
       }
     }
 
-    const rpc = RPC(mockTransport)
+    const rpc = RPC<any>(mockTransport)
 
-    await rpc.db.users.find({ id: '123' })
+    await rpc['db'].users.find({ id: '123' })
 
-    expect(calls[0].method).toBe('db.users.find')
-    expect(calls[0].args).toEqual([{ id: '123' }])
+    expect(calls[0]!.method).toBe('db.users.find')
+    expect(calls[0]!.args).toEqual([{ id: '123' }])
   })
 
   it('should support typed RPC with generics', async () => {
@@ -81,12 +81,12 @@ describe('RPC Proxy', () => {
       }
     }
 
-    const rpc = RPC(transportFactory)
+    const rpc = RPC<any>(transportFactory)
 
     // Factory should not be called until first use
     expect(factoryCalled).toBe(false)
 
-    await rpc.test.method()
+    await rpc['test'].method()
 
     expect(factoryCalled).toBe(true)
   })
@@ -101,8 +101,8 @@ describe('RPC Proxy', () => {
       return mockTransport
     }
 
-    const rpc = RPC(asyncFactory)
-    const result = await rpc.status.check()
+    const rpc = RPC<any>(asyncFactory)
+    const result = await rpc['status'].check()
 
     expect(result).toEqual({ connected: true })
   })
@@ -115,8 +115,8 @@ describe('RPC Proxy', () => {
       close: () => { closed = true }
     }
 
-    const rpc = RPC(mockTransport)
-    await rpc.test()
+    const rpc = RPC<any>(mockTransport)
+    await rpc['test']()
 
     await rpc.close?.()
 
@@ -128,12 +128,12 @@ describe('RPC Proxy', () => {
       call: async () => ({})
     }
 
-    const rpc = RPC(mockTransport)
+    const rpc = RPC<any>(mockTransport)
 
     // Accessing .then should return undefined, not continue the chain
-    expect((rpc as unknown as Record<string, unknown>).then).toBeUndefined()
-    expect((rpc as unknown as Record<string, unknown>).catch).toBeUndefined()
-    expect((rpc as unknown as Record<string, unknown>).finally).toBeUndefined()
+    expect((rpc as unknown as Record<string,unknown>)['then']).toBeUndefined()
+    expect((rpc as unknown as Record<string,unknown>)['catch']).toBeUndefined()
+    expect((rpc as unknown as Record<string,unknown>)['finally']).toBeUndefined()
   })
 })
 
@@ -586,15 +586,15 @@ describe('Binding Transport', () => {
       }
     }
 
-    const rpc = RPC(binding(mockBinding))
+    const rpc = RPC<any>(binding(mockBinding))
 
-    const created = await rpc.users.create({ name: 'John' })
+    const created = await rpc['users'].create({ name: 'John' })
     expect(created).toEqual({ id: 'new-id', name: 'John' })
 
-    const user = await rpc.users.get('123')
+    const user = await rpc['users'].get('123')
     expect(user).toEqual({ id: '123', name: 'Test User' })
 
-    const users = await rpc.users.list()
+    const users = await rpc['users'].list()
     expect(users).toEqual([{ id: '1' }, { id: '2' }])
   })
 
@@ -836,16 +836,16 @@ describe('Composite Transport', () => {
       }
     }
 
-    const rpc = RPC(composite(primary, fallback))
+    const rpc = RPC<any>(composite(primary, fallback))
 
     // First call should use primary
-    const result1 = await rpc.users.get('123')
+    const result1 = await rpc['users'].get('123')
     expect(result1).toEqual({ from: 'primary', method: 'users.get' })
     expect(primaryCalls).toEqual(['users.get'])
     expect(fallbackCalls).toEqual([])
 
     // This call should fall back
-    const result2 = await rpc.users.delete('456')
+    const result2 = await rpc['users'].delete('456')
     expect(result2).toEqual({ from: 'fallback', method: 'users.delete' })
     expect(primaryCalls).toEqual(['users.get', 'users.delete'])
     expect(fallbackCalls).toEqual(['users.delete'])
@@ -1086,9 +1086,9 @@ describe('createRPCClient Factory', () => {
 
     const client = createRPCClient<Record<string, Record<string, () => unknown>>>({ baseUrl: 'https://api.example.com/rpc' })
 
-    expect((client as unknown as Record<string, unknown>).then).toBeUndefined()
+    expect((client as unknown as Record<string,unknown>)['then']).toBeUndefined()
 
-    const result = await client.test.method()
+    const result = await client['test']!['method']!()
     expect(result).toEqual({ result: 'ok' })
   })
 
@@ -1096,7 +1096,7 @@ describe('createRPCClient Factory', () => {
     const createRPCClient = await getCreateRPCClient()
 
     const client = createRPCClient<any>({ baseUrl: 'https://custom.api.com/rpc' })
-    const result = await client.some.method()
+    const result = await client['some'].method()
 
     expect(result).toEqual({ some: true })
   })
@@ -1108,7 +1108,7 @@ describe('createRPCClient Factory', () => {
       baseUrl: 'https://api.example.com/rpc',
       auth: 'my-secret-token'
     })
-    const result = await client.test.method()
+    const result = await client['test'].method()
 
     expect(result).toEqual({ result: 'ok' })
   })
@@ -1123,7 +1123,7 @@ describe('createRPCClient Factory', () => {
       baseUrl: 'https://api.example.com/rpc',
       auth: authProvider
     })
-    const result = await client.test.method()
+    const result = await client['test'].method()
 
     // Auth provider is NOT called for HTTP batch (in-band auth is used instead)
     expect(authProvider).not.toHaveBeenCalled()
@@ -1139,7 +1139,7 @@ describe('createRPCClient Factory', () => {
       baseUrl: 'https://api.example.com/rpc',
       auth: asyncAuthProvider
     })
-    const result = await client.test.method()
+    const result = await client['test'].method()
 
     // Auth provider is NOT called for HTTP batch (in-band auth is used instead)
     expect(asyncAuthProvider).not.toHaveBeenCalled()
@@ -1155,7 +1155,7 @@ describe('createRPCClient Factory', () => {
       baseUrl: 'https://api.example.com/rpc',
       auth: nullAuthProvider
     })
-    const result = await client.test.method()
+    const result = await client['test'].method()
 
     // Auth provider is NOT called for HTTP batch (in-band auth is used instead)
     expect(nullAuthProvider).not.toHaveBeenCalled()
@@ -1185,7 +1185,7 @@ describe('createRPCClient Factory', () => {
       timeout: 5000
     })
 
-    const result = await client.test.method()
+    const result = await client['test'].method()
     expect(result).toEqual({ result: 'ok' })
   })
 
@@ -1193,7 +1193,7 @@ describe('createRPCClient Factory', () => {
     const createRPCClient = await getCreateRPCClient()
 
     const client = createRPCClient<any>({ baseUrl: 'https://minimal.api.com/rpc' })
-    const result = await client.simple.call()
+    const result = await client['simple'].call()
 
     expect(result).toEqual({ success: true })
   })
@@ -1208,43 +1208,43 @@ describe('Auth Provider', () => {
   const globals = globalThis as unknown as Record<string, string | undefined>
 
   // Store original values
-  const originalAdminToken = globals.DO_ADMIN_TOKEN
-  const originalToken = globals.DO_TOKEN
-  const originalEnvAdmin = process.env.DO_ADMIN_TOKEN
-  const originalEnvToken = process.env.DO_TOKEN
+  const originalAdminToken = globals['DO_ADMIN_TOKEN']
+  const originalToken = globals['DO_TOKEN']
+  const originalEnvAdmin = process.env['DO_ADMIN_TOKEN']
+  const originalEnvToken = process.env['DO_TOKEN']
 
   beforeEach(() => {
-    delete globals.DO_ADMIN_TOKEN
-    delete globals.DO_TOKEN
-    delete process.env.DO_ADMIN_TOKEN
-    delete process.env.DO_TOKEN
+    delete globals['DO_ADMIN_TOKEN']
+    delete globals['DO_TOKEN']
+    delete process.env['DO_ADMIN_TOKEN']
+    delete process.env['DO_TOKEN']
   })
 
   afterEach(() => {
     if (originalAdminToken !== undefined) {
-      globals.DO_ADMIN_TOKEN = originalAdminToken
+      globals['DO_ADMIN_TOKEN'] = originalAdminToken
     } else {
-      delete globals.DO_ADMIN_TOKEN
+      delete globals['DO_ADMIN_TOKEN']
     }
     if (originalToken !== undefined) {
-      globals.DO_TOKEN = originalToken
+      globals['DO_TOKEN'] = originalToken
     } else {
-      delete globals.DO_TOKEN
+      delete globals['DO_TOKEN']
     }
     if (originalEnvAdmin !== undefined) {
-      process.env.DO_ADMIN_TOKEN = originalEnvAdmin
+      process.env['DO_ADMIN_TOKEN'] = originalEnvAdmin
     } else {
-      delete process.env.DO_ADMIN_TOKEN
+      delete process.env['DO_ADMIN_TOKEN']
     }
     if (originalEnvToken !== undefined) {
-      process.env.DO_TOKEN = originalEnvToken
+      process.env['DO_TOKEN'] = originalEnvToken
     } else {
-      delete process.env.DO_TOKEN
+      delete process.env['DO_TOKEN']
     }
   })
 
   it('should return token from globalThis.DO_ADMIN_TOKEN', async () => {
-    globals.DO_ADMIN_TOKEN = 'admin-token-from-global'
+    globals['DO_ADMIN_TOKEN'] = 'admin-token-from-global'
 
     const authProvider = auth()
     const token = await authProvider()
@@ -1253,7 +1253,7 @@ describe('Auth Provider', () => {
   })
 
   it('should return token from globalThis.DO_TOKEN', async () => {
-    globals.DO_TOKEN = 'token-from-global'
+    globals['DO_TOKEN'] = 'token-from-global'
 
     const authProvider = auth()
     const token = await authProvider()
