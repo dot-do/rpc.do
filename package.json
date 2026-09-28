@@ -1,6 +1,6 @@
 {
   "name": "rpc.do",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "description": "Managed RPC implementation for the .do platform with oauth.do authentication and cli.do tooling",
   "stability": "beta",
   "apiStability": "Follows semantic versioning. See docs/VERSIONING.md for stability guarantees.",
