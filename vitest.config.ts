@@ -9,6 +9,8 @@ export default defineConfig({
     },
   },
   test: {
+    // The CLI tests run dist/cli.js; build it first when a fresh checkout has no dist/
+    globalSetup: ['./tests/global-setup.ts'],
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
