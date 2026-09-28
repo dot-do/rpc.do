@@ -6,7 +6,7 @@ Thank you for your interest in contributing to rpc.do! This document provides gu
 
 ### Prerequisites
 
-- Node.js 18.0.0 or higher
+- Node.js 20.0.0 or higher
 - pnpm 9 (package manager)
 
 ### Getting Started

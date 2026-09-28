@@ -119,7 +119,7 @@
   },
   "homepage": "https://rpc.do",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "capnweb": "^0.12.0"
