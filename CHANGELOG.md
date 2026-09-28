@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING**: `rpc.do` and `@dotdo/rpc` depend on upstream `capnweb` ^0.12.0 instead of the `@dotdo/capnweb` 0.4.0 fork.
+  `HibernatableWebSocketTransport` and `TransportRegistry` (the fork's one runtime addition) now ship inside
+  `rpc.do/server` and `@dotdo/rpc`. Code that imported `@dotdo/capnweb` or `@dotdo/capnweb/server` should import
+  from `capnweb` (or `rpc.do/server`). See capnweb's CHANGELOG 0.5.0-0.12.0 for protocol-level changes.
+- `rpc.do/server` additionally re-exports `newWorkersWebSocketRpcResponse`, `nodeHttpBatchRpcResponse`, `DEFAULT_LIMITS`,
+  and the `RpcLimits` and `PendingReceive` types.
+
+### Fixed
+
+- `http()` and `capnweb(url, { websocket: false })`: a call made in a later tick while an earlier batch was still in
+  flight was sent into the spent batch session and failed with "Batch RPC request ended.". A batch session is now
+  handed out only until the macrotask at which it flushes; later calls get a fresh one.
+
+### Added
+
+- `batchSession(url, { fetch?, headers?, sessionOptions? })`: one capnweb HTTP batch with its pipelining stub,
+  `flush()`, `abort()` and `sent`, from `rpc.do` and `rpc.do/transports`.
+
 ### v1.0 Release Preparation
 
 This release marks the v1.0 milestone, signaling API stability and production-readiness.

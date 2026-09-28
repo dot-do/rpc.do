@@ -7,6 +7,15 @@ import type { ServerMessage as TypesServerMessage } from '@dotdo/types/rpc'
 import { ConnectionError, RPCError } from './errors'
 import { loadCapnweb, getCapnwebModuleSync } from './capnweb-loader.js'
 
+/**
+ * Run `fn` at the next macrotask, using the same primitive capnweb's HTTP batch client uses to
+ * decide when a batch leaves (setImmediate where it exists, else setTimeout 0). Both queues are
+ * FIFO, so a callback scheduled here BEFORE a batch session is constructed runs before that
+ * session flushes.
+ */
+const atNextMacrotask: (fn: () => void) => void =
+  typeof setImmediate === 'function' ? (fn) => { setImmediate(fn) } : (fn) => { setTimeout(fn, 0) }
+
 // ============================================================================
 // Type Guards
 // ============================================================================
@@ -314,16 +323,30 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
 
   // Note: capnweb is a dynamically imported external library with its own type system.
   // We use 'unknown' for the session and navigate it dynamically.
-  // Use a promise to prevent concurrent calls from creating multiple sessions.
+  //
+  // A capnweb HTTP batch session is single-use: it sends ONE request carrying every call made on
+  // it before it flushes (at the next macrotask), and after that it is finished ("Batch RPC
+  // request ended."). So a session is handed out only until the macrotask it would flush at:
+  // calls made before then share one batch (Promise.all), and a call made later gets a fresh
+  // session, even while an earlier batch is still in flight. The reset is scheduled before the
+  // session is constructed, so it always runs before that session flushes.
+  // See tests/http-batch-lifetime.test.ts.
   let sessionPromise: Promise<unknown> | null = null
+  /** Most recent session, kept for close() after the shared reference is dropped */
+  let lastSessionPromise: Promise<unknown> | null = null
 
   async function getSession(): Promise<unknown> {
     if (!sessionPromise) {
-      sessionPromise = (async () => {
+      const created = (async () => {
         // Load capnweb via centralized loader
         const capnwebModule = await loadCapnweb()
         return capnwebModule.newHttpBatchRpcSession(url)
       })()
+      sessionPromise = created
+      lastSessionPromise = created
+      atNextMacrotask(() => {
+        if (sessionPromise === created) sessionPromise = null
+      })
     }
     return sessionPromise
   }
@@ -371,12 +394,6 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
         if (timeoutId !== undefined) {
           clearTimeout(timeoutId)
         }
-        // Reset session after batch completes — capnweb HTTP batch sessions are
-        // single-use (one HTTP request per batch). After the response is consumed,
-        // the session is dead. Resetting here lets the next sequential call create
-        // a fresh session. Concurrent calls via Promise.all share the same session
-        // (and thus batch) because they all hit getSession() before any resolves.
-        sessionPromise = null
       }
     },
     /**
@@ -408,15 +425,16 @@ export function http(url: string, authOrOptions?: string | AuthProvider | HttpTr
       void loadCapnweb()
     },
     close() {
-      // Resolve the current session synchronously if available, then dispose
-      if (sessionPromise) {
-        void sessionPromise.then((session) => {
+      // Dispose the most recent session once it resolves
+      if (lastSessionPromise) {
+        void lastSessionPromise.then((session) => {
           if (isNonNullObject(session) && typeof session[Symbol.dispose] === 'function') {
             (session[Symbol.dispose] as () => void)()
           }
         })
       }
       sessionPromise = null
+      lastSessionPromise = null
     },
   }
   return transport
@@ -592,12 +610,17 @@ export function capnweb(
   // We use 'unknown' for the session and navigate it dynamically.
   // Use a promise to prevent concurrent calls from creating multiple sessions.
   // For non-reconnecting mode, auth is handled via in-band RPC methods
+  //
+  // In HTTP batch mode a session is handed out only until the macrotask it flushes at, for the
+  // reason given in http() above. The WebSocket session is persistent.
   let sessionPromise: Promise<unknown> | null = null
+  /** Most recent session, kept for close() after the shared reference is dropped */
+  let lastSessionPromise: Promise<unknown> | null = null
   let cachedWsSession: unknown = null
 
   async function getSession(): Promise<unknown> {
     if (!sessionPromise) {
-      sessionPromise = (async () => {
+      const created = (async () => {
         // Load capnweb via centralized loader
         const capnwebModule = await loadCapnweb()
 
@@ -610,6 +633,13 @@ export function capnweb(
           return capnwebModule.newHttpBatchRpcSession(url)
         }
       })()
+      sessionPromise = created
+      lastSessionPromise = created
+      if (!useWebSocket) {
+        atNextMacrotask(() => {
+          if (sessionPromise === created) sessionPromise = null
+        })
+      }
     }
     return sessionPromise
   }
@@ -636,13 +666,6 @@ export function capnweb(
       } catch (error) {
         // Wrap errors from capnweb into appropriate error types
         throw wrapTransportError(error)
-      } finally {
-        // Reset session after batch completes for HTTP batch mode — capnweb HTTP
-        // batch sessions are single-use. WebSocket sessions persist (handled by
-        // reconnecting transport), but HTTP batch needs fresh session per call.
-        if (!useWebSocket) {
-          sessionPromise = null
-        }
       }
     },
     /**
@@ -680,15 +703,16 @@ export function capnweb(
       }
     },
     close() {
-      // Resolve the current session synchronously if available, then dispose
-      if (sessionPromise) {
-        void sessionPromise.then((session) => {
+      // Dispose the most recent session once it resolves
+      if (lastSessionPromise) {
+        void lastSessionPromise.then((session) => {
           if (isTraversable(session) && typeof session[Symbol.dispose] === 'function') {
             (session[Symbol.dispose] as () => void)()
           }
         })
       }
       sessionPromise = null
+      lastSessionPromise = null
       cachedWsSession = null
     },
   }
@@ -863,6 +887,14 @@ export {
   type ReconnectingWebSocketOptions,
   type RpcSessionOptions,
 } from './transports/reconnecting-ws.js'
+
+// One capnweb HTTP batch with its pipelining stub
+export {
+  batchSession,
+  type BatchSession,
+  type BatchSessionOptions,
+  type BatchFetch,
+} from './transports/batch-session.js'
 
 // Export middleware wrappers for transport composition
 export { withMiddleware, withRetry, type RetryOptions } from './middleware/index.js'

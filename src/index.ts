@@ -369,6 +369,14 @@ export {
   type RpcSessionOptions,
 } from './transports/reconnecting-ws.js'
 
+// One capnweb HTTP batch with its pipelining stub
+export {
+  batchSession,
+  type BatchSession,
+  type BatchSessionOptions,
+  type BatchFetch,
+} from './transports/batch-session.js'
+
 export { withMiddleware, withRetry, type RetryOptions } from './middleware/index.js'
 
 // Streaming transport utilities
