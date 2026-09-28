@@ -33,6 +33,8 @@ jobs:
             ${{ runner.os }}-pnpm-store-
       - name: Install dependencies
         run: pnpm install
+      - name: Install core dependencies
+        run: pnpm install --dir core
       - name: Type check
         run: pnpm typecheck
       - name: Build
@@ -63,6 +65,8 @@ jobs:
             ${{ runner.os }}-pnpm-store-
       - name: Install dependencies
         run: pnpm install
+      - name: Install core dependencies
+        run: pnpm install --dir core
       - name: Build
         run: pnpm build
       - name: Run tests with coverage
@@ -106,6 +110,8 @@ jobs:
             ${{ runner.os }}-pnpm-store-
       - name: Install dependencies
         run: pnpm install
+      - name: Install core dependencies
+        run: pnpm install --dir core
       - name: Build
         run: pnpm build
       - name: Run performance tests
