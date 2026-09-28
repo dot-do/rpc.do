@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.3.0
+
+### Minor Changes
+
+- 379e24a: Move to upstream `capnweb` 0.12.0 (was the `@dotdo/capnweb` 0.4.0 fork).
+
+  Breaking for consumers:
+
+  - The dependency is now `capnweb`. On Node, an `RpcTarget` from a second copy of capnweb (such as `@dotdo/capnweb`) is not recognised; depend on `capnweb` 0.12 directly.
+  - Receive limits apply by default: messages are capped at 32 MiB and nesting depth at 256.
+  - New wire types (streams, Blob, URL, typed arrays) need both ends on capnweb 0.12.
+  - On Node, byte arrays come back as `Buffer`.
+  - Some return types changed.
+
+  Kept inside rpc.do: `HibernatableWebSocketTransport` and `TransportRegistry` (exported from `rpc.do/server`).
+
+  Fixed: a call made through `http()` or `capnweb(url, { websocket: false })` while an earlier batch was in flight failed with "Batch RPC request ended".
+
+  Added: `batchSession()`, a pipelining stub for one HTTP batch.
+
+  Requires Node.js 20 or later (was 18). Node 18 has no global Web Crypto, and `HibernatableWebSocketTransport` and `rpc.do init` call `crypto.randomUUID()`; Node 18 reached end of life in April 2025.
+
+### Patch Changes
+
+- 9007966: Fixed types: `getMethod`, `createQueryFn`, `createMutationFn` and the React Query/SWR helper types now accept methods that take typed parameters (before, `MethodPaths` only listed zero-argument methods). `createSpy((x: number) => ...)` and `mockTransport({ 'users.get': (id: string) => ... })` now type-check.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -105,23 +131,25 @@ See [VERSIONING.md](./docs/VERSIONING.md) for the migration guide template.
 ### Key Breaking Changes in v0.2.x
 
 1. **Transport unification**: All transports now use capnweb protocol
+
    ```typescript
    // Before (v0.1.x)
-   import { capnweb } from 'rpc.do/transports'
-   const transport = capnweb('wss://example.com')
+   import { capnweb } from "rpc.do/transports";
+   const transport = capnweb("wss://example.com");
 
    // After (v0.2.x)
-   import { capnweb } from 'rpc.do/transports'
-   const transport = capnweb('wss://example.com')
+   import { capnweb } from "rpc.do/transports";
+   const transport = capnweb("wss://example.com");
    ```
 
 2. **Simplified RPC creation**: Direct URL now preferred
+
    ```typescript
    // Before (v0.1.x)
-   const client = createRPCClient({ baseUrl: 'https://example.com' })
+   const client = createRPCClient({ baseUrl: "https://example.com" });
 
    // After (v0.2.x) - recommended
-   const $ = RPC('https://example.com')
+   const $ = RPC("https://example.com");
    ```
 
 3. **capnweb fork migration**: Now uses `@dotdo/capnweb` instead of `capnweb`
@@ -136,9 +164,9 @@ See [VERSIONING.md](./docs/VERSIONING.md) for the migration guide template.
 
 This monorepo contains two packages:
 
-| Package | Current Version | Description |
-|---------|-----------------|-------------|
-| `rpc.do` | 0.2.4 | RPC client library |
-| `@dotdo/rpc` | 0.2.4 | Durable Object RPC server |
+| Package      | Current Version | Description               |
+| ------------ | --------------- | ------------------------- |
+| `rpc.do`     | 0.2.4           | RPC client library        |
+| `@dotdo/rpc` | 0.2.4           | Durable Object RPC server |
 
 Both packages follow the same versioning and will be bumped to v1.0 together.
