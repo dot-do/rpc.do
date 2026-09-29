@@ -161,6 +161,13 @@ try {
 - [Migrating from gRPC](docs/MIGRATING_FROM_GRPC.md)
 - [React Integration](docs/REACT_INTEGRATION.md)
 
+## Releasing
+
+CI never publishes. On every push to `main`, the Release workflow opens or updates a changesets "chore: version packages" PR from the pending `.changeset/*.md` files.
+
+1. Merge the version PR.
+2. Pull `main`, then run `pnpm release` locally. It builds, tests, and runs `scripts/publish.ts`, which skips versions already on npm, logs in with `npm login --auth-type=web` if needed, and publishes with `npm publish --auth-type=web`. Approve in the browser (TouchID). When run by an agent (no TTY), the script opens the npm auth URL for you.
+
 ## License
 
 MIT
