@@ -91,7 +91,8 @@
     "bench": "tsx benchmarks/bench.ts",
     "check:publish": "node -e \"const pkg = require('./package.json'); const deps = JSON.stringify(pkg.dependencies || {}); if (deps.includes('workspace:')) { console.error('ERROR: workspace: protocol found in dependencies. Replace with actual versions before publishing.'); process.exit(1); }\"",
     "prepublishOnly": "pnpm check:publish && pnpm build && pnpm test",
-    "release": "pnpm build && changeset publish",
+    "publish-package": "tsx scripts/publish.ts",
+    "release": "pnpm build && pnpm test && pnpm publish-package",
     "version": "changeset version"
   },
   "keywords": [

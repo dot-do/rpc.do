@@ -37,6 +37,7 @@ export default defineConfig({
         '**/*.d.ts',
         '**/types/**',
         'vitest.config.ts',
+        'scripts/publish.ts', // I/O shell around scripts/publish-helpers.ts
         'tsup.config.ts',
         '**/benchmarks/**',
       ],

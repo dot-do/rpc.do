@@ -1,5 +1,8 @@
 name: Release
 
+# CI only opens/updates the changesets "version packages" PR.
+# Publishing happens locally: merge that PR, then `pnpm release` (npm web auth).
+
 on:
   push:
     branches:
@@ -9,12 +12,11 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
   release:
-    name: Release
+    name: Version PR
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
-      id-token: write  # Required for OIDC trusted publishing
 
     steps:
       - name: Checkout
@@ -30,9 +32,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24  # Node 24+ includes npm with OIDC support
+          node-version: 24
           cache: 'pnpm'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: pnpm install
@@ -44,16 +45,13 @@ jobs:
         run: pnpm build
 
       - name: Run tests
-        run: pnpm test || true
+        run: pnpm test
 
-      - name: Create Release Pull Request or Publish
-        id: changesets
+      - name: Create or update version packages PR
         uses: changesets/action@v1
         with:
-          publish: pnpm run release
           version: pnpm run version
           title: 'chore: version packages'
           commit: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # No NPM_TOKEN needed - uses OIDC trusted publishing!
